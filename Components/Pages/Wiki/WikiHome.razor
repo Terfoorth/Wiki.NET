@@ -233,44 +233,7 @@
                                                         </div>
                                                     }
                                                 </div>
-                                                <div class="dropdown">
-                                                    <button class="btn btn-sm btn-light border dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="Aktionen">
-                                                        <span class="oi oi-ellipses"></span>
-                                                    </button>
-                                                    <ul class="dropdown-menu dropdown-menu-end">
-                                                        <li>
-                                                            <button class="dropdown-item" type="button" @onclick="() => OpenEntry(page)">
-                                                                <span class="oi oi-eye me-2"></span>Öffnen
-                                                            </button>
-                                                        </li>
-                                                        <li>
-                                                            <button class="dropdown-item" type="button" @onclick="() => EditEntry(page)">
-                                                                <span class="oi oi-pencil me-2"></span>Bearbeiten
-                                                            </button>
-                                                        </li>
-                                                        <li>
-                                                            <button class="dropdown-item" type="button" @onclick="() => OpenProperties(page)">
-                                                                <span class="oi oi-info me-2"></span>Eigenschaften
-                                                            </button>
-                                                        </li>
-                                                        <li>
-                                                            <button class="dropdown-item" type="button" @onclick="() => OpenFavoriteMenuForPage(page.Id)">
-                                                                <span class="oi oi-star me-2"></span>Favoriten-Gruppen
-                                                            </button>
-                                                        </li>
-                                                        <li>
-                                                            <button class="dropdown-item" type="button" @onclick="ToggleEntryViewModeAsync">
-                                                                <span class="oi oi-resize-height me-2"></span>@(UseLargeCards ? "Kompakte Ansicht" : "Große Ansicht")
-                                                            </button>
-                                                        </li>
-                                                        <li><hr class="dropdown-divider"></li>
-                                                        <li>
-                                                            <button class="dropdown-item text-danger" type="button" @onclick="() => DeleteEntryAsync(page)">
-                                                                <span class="oi oi-trash me-2"></span>Löschen
-                                                            </button>
-                                                        </li>
-                                                    </ul>
-                                                </div>
+                                                <small class="text-muted" title="Rechtsklick für Aktionen">Rechtsklick für Aktionen</small>
                                             </div>
                                         </div>
                                         

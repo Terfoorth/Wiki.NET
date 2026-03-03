@@ -157,68 +157,7 @@
                                         </div>
                                         <div class="d-flex align-items-center gap-2">
                                             <small class="text-muted">@(page.LastModified.ToString("dd.MM.yy"))</small>
-                                            <div class="dropdown">
-                                                <button class="btn btn-sm btn-light border dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="Aktionen">
-                                                    <span class="oi oi-ellipses"></span>
-                                                </button>
-                                                <ul class="dropdown-menu dropdown-menu-end">
-                                                    <li>
-                                                        <button class="dropdown-item" type="button" @onclick="() => OpenEntry(page)">
-                                                            <span class="oi oi-eye me-2"></span>Öffnen
-                                                        </button>
-                                                    </li>
-                                                    <li>
-                                                        <button class="dropdown-item" type="button" @onclick="() => EditEntry(page)">
-                                                            <span class="oi oi-pencil me-2"></span>Bearbeiten
-                                                        </button>
-                                                    </li>
-                                                    <li>
-                                                        <button class="dropdown-item" type="button" @onclick="() => OpenProperties(page)">
-                                                            <span class="oi oi-info me-2"></span>Eigenschaften
-                                                        </button>
-                                                    </li>
-                                                    <li><hr class="dropdown-divider"></li>
-                                                    @if (page.Status == WikiPageStatus.Template)
-                                                    {
-                                                        <li>
-                                                            <button class="dropdown-item" type="button" @onclick="() => MarkAsPublishedAsync(page)">
-                                                                <span class="oi oi-check me-2"></span>Als veröffentlicht markieren
-                                                            </button>
-                                                        </li>
-                                                    }
-                                                    else
-                                                    {
-                                                        <li>
-                                                            <button class="dropdown-item" type="button" @onclick="() => MarkAsTemplateAsync(page)">
-                                                                <span class="oi oi-reload me-2"></span>Zurück zu Vorlage
-                                                            </button>
-                                                        </li>
-                                                    }
-                                                    @if (TemplateGroups is not null && TemplateGroups.Count > 0)
-                                                    {
-                                                        <li><hr class="dropdown-divider"></li>
-                                                        @foreach (var group in TemplateGroups)
-                                                        {
-                                                            <li>
-                                                                <button class="dropdown-item" type="button" @onclick="() => AssignTemplateGroupAsync(page, group.Id)">
-                                                                    <span class="oi oi-layers me-2"></span>In Gruppe: @group.Name
-                                                                </button>
-                                                            </li>
-                                                        }
-                                                    }
-                                                    <li>
-                                                        <button class="dropdown-item" type="button" @onclick="ToggleEntryViewMode">
-                                                            <span class="oi oi-resize-height me-2"></span>@(UseLargeCards ? "Kompakte Ansicht" : "Große Ansicht")
-                                                        </button>
-                                                    </li>
-                                                    <li><hr class="dropdown-divider"></li>
-                                                    <li>
-                                                        <button class="dropdown-item text-danger" type="button" @onclick="() => DeleteEntryAsync(page)">
-                                                            <span class="oi oi-trash me-2"></span>Löschen
-                                                        </button>
-                                                    </li>
-                                                </ul>
-                                            </div>
+                                            <small class="text-muted" title="Rechtsklick für Aktionen">Rechtsklick für Aktionen</small>
                                         </div>
                                     </div>
 
