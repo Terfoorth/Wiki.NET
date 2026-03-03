@@ -331,6 +331,60 @@ namespace Wiki_Blaze.Services
             return pages;
         }
 
+        public async Task<WikiPage?> CreateEntryFromTemplateAsync(string userId, int templatePageId, WikiPageStatus targetStatus)
+        {
+            using var context = await _dbFactory.CreateDbContextAsync();
+
+            var template = await context.WikiPages
+                .AsNoTracking()
+                .FirstOrDefaultAsync(page =>
+                    page.Id == templatePageId
+                    && page.Status == WikiPageStatus.Template
+                    && page.EntryType == WikiEntryType.Standard);
+
+            if (template is null)
+            {
+                return null;
+            }
+
+            var now = DateTime.UtcNow;
+            var clonedPage = new WikiPage
+            {
+                Id = 0,
+                Title = template.Title,
+                Content = template.Content?.ToArray(),
+                PreviewText = template.PreviewText,
+                CategoryId = template.CategoryId,
+                EntryType = template.EntryType,
+                IsEditLocked = template.IsEditLocked,
+                FormSchemaJson = template.FormSchemaJson,
+                CreatedAt = now,
+                LastModified = now,
+                OwnerId = userId,
+                AuthorId = userId,
+                TemplateGroupId = null
+            };
+
+            switch (targetStatus)
+            {
+                case WikiPageStatus.Published:
+                    clonedPage.Status = WikiPageStatus.Published;
+                    clonedPage.Visibility = template.Visibility < WikiPageVisibility.Team
+                        ? WikiPageVisibility.Team
+                        : template.Visibility;
+                    break;
+                case WikiPageStatus.Draft:
+                    clonedPage.Status = WikiPageStatus.Draft;
+                    clonedPage.Visibility = WikiPageVisibility.Private;
+                    break;
+                default:
+                    throw new InvalidOperationException("Aus einer Vorlage können nur Entwürfe oder veröffentlichte Einträge erstellt werden.");
+            }
+
+            await SavePageAsync(clonedPage);
+            return await GetPageByIdAsync(clonedPage.Id);
+        }
+
         public async Task SavePageAsync(WikiPage page)
         {
             using var context = await _dbFactory.CreateDbContextAsync();
