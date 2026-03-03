@@ -78,8 +78,7 @@
                                 var category = navItem.Category;
                                 var hasChildren = HasChildCategories(category.Id);
 
-                                <div class="wiki-nav-item d-flex align-items-center"
-                                     style="padding-left:@($"{0.5 + (navItem.Level * 1.0):0.0}rem")">
+                                <div class="wiki-nav-item wiki-nav-level-@navItem.Level d-flex align-items-center">
                                     @if (hasChildren)
                                     {
                                         <button type="button"
@@ -94,7 +93,7 @@
                                         <span class="category-toggle-placeholder"></span>
                                     }
 
-                                    <button class="list-group-item list-group-item-action bg-transparent border-0 rounded px-2 py-2 flex-grow-1 @(SelectedCategoryId == category.Id ? "active-filter" : "")"
+                                    <button class="wiki-nav-link list-group-item list-group-item-action bg-transparent border-0 rounded px-2 py-2 flex-grow-1 @(SelectedCategoryId == category.Id ? "active-filter" : "")"
                                             @onclick="() => FilterCategory(category.Id)">
                                         <span class="d-flex justify-content-between align-items-center w-100">
                                             <span><span class="oi oi-folder me-2 text-warning"></span> @category.Name</span>
@@ -480,8 +479,54 @@
     .wiki-preview .preview-rich-edit {
         background-color: transparent;
     }
+    .wiki-nav-item {
+        --wiki-level: 0;
+        --wiki-level-font-size: 1rem;
+        --wiki-level-color: #212529;
+        --wiki-indent-step: 1.25rem;
+        position: relative;
+        padding-left: calc(0.5rem + (var(--wiki-level) * var(--wiki-indent-step)));
+    }
     .wiki-nav-item + .wiki-nav-item {
         margin-top: 0.125rem;
+    }
+    .wiki-nav-item::before {
+        content: "";
+        position: absolute;
+        top: 0.3rem;
+        bottom: 0.3rem;
+        left: calc(0.5rem + ((var(--wiki-level) - 0.5) * var(--wiki-indent-step)));
+        border-left: 1px solid #dbe3eb;
+        opacity: 0;
+        pointer-events: none;
+    }
+    .wiki-nav-level-0 { --wiki-level: 0; }
+    .wiki-nav-level-1 { --wiki-level: 1; --wiki-level-font-size: 0.98rem; --wiki-level-color: #344054; }
+    .wiki-nav-level-2 { --wiki-level: 2; --wiki-level-font-size: 0.95rem; --wiki-level-color: #475467; }
+    .wiki-nav-level-3 { --wiki-level: 3; --wiki-level-font-size: 0.93rem; --wiki-level-color: #667085; }
+    .wiki-nav-level-4 { --wiki-level: 4; --wiki-level-font-size: 0.92rem; --wiki-level-color: #98a2b3; }
+    .wiki-nav-level-5 { --wiki-level: 5; --wiki-level-font-size: 0.9rem; --wiki-level-color: #98a2b3; }
+    .wiki-nav-level-6 { --wiki-level: 6; --wiki-level-font-size: 0.88rem; --wiki-level-color: #98a2b3; }
+    .wiki-nav-level-7 { --wiki-level: 7; --wiki-level-font-size: 0.88rem; --wiki-level-color: #98a2b3; }
+    .wiki-nav-level-8 { --wiki-level: 8; --wiki-level-font-size: 0.88rem; --wiki-level-color: #98a2b3; }
+    .wiki-nav-level-1::before,
+    .wiki-nav-level-2::before,
+    .wiki-nav-level-3::before,
+    .wiki-nav-level-4::before,
+    .wiki-nav-level-5::before,
+    .wiki-nav-level-6::before,
+    .wiki-nav-level-7::before,
+    .wiki-nav-level-8::before {
+        opacity: 1;
+    }
+    .wiki-nav-link {
+        font-size: var(--wiki-level-font-size);
+    }
+    .wiki-nav-link:not(.active-filter) {
+        color: var(--wiki-level-color);
+    }
+    .wiki-nav-link.active-filter {
+        box-shadow: inset 0 0 0 1px rgba(13, 110, 253, 0.25);
     }
     .category-toggle {
         color: #6c757d;
