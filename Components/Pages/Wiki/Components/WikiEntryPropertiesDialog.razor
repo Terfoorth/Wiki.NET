@@ -48,7 +48,7 @@
                         </div>
                         <div class="col-md-6"><label class="form-label">Erstellt am</label><input class="form-control" value="@Page.CreatedAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm")" readonly /></div>
                         <div class="col-md-6"><label class="form-label">Zuletzt geändert</label><input class="form-control" value="@Page.LastModified.ToLocalTime().ToString("dd.MM.yyyy HH:mm")" readonly /></div>
-                        <div class="col-md-6"><label class="form-label">Besitzer</label><input class="form-control" value="@(Page.OwnerDisplayName ?? "-")" readonly /></div>
+                        <div class="col-md-6"><label class="form-label">Besitzer</label><input class="form-control" value="@ResolveOwnerDisplayName(Page)" readonly /></div>
                     </div>
 
                     <h6 class="fw-bold mb-2">Attribute</h6>
@@ -307,6 +307,21 @@
             WikiPageVisibility.Public => "Öffentlich",
             _ => visibility.ToString()
         };
+    }
+
+    private static string ResolveOwnerDisplayName(WikiPage page)
+    {
+        if (!string.IsNullOrWhiteSpace(page.OwnerDisplayName))
+        {
+            return page.OwnerDisplayName;
+        }
+
+        if (!string.IsNullOrWhiteSpace(page.AuthorDisplayName))
+        {
+            return page.AuthorDisplayName;
+        }
+
+        return "-";
     }
 
     private async Task CloseAsync()

@@ -167,8 +167,12 @@ namespace Wiki_Blaze.Services
 
             foreach (var page in pages)
             {
+                var effectiveOwnerId = !string.IsNullOrWhiteSpace(page.OwnerId)
+                    ? page.OwnerId
+                    : page.AuthorId;
+
                 users.TryGetValue(page.AuthorId ?? string.Empty, out var author);
-                users.TryGetValue(page.OwnerId ?? string.Empty, out var owner);
+                users.TryGetValue(effectiveOwnerId ?? string.Empty, out var owner);
 
                 page.AuthorDisplayName = ResolveDisplayName(author);
                 page.OwnerDisplayName = ResolveDisplayName(owner);
