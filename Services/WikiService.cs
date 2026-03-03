@@ -353,6 +353,21 @@ namespace Wiki_Blaze.Services
                     page.AuthorId = page.OwnerId;
                 }
 
+                if (page.Status == WikiPageStatus.Template)
+                {
+                    var defaultTemplateGroup = await EnsureDefaultTemplateGroupAsync(context, page.OwnerId);
+                    if (defaultTemplateGroup is null)
+                    {
+                        throw new InvalidOperationException("Template-Gruppe konnte für den aktuellen Benutzer nicht ermittelt werden.");
+                    }
+
+                    page.TemplateGroupId = await ResolveTargetTemplateGroupIdAsync(
+                        context,
+                        page.OwnerId,
+                        page.TemplateGroupId,
+                        defaultTemplateGroup.Id);
+                }
+
                 page.CreatedAt = DateTime.UtcNow;
                  context.WikiPages.Add(page);
             }
