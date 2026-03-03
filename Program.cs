@@ -165,5 +165,6 @@ app.MapRazorComponents<App>()
     .AllowAnonymous();
 
 app.MapAdditionalIdentityEndpoints();
+app.MapControllers();
 
 app.Run();

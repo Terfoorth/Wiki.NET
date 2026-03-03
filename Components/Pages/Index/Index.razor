@@ -17,11 +17,11 @@
           ExternalDropZoneCssSelector="#overviewDemoDropZone"
           ExternalDropZoneDragOverCssClass="custom-drop-zone-hover"
           MaxFileSize="15000000"
-          UploadUrl="@GetUploadUrl("api/Upload/Upload/")"
+          UploadUrl="@GetUploadUrl("api/upload/upload")"
           SelectedFilesChanged="@SelectedFilesChanged">
 </DxUpload>
 <div class="upload-validation-text info-text">
-    Uploads are limited to a single file up to 15 MB.
+    Uploads are limited to a single .txt or .odt file up to 15 MB.
 </div>
 
 @code {
