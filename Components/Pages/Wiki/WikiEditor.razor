@@ -54,14 +54,31 @@
                             <ValidationMessage For="@(() => WikiPageModel.Title)" />
                         </DxFormLayoutItem>
 
-                        <DxFormLayoutItem Caption="Kategorie" ColSpanMd="4">
-                            <DxComboBox Data="@Categories"
-                                        TextFieldName="Name"
-                                        ValueFieldName="Id"
-                                        @bind-Value="@WikiPageModel.CategoryId"
-                                        NullText="Kategorie wählen..." />
-                            <ValidationMessage For="@(() => WikiPageModel.CategoryId)" />
-                        </DxFormLayoutItem>
+                        @if (!IsTemplateCreation)
+                        {
+                            <DxFormLayoutItem Caption="Kategorie" ColSpanMd="4">
+                                <DxComboBox Data="@Categories"
+                                            TextFieldName="Name"
+                                            ValueFieldName="Id"
+                                            @bind-Value="@WikiPageModel.CategoryId"
+                                            NullText="Kategorie wählen..." />
+                                <ValidationMessage For="@(() => WikiPageModel.CategoryId)" />
+                            </DxFormLayoutItem>
+                        }
+                        else
+                        {
+                            <DxFormLayoutItem Caption="Template-Gruppe" ColSpanMd="4">
+                                <DxComboBox Data="@TemplateGroups"
+                                            TextFieldName="Name"
+                                            ValueFieldName="Id"
+                                            @bind-Value="@SelectedTemplateGroupId"
+                                            NullText="Template-Gruppe wählen..." />
+                                @if (!string.IsNullOrWhiteSpace(TemplateGroupValidationMessage))
+                                {
+                                    <div class="text-danger small mt-1">@TemplateGroupValidationMessage</div>
+                                }
+                            </DxFormLayoutItem>
+                        }
 
                         @if (!IsTemplateCreation)
                         {
@@ -112,6 +129,7 @@
     private bool IsLoading = true;
     private bool DraftBufferRestored;
     private bool DraftAutosaveStarted;
+    private string? TemplateGroupValidationMessage;
     private PeriodicTimer? DraftAutosaveTimer;
     private CancellationTokenSource? DraftAutosaveCts;
     private string? CurrentUserId;
@@ -222,6 +240,13 @@
             }
             else
             {
+                if (!SelectedTemplateGroupId.HasValue)
+                {
+                    TemplateGroupValidationMessage = "Bitte wählen Sie eine Template-Gruppe aus.";
+                    return;
+                }
+
+                TemplateGroupValidationMessage = null;
                 WikiPageModel.TemplateGroupId = SelectedTemplateGroupId;
             }
 
