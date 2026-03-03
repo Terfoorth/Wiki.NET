@@ -54,9 +54,9 @@
                             <ValidationMessage For="@(() => WikiPageModel.Title)" />
                         </DxFormLayoutItem>
 
-                        <DxFormLayoutItem Caption="@(IsTemplateCreation ? \"Template-Gruppe\" : \"Kategorie\")" ColSpanMd="4">
-                            @if (IsTemplateCreation)
-                            {
+                        @if (IsTemplateCreation)
+                        {
+                            <DxFormLayoutItem Caption="Template-Gruppe" ColSpanMd="4">
                                 <DxComboBox Data="@TemplateGroups"
                                             TextFieldName="Name"
                                             ValueFieldName="Id"
@@ -65,20 +65,22 @@
                                 @if (TemplateGroups.Count == 0)
                                 {
                                     <small class="text-muted d-block mt-1">
-                                        Keine Template-Gruppen gefunden. Es wird beim Speichern automatisch die Standardgruppe „@WikiTemplateGroup.DefaultGroupName“ verwendet.
+                                        Keine Template-Gruppen gefunden. Es wird beim Speichern automatisch die Standardgruppe "@WikiTemplateGroup.DefaultGroupName" verwendet.
                                     </small>
                                 }
-                            }
-                            else
-                            {
+                            </DxFormLayoutItem>
+                        }
+                        else
+                        {
+                            <DxFormLayoutItem Caption="Kategorie" ColSpanMd="4">
                                 <DxComboBox Data="@Categories"
                                             TextFieldName="Name"
                                             ValueFieldName="Id"
                                             @bind-Value="@WikiPageModel.CategoryId"
                                             NullText="Kategorie wählen..." />
                                 <ValidationMessage For="@(() => WikiPageModel.CategoryId)" />
-                            }
-                        </DxFormLayoutItem>
+                            </DxFormLayoutItem>
+                        }
 
                         @if (!IsTemplateCreation)
                         {
