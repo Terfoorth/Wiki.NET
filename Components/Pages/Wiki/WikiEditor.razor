@@ -54,13 +54,30 @@
                             <ValidationMessage For="@(() => WikiPageModel.Title)" />
                         </DxFormLayoutItem>
 
-                        <DxFormLayoutItem Caption="Kategorie" ColSpanMd="4">
-                            <DxComboBox Data="@Categories"
-                                        TextFieldName="Name"
-                                        ValueFieldName="Id"
-                                        @bind-Value="@WikiPageModel.CategoryId"
-                                        NullText="Kategorie wählen..." />
-                            <ValidationMessage For="@(() => WikiPageModel.CategoryId)" />
+                        <DxFormLayoutItem Caption="@(IsTemplateCreation ? \"Template-Gruppe\" : \"Kategorie\")" ColSpanMd="4">
+                            @if (IsTemplateCreation)
+                            {
+                                <DxComboBox Data="@TemplateGroups"
+                                            TextFieldName="Name"
+                                            ValueFieldName="Id"
+                                            @bind-Value="@SelectedTemplateGroupId"
+                                            NullText="Template-Gruppe wählen..." />
+                                @if (TemplateGroups.Count == 0)
+                                {
+                                    <small class="text-muted d-block mt-1">
+                                        Keine Template-Gruppen gefunden. Es wird beim Speichern automatisch die Standardgruppe „@WikiTemplateGroup.DefaultGroupName“ verwendet.
+                                    </small>
+                                }
+                            }
+                            else
+                            {
+                                <DxComboBox Data="@Categories"
+                                            TextFieldName="Name"
+                                            ValueFieldName="Id"
+                                            @bind-Value="@WikiPageModel.CategoryId"
+                                            NullText="Kategorie wählen..." />
+                                <ValidationMessage For="@(() => WikiPageModel.CategoryId)" />
+                            }
                         </DxFormLayoutItem>
 
                         @if (!IsTemplateCreation)
@@ -99,6 +116,8 @@
 
     private WikiPage WikiPageModel { get; set; } = new();
     private List<WikiCategory> Categories { get; set; } = new();
+    private List<WikiTemplateGroup> TemplateGroups { get; set; } = new();
+    private int? SelectedTemplateGroupId { get; set; }
     private PublicationMode SelectedPublicationOption { get; set; } = PublicationMode.Private;
     private static readonly IReadOnlyList<PublicationOption> PublicationOptions =
     [
@@ -121,8 +140,18 @@
         IsLoading = true;
         try
         {
-            Categories = await WikiService.GetCategoriesAsync();
             CurrentUserId = await GetCurrentUserIdAsync();
+
+            if (IsTemplateCreation)
+            {
+                TemplateGroups = string.IsNullOrWhiteSpace(CurrentUserId)
+                    ? new List<WikiTemplateGroup>()
+                    : await WikiService.GetTemplateGroupsAsync(CurrentUserId);
+            }
+            else
+            {
+                Categories = await WikiService.GetCategoriesAsync();
+            }
 
             if (!IsNew)
             {
@@ -139,6 +168,7 @@
                     // Hier vereinfacht: wir nutzen es direkt, aber detached durch Service.
                     WikiPageModel = existing;
                     SelectedPublicationOption = ResolvePublicationMode(WikiPageModel);
+                    SelectedTemplateGroupId = WikiPageModel.TemplateGroupId;
                 }
                 else
                 {
@@ -157,6 +187,9 @@
                 };
 
                 SelectedPublicationOption = IsTemplateCreation ? PublicationMode.Published : PublicationMode.Private;
+                SelectedTemplateGroupId = IsTemplateCreation
+                    ? ResolveInitialTemplateGroupId(TemplateGroups)
+                    : null;
             }
         }
         finally
@@ -208,6 +241,11 @@
             {
                 WikiPageModel.OwnerId = currentUserId;
                 WikiPageModel.AuthorId = currentUserId;
+            }
+
+            if (IsTemplateCreation)
+            {
+                WikiPageModel.TemplateGroupId = SelectedTemplateGroupId ?? ResolveInitialTemplateGroupId(TemplateGroups);
             }
 
             WikiPageModel.Content = await richEdit.ExportDocumentAsync(DocumentFormat.OpenXml, CancellationToken.None);
@@ -376,6 +414,12 @@
         return page.Visibility == WikiPageVisibility.Private
             ? PublicationMode.Private
             : PublicationMode.Published;
+    }
+
+    private static int? ResolveInitialTemplateGroupId(IReadOnlyList<WikiTemplateGroup> templateGroups)
+    {
+        return templateGroups.FirstOrDefault(group => string.Equals(group.Name, WikiTemplateGroup.DefaultGroupName, StringComparison.Ordinal))?.Id
+            ?? templateGroups.FirstOrDefault()?.Id;
     }
 
     private enum PublicationMode
