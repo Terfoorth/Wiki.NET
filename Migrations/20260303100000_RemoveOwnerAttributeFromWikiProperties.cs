@@ -8,17 +8,26 @@ namespace Wiki_Blaze.Migrations
     {
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.Sql("DELETE FROM [WikiPageAttributeValues] WHERE [AttributeDefinitionId] = 1;");
+            migrationBuilder.Sql(@"
+DECLARE @OwnerDefinitionIds TABLE ([Id] INT PRIMARY KEY);
 
-            migrationBuilder.DeleteData(
-                table: "WikiAttributeTemplateAttributes",
-                keyColumn: "Id",
-                keyValue: 1);
+INSERT INTO @OwnerDefinitionIds ([Id])
+SELECT [Id]
+FROM [WikiAttributeDefinitions]
+WHERE [Name] = N'Owner';
 
-            migrationBuilder.DeleteData(
-                table: "WikiAttributeDefinitions",
-                keyColumn: "Id",
-                keyValue: 1);
+DELETE pav
+FROM [WikiPageAttributeValues] pav
+INNER JOIN @OwnerDefinitionIds ownerIds ON ownerIds.[Id] = pav.[AttributeDefinitionId];
+
+DELETE tpa
+FROM [WikiAttributeTemplateAttributes] tpa
+INNER JOIN @OwnerDefinitionIds ownerIds ON ownerIds.[Id] = tpa.[AttributeDefinitionId];
+
+DELETE ad
+FROM [WikiAttributeDefinitions] ad
+INNER JOIN @OwnerDefinitionIds ownerIds ON ownerIds.[Id] = ad.[Id];
+");
 
             migrationBuilder.UpdateData(
                 table: "WikiAttributeTemplateAttributes",
