@@ -1,0 +1,14 @@
+﻿@page "/reportdesigner"
+@rendermode InteractiveServer
+
+<PageTitle>Report Designer</PageTitle>
+
+<h1>Report Designer</h1>
+
+<DxReportDesigner ReportName="Report" AllowMDI="true" DataSources="DataSources" Height="100%">
+    <DxReportDesignerWizardSettings UseFullscreenWizard="true" />
+</DxReportDesigner>
+
+@code {
+    Dictionary<string, object> DataSources { get; } = new();
+}

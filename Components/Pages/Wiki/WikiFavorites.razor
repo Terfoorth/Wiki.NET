@@ -1,0 +1,749 @@
+@page "/wiki/favorites"
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.AspNetCore.Identity
+@using System.Security.Claims
+@using Wiki_Blaze.Data
+@using Wiki_Blaze.Data.Entities
+@using Wiki_Blaze.Services
+@using Wiki_Blaze.Components.Pages.Wiki.Components
+@inject IWikiService WikiService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject UserManager<ApplicationUser> UserManager
+@inject NavigationManager NavManager
+@inject IJSRuntime Js
+@rendermode InteractiveServer
+
+<PageTitle>Wiki Favoriten</PageTitle>
+
+<div class="container-fluid h-100 d-flex flex-column">
+    <div class="row mb-4 align-items-center">
+        <div class="col">
+            <h2 class="mb-0 fw-bold text-primary">
+                <span class="oi oi-star me-2"></span>Favoriten
+            </h2>
+            <small class="text-muted">Schneller Zugriff auf deine gespeicherten Wiki-Einträge</small>
+        </div>
+        <div class="col-auto">
+            <DxButton RenderStyle="ButtonRenderStyle.Success"
+                      Text="Neuer Eintrag"
+                      IconCssClass="oi oi-plus"
+                      NavigateUrl="wiki/create" />
+        </div>
+    </div>
+
+    @if (!IsAuthenticated)
+    {
+        <div class="alert alert-info">Bitte melden Sie sich an, um Ihre Favoriten zu sehen.</div>
+    }
+
+    <div class="row flex-grow-1">
+        <div class="col-lg-3 col-md-4 mb-4">
+            <div class="card shadow-sm h-100 border-0 bg-light">
+                <div class="card-body">
+                    <h5 class="card-title text-secondary mb-3">Navigation</h5>
+
+                    <div class="mb-4">
+                        <DxTextBox NullText="Suchen..."
+                                   BindValueMode="BindValueMode.OnInput"
+                                   TextChanged="OnSearchTextChanged"
+                                   ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto">
+                            <Buttons>
+                                <DxEditorButton IconCssClass="oi oi-magnifying-glass" Tooltip="Suchen" />
+                            </Buttons>
+                        </DxTextBox>
+                    </div>
+
+                    <h6 class="text-uppercase text-muted small fw-bold mt-4 mb-2">Favoriten-Gruppen</h6>
+                    <div class="list-group list-group-flush bg-transparent">
+                        <button class="list-group-item list-group-item-action bg-transparent border-0 rounded px-2 py-2 @(SelectedGroupId == 0 ? "active-filter" : "")"
+                                @onclick="() => FilterGroup(0)">
+                            <span class="oi oi-grid-three-up me-2"></span> Alle Einträge
+                        </button>
+                        @foreach (var group in FavoriteGroups)
+                        {
+                            <div class="d-flex align-items-center gap-1 px-2 py-1 rounded @(SelectedGroupId == group.Id ? "active-filter" : "")">
+                                <button class="list-group-item list-group-item-action bg-transparent border-0 rounded px-2 py-2 flex-grow-1"
+                                        @onclick="() => FilterGroup(group.Id)">
+                                    <span class="oi oi-folder me-2 text-warning"></span> @group.Name
+                                </button>
+                                <button class="btn btn-sm btn-link text-muted p-1"
+                                        title="Gruppe umbenennen"
+                                        disabled="@IsDefaultGroup(group)"
+                                        @onclick="() => RenameGroupAsync(group)">
+                                    <span class="oi oi-pencil"></span>
+                                </button>
+                                <button class="btn btn-sm btn-link text-danger p-1"
+                                        title="Gruppe löschen"
+                                        disabled="@IsDefaultGroup(group)"
+                                        @onclick="() => DeleteGroupAsync(group)">
+                                    <span class="oi oi-trash"></span>
+                                </button>
+                            </div>
+                        }
+                    </div>
+
+                    <div class="mt-3 d-grid">
+                        <button class="btn btn-sm btn-outline-primary" @onclick="CreateGroupAsync">
+                            <span class="oi oi-plus me-1"></span>Gruppe anlegen
+                        </button>
+                    </div>
+
+                    @if (!string.IsNullOrWhiteSpace(GroupManagementError))
+                    {
+                        <div class="alert alert-warning mt-3 mb-0 py-2 px-3 small" role="alert">
+                            @GroupManagementError
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-9 col-md-8">
+            @if (IsLoading)
+            {
+                <div class="d-flex justify-content-center align-items-center h-50">
+                    <div class="spinner-border text-primary" role="status"></div>
+                </div>
+            }
+            else if (FilteredPages != null && FilteredPages.Any())
+            {
+                <div class="@CardGridCss">
+                    @foreach (var page in FilteredPages)
+                    {
+                        <div class="col">
+                            <div class="card h-100 shadow-sm border-0 hover-card wiki-card @(UseLargeCards ? "wiki-card--large" : "wiki-card--compact")"
+                                 @oncontextmenu="(args) => OnContextMenuAsync(args, page)" @oncontextmenu:preventDefault>
+                                <div class="card-body d-flex flex-column">
+                                    <div class="d-flex justify-content-between align-items-start mb-2">
+                                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                                            <span class="badge bg-light text-dark border">
+                                                @(page.Category?.Name)
+                                            </span>
+                                            <span class="badge @WikiStatusDisplayHelper.GetBadgeCssClass(page.Status)">
+                                                @WikiStatusDisplayHelper.GetLabel(page.Status)
+                                            </span>
+                                            <span class="badge @WikiStatusDisplayHelper.GetVisibilityBadgeCssClass(page.Visibility)">
+                                                @WikiStatusDisplayHelper.GetVisibilityLabel(page.Visibility)
+                                            </span>
+                                        </div>
+                                        <div class="d-flex align-items-center gap-2">
+                                            <small class="text-muted">@(page.LastModified.ToString("dd.MM.yy"))</small>
+                                            <button class="btn btn-sm wiki-favorite-btn @(IsFavorite(page.Id) ? "is-active" : string.Empty)"
+                                                    type="button"
+                                                    title="@(GetFavoriteTooltip(page.Id))"
+                                                    aria-label="@(GetFavoriteTooltip(page.Id))"
+                                                    aria-pressed="@IsFavorite(page.Id)"
+                                                    @onclick="() => ToggleFavoriteAsync(page)"
+                                                    @onclick:stopPropagation>
+                                                <span class="wiki-favorite-icon" aria-hidden="true">@(IsFavorite(page.Id) ? "★" : "☆")</span>
+                                            </button>
+                                            <div class="dropdown">
+                                                <button class="btn btn-sm btn-light border dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="Aktionen">
+                                                    <span class="oi oi-ellipses"></span>
+                                                </button>
+                                                <ul class="dropdown-menu dropdown-menu-end">
+                                                    <li>
+                                                        <button class="dropdown-item" type="button" @onclick="() => OpenEntry(page)">
+                                                            <span class="oi oi-eye me-2"></span>Öffnen
+                                                        </button>
+                                                    </li>
+                                                    <li>
+                                                        <button class="dropdown-item" type="button" @onclick="() => EditEntry(page)">
+                                                            <span class="oi oi-pencil me-2"></span>Bearbeiten
+                                                        </button>
+                                                    </li>
+                                                    <li>
+                                                        <button class="dropdown-item" type="button" @onclick="() => OpenProperties(page)">
+                                                            <span class="oi oi-info me-2"></span>Eigenschaften
+                                                        </button>
+                                                    </li>
+                                                    <li>
+                                                        <button class="dropdown-item" type="button" @onclick="() => ToggleFavoriteAsync(page)">
+                                                            <span class="oi oi-star me-2"></span>@GetFavoriteMenuText(page.Id)
+                                                        </button>
+                                                    </li>
+                                                    <li>
+                                                        <button class="dropdown-item" type="button" @onclick="ToggleEntryViewMode">
+                                                            <span class="oi oi-resize-height me-2"></span>@(UseLargeCards ? "Kompakte Ansicht" : "Große Ansicht")
+                                                        </button>
+                                                    </li>
+                                                    <li><hr class="dropdown-divider"></li>
+                                                    <li>
+                                                        <button class="dropdown-item text-danger" type="button" @onclick="() => DeleteEntryAsync(page)">
+                                                            <span class="oi oi-trash me-2"></span>Löschen
+                                                        </button>
+                                                    </li>
+                                                </ul>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <h5 class="card-title fw-bold">
+                                        <a href="@($"wiki/view/{page.Id}")" class="text-decoration-none text-dark">
+                                            @(page.Title)
+                                        </a>
+                                    </h5>
+
+                                    @if (page.Content != null && page.Content.Length > 0)
+                                    {
+                                        <div class="wiki-preview flex-grow-1 @(UseLargeCards ? "preview-large" : "preview-compact")">
+                                            <DxRichEdit DocumentContent="@(page.Content)"
+                                                        ReadOnly="true"
+                                                        ViewType="ViewType.Simple"
+                                                        BarMode="BarMode.None"
+                                                        CssClass="w-100 h-100 border-0 preview-rich-edit" />
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <p class="card-text text-muted small flex-grow-1 text-truncate-multiline">
+                                            @(string.IsNullOrWhiteSpace(page.PreviewText) ? "Keine Vorschau verfügbar..." : page.PreviewText)
+                                        </p>
+                                    }
+
+                                    <div class="mt-3 pt-2 border-top d-flex align-items-center text-muted small">
+                                        <WikiAuthorFooter Page="page" />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+            else
+            {
+                <div class="text-center mt-5 text-muted">
+                    <span class="oi oi-inbox display-4 mb-3 d-block"></span>
+                    <p>Keine Favoriten gefunden.</p>
+                    @if (SelectedGroupId != 0 || !string.IsNullOrEmpty(SearchTerm))
+                    {
+                        <button class="btn btn-link" @onclick="ResetFilters">Filter zurücksetzen</button>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+<style>
+    .active-filter {
+        background-color: #e9ecef !important;
+        color: #0d6efd !important;
+        font-weight: 600;
+    }
+    .hover-card {
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .hover-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 .5rem 1rem rgba(0,0,0,.15)!important;
+    }
+    .text-truncate-multiline {
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+    .wiki-preview {
+        overflow: hidden;
+        pointer-events: none;
+    }
+    .wiki-card--large .wiki-preview.preview-large {
+        max-height: 240px;
+    }
+    .wiki-card--compact .wiki-preview.preview-compact {
+        max-height: 140px;
+    }
+    .wiki-card--large .card-body {
+        min-height: 420px;
+    }
+    .wiki-card--compact .card-body {
+        min-height: 320px;
+    }
+    .wiki-preview .preview-rich-edit {
+        background-color: transparent;
+    }
+    .wiki-favorite-btn {
+        border: 1px solid #d0d7de;
+        background: #fff;
+        color: #6c757d;
+        border-radius: 999px;
+        width: 2rem;
+        height: 2rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        transition: all .2s ease;
+    }
+    .wiki-favorite-btn:hover {
+        color: #f59f00;
+        border-color: #f59f00;
+        transform: translateY(-1px);
+    }
+    .wiki-favorite-btn.is-active {
+        color: #f59f00;
+        border-color: #f59f00;
+        background: #fff8db;
+    }
+    .wiki-favorite-icon {
+        font-size: 1rem;
+        line-height: 1;
+    }
+</style>
+
+<DxContextMenu @ref="ContextMenu" ItemClick="OnContextMenuItemClick">
+    <Items>
+        <DxContextMenuItem Text="Öffnen" IconCssClass="oi oi-eye" Name="open" />
+        <DxContextMenuItem Text="Bearbeiten" IconCssClass="oi oi-pencil" Name="edit" />
+        <DxContextMenuItem Text="Eigenschaften" IconCssClass="oi oi-info" Name="properties" />
+        <DxContextMenuItem Text="Favorit umschalten" IconCssClass="oi oi-star" Name="toggle-favorite" />
+        <DxContextMenuItem Text="Ansicht umschalten" IconCssClass="oi oi-resize-height" Name="toggle-view" />
+        <DxContextMenuItem Text="Löschen" IconCssClass="oi oi-trash" Name="delete" BeginGroup="true" />
+    </Items>
+</DxContextMenu>
+
+<WikiEntryPropertiesDialog IsVisible="@IsPropertiesDialogOpen"
+                           IsVisibleChanged="OnPropertiesDialogVisibleChanged"
+                           Page="@SelectedPropertiesPage"
+                           OnSaved="OnPropertiesSaved" />
+
+@code {
+    private List<WikiFavoriteGroup> FavoriteGroups = new();
+    private Dictionary<int, List<WikiPageFavorite>> FavoritesByGroup = new();
+    private int? DefaultFavoriteGroupId;
+    private List<WikiPage>? AllPages;
+    private List<WikiPage>? FilteredPages;
+
+    private int SelectedGroupId = 0;
+    private string? SearchTerm;
+    private bool IsLoading = true;
+    private bool UseLargeCards = true;
+    private bool IsAuthenticated = true;
+    private string? CurrentUserId;
+    private HashSet<int> FavoritePageIds = new();
+    private DxContextMenu? ContextMenu;
+    private WikiPage? ContextMenuPage;
+    private bool IsPropertiesDialogOpen;
+    private WikiPage? SelectedPropertiesPage;
+    private string? GroupManagementError;
+
+    private string CardGridCss => UseLargeCards
+        ? "row row-cols-1 row-cols-lg-2 g-4"
+        : "row row-cols-1 row-cols-md-2 row-cols-xl-3 g-4";
+
+    protected override async Task OnInitializedAsync()
+    {
+        IsLoading = true;
+        try
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+
+            if (user.Identity?.IsAuthenticated != true)
+            {
+                IsAuthenticated = false;
+                AllPages = new List<WikiPage>();
+                ApplyFilters();
+                return;
+            }
+
+            CurrentUserId = ResolveCurrentUserId(user);
+            if (string.IsNullOrWhiteSpace(CurrentUserId))
+            {
+                IsAuthenticated = false;
+                AllPages = new List<WikiPage>();
+                ApplyFilters();
+                return;
+            }
+
+            var favoriteGroupsTask = WikiService.GetFavoriteGroupsAsync(CurrentUserId);
+            var favoritesTask = WikiService.GetFavoritesGroupedAsync(CurrentUserId);
+
+            await Task.WhenAll(favoriteGroupsTask, favoritesTask);
+
+            var groups = await favoriteGroupsTask;
+            FavoriteGroups = groups
+                .OrderBy(group => group.Name, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var defaultGroup = FavoriteGroups.FirstOrDefault(group => group.Name == WikiFavoriteGroup.DefaultGroupName);
+            DefaultFavoriteGroupId = defaultGroup?.Id;
+
+            FavoritesByGroup = await favoritesTask;
+            if (DefaultFavoriteGroupId.HasValue && !FavoritesByGroup.ContainsKey(DefaultFavoriteGroupId.Value))
+            {
+                FavoritesByGroup[DefaultFavoriteGroupId.Value] = new List<WikiPageFavorite>();
+            }
+
+            var favorites = FavoritesByGroup
+                .SelectMany(entry => entry.Value)
+                .GroupBy(entry => entry.WikiPageId)
+                .Select(entry => entry.OrderByDescending(item => item.CreatedAt).First())
+                .ToList();
+
+            FavoritePageIds = favorites.Select(f => f.WikiPageId).ToHashSet();
+            AllPages = favorites
+                .Where(favorite => favorite.WikiPage != null)
+                .Select(favorite => favorite.WikiPage!)
+                .ToList();
+
+            ApplyFilters();
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    private static string? ResolveCurrentUserId(ClaimsPrincipal user)
+    {
+        var userId = user.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!string.IsNullOrWhiteSpace(userId))
+        {
+            return userId;
+        }
+
+        userId = user.FindFirstValue(ClaimTypes.Email)
+            ?? user.Identity?.Name
+            ?? user.FindFirstValue("sub");
+
+        return string.IsNullOrWhiteSpace(userId) ? null : userId;
+    }
+
+    private void OnSearchTextChanged(string text)
+    {
+        SearchTerm = text;
+        ApplyFilters();
+    }
+
+    private void FilterGroup(int groupId)
+    {
+        SelectedGroupId = groupId;
+        ApplyFilters();
+    }
+
+    private void ResetFilters()
+    {
+        SearchTerm = null;
+        SelectedGroupId = 0;
+        ApplyFilters();
+    }
+
+    private void ApplyFilters()
+    {
+        if (AllPages == null)
+        {
+            return;
+        }
+
+        var query = AllPages.AsEnumerable();
+
+        if (SelectedGroupId != 0)
+        {
+            query = query.Where(page =>
+                FavoritesByGroup.TryGetValue(SelectedGroupId, out var groupFavorites)
+                && groupFavorites.Any(favorite => favorite.WikiPageId == page.Id));
+        }
+
+        if (!string.IsNullOrWhiteSpace(SearchTerm))
+        {
+            query = query.Where(p =>
+                p.Title.Contains(SearchTerm, StringComparison.OrdinalIgnoreCase) ||
+                (p.PreviewText != null && p.PreviewText.Contains(SearchTerm, StringComparison.OrdinalIgnoreCase))
+            );
+        }
+
+        FilteredPages = query.ToList();
+    }
+
+    private void OpenEntry(WikiPage page)
+    {
+        NavManager.NavigateTo($"/wiki/view/{page.Id}");
+    }
+
+    private void EditEntry(WikiPage page)
+    {
+        NavManager.NavigateTo($"/wiki/edit/{page.Id}");
+    }
+
+    private void OpenProperties(WikiPage page)
+    {
+        SelectedPropertiesPage = page;
+        IsPropertiesDialogOpen = true;
+    }
+
+    private Task OnPropertiesDialogVisibleChanged(bool isVisible)
+    {
+        IsPropertiesDialogOpen = isVisible;
+        if (!isVisible)
+        {
+            SelectedPropertiesPage = null;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private Task OnPropertiesSaved(WikiPage page)
+    {
+        var target = AllPages?.FirstOrDefault(p => p.Id == page.Id);
+        if (target is not null)
+        {
+            target.AttributeValues = page.AttributeValues;
+        }
+
+        ApplyFilters();
+        return Task.CompletedTask;
+    }
+
+    private async Task DeleteEntryAsync(WikiPage page)
+    {
+        var confirmed = await Js.InvokeAsync<bool>("confirm", $"Eintrag \"{page.Title}\" wirklich löschen?");
+        if (!confirmed)
+        {
+            return;
+        }
+
+        await WikiService.DeletePageAsync(page.Id);
+        if (AllPages != null)
+        {
+            AllPages = AllPages.Where(p => p.Id != page.Id).ToList();
+            ApplyFilters();
+        }
+    }
+
+    private void ToggleEntryViewMode()
+    {
+        UseLargeCards = !UseLargeCards;
+    }
+
+    private async Task OnContextMenuAsync(MouseEventArgs args, WikiPage page)
+    {
+        ContextMenuPage = page;
+        if (ContextMenu != null)
+        {
+            await ContextMenu.ShowAsync(args);
+        }
+    }
+
+    private async Task OnContextMenuItemClick(ContextMenuItemClickEventArgs args)
+    {
+        if (ContextMenuPage == null)
+        {
+            return;
+        }
+
+        switch (args.ItemInfo.Name)
+        {
+            case "open":
+                OpenEntry(ContextMenuPage);
+                break;
+            case "edit":
+                EditEntry(ContextMenuPage);
+                break;
+            case "properties":
+                OpenProperties(ContextMenuPage);
+                break;
+            case "toggle-favorite":
+                await ToggleFavoriteAsync(ContextMenuPage);
+                break;
+            case "toggle-view":
+                ToggleEntryViewMode();
+                break;
+            case "delete":
+                await DeleteEntryAsync(ContextMenuPage);
+                break;
+        }
+    }
+
+    private bool IsFavorite(int pageId) => FavoritePageIds.Contains(pageId);
+
+    private string GetFavoriteTooltip(int pageId)
+        => IsFavorite(pageId) ? "Aus Favoriten entfernen" : "Zu Favoriten hinzufügen";
+
+    private string GetFavoriteMenuText(int pageId)
+        => IsFavorite(pageId) ? "Favorit entfernen" : "Als Favorit markieren";
+
+    private async Task ToggleFavoriteAsync(WikiPage page)
+    {
+        if (string.IsNullOrWhiteSpace(CurrentUserId))
+        {
+            return;
+        }
+
+        var wasFavorite = IsFavorite(page.Id);
+        if (wasFavorite)
+        {
+            FavoritePageIds.Remove(page.Id);
+        }
+        else
+        {
+            FavoritePageIds.Add(page.Id);
+        }
+
+        try
+        {
+            if (wasFavorite)
+            {
+                await WikiService.RemoveFavoriteAsync(CurrentUserId, page.Id);
+                RemovePageFromFavoriteGroups(page.Id);
+                if (AllPages != null)
+                {
+                    AllPages = AllPages.Where(p => p.Id != page.Id).ToList();
+                    ApplyFilters();
+                }
+            }
+            else
+            {
+                await WikiService.AddOrMoveFavoriteAsync(CurrentUserId, page.Id);
+                await ReloadFavoritesDataAsync();
+                if (AllPages?.All(p => p.Id != page.Id) == true)
+                {
+                    AllPages.Add(page);
+                    ApplyFilters();
+                }
+            }
+        }
+        catch
+        {
+            if (wasFavorite)
+            {
+                FavoritePageIds.Add(page.Id);
+                await ReloadFavoritesDataAsync();
+                if (AllPages?.All(p => p.Id != page.Id) == true)
+                {
+                    AllPages.Add(page);
+                    ApplyFilters();
+                }
+            }
+            else
+            {
+                FavoritePageIds.Remove(page.Id);
+                RemovePageFromFavoriteGroups(page.Id);
+                if (AllPages != null)
+                {
+                    AllPages = AllPages.Where(p => p.Id != page.Id).ToList();
+                    ApplyFilters();
+                }
+            }
+        }
+    }
+
+    private async Task CreateGroupAsync()
+    {
+        if (string.IsNullOrWhiteSpace(CurrentUserId))
+        {
+            return;
+        }
+
+        GroupManagementError = null;
+        var input = await Js.InvokeAsync<string?>("prompt", "Name der neuen Favoriten-Gruppe:");
+        if (string.IsNullOrWhiteSpace(input))
+        {
+            return;
+        }
+
+        try
+        {
+            await WikiService.CreateFavoriteGroupAsync(CurrentUserId, input);
+            await ReloadFavoritesDataAsync();
+            ApplyFilters();
+        }
+        catch (InvalidOperationException ex)
+        {
+            GroupManagementError = ex.Message;
+        }
+    }
+
+    private async Task RenameGroupAsync(WikiFavoriteGroup group)
+    {
+        if (string.IsNullOrWhiteSpace(CurrentUserId) || IsDefaultGroup(group))
+        {
+            return;
+        }
+
+        GroupManagementError = null;
+        var input = await Js.InvokeAsync<string?>("prompt", "Neuer Gruppenname:", group.Name);
+        if (string.IsNullOrWhiteSpace(input))
+        {
+            return;
+        }
+
+        try
+        {
+            await WikiService.RenameFavoriteGroupAsync(CurrentUserId, group.Id, input);
+            await ReloadFavoritesDataAsync();
+        }
+        catch (InvalidOperationException ex)
+        {
+            GroupManagementError = ex.Message;
+        }
+    }
+
+    private async Task DeleteGroupAsync(WikiFavoriteGroup group)
+    {
+        if (string.IsNullOrWhiteSpace(CurrentUserId) || IsDefaultGroup(group))
+        {
+            return;
+        }
+
+        GroupManagementError = null;
+        var confirmed = await Js.InvokeAsync<bool>("confirm", $"Gruppe \"{group.Name}\" wirklich löschen?");
+        if (!confirmed)
+        {
+            return;
+        }
+
+        try
+        {
+            await WikiService.DeleteFavoriteGroupAsync(CurrentUserId, group.Id);
+            if (SelectedGroupId == group.Id)
+            {
+                SelectedGroupId = 0;
+            }
+
+            await ReloadFavoritesDataAsync();
+            ApplyFilters();
+        }
+        catch (InvalidOperationException ex)
+        {
+            GroupManagementError = ex.Message;
+        }
+    }
+
+    private bool IsDefaultGroup(WikiFavoriteGroup group)
+        => group.Name == WikiFavoriteGroup.DefaultGroupName;
+
+    private async Task ReloadFavoritesDataAsync()
+    {
+        if (string.IsNullOrWhiteSpace(CurrentUserId))
+        {
+            return;
+        }
+
+        var groups = await WikiService.GetFavoriteGroupsAsync(CurrentUserId);
+        FavoriteGroups = groups
+            .OrderBy(group => group.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        DefaultFavoriteGroupId = FavoriteGroups
+            .FirstOrDefault(group => group.Name == WikiFavoriteGroup.DefaultGroupName)
+            ?.Id;
+
+        FavoritesByGroup = await WikiService.GetFavoritesGroupedAsync(CurrentUserId);
+
+        if (DefaultFavoriteGroupId.HasValue && !FavoritesByGroup.ContainsKey(DefaultFavoriteGroupId.Value))
+        {
+            FavoritesByGroup[DefaultFavoriteGroupId.Value] = new List<WikiPageFavorite>();
+        }
+    }
+
+    private void RemovePageFromFavoriteGroups(int pageId)
+    {
+        foreach (var groupId in FavoritesByGroup.Keys.ToList())
+        {
+            FavoritesByGroup[groupId] = FavoritesByGroup[groupId]
+                .Where(favorite => favorite.WikiPageId != pageId)
+                .ToList();
+        }
+    }
+}

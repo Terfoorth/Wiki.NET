@@ -1,0 +1,98 @@
+﻿@page "/wiki/view/{Id:int}"
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Identity
+@using Wiki_Blaze.Data
+@using Wiki_Blaze.Data.Entities
+@using Wiki_Blaze.Services
+@using Wiki_Blaze.Components.Pages.Wiki.Components
+@inject IWikiService WikiService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject UserManager<ApplicationUser> UserManager
+@inject NavigationManager NavManager
+@rendermode InteractiveServer
+
+<PageTitle>@(Page?.Title ?? "Wiki Eintrag")</PageTitle>
+
+@if (Page == null)
+{
+    <div class="p-5 text-center"><div class="spinner-border"></div></div>
+}
+else
+{
+    <div class="container-fluid h-100 d-flex flex-column">
+        <!-- Header / Actions -->
+        <div class="d-flex justify-content-between align-items-end mb-4 border-bottom pb-3">
+            <div>
+                <span class="badge bg-secondary mb-2">@Page.Category?.Name</span>
+                <h1 class="display-5 fw-bold mb-0">@Page.Title</h1>
+                <small class="text-muted">
+                    Zuletzt bearbeitet: @Page.LastModified.ToString("g") 
+                    <span>· <WikiAuthorFooter Page="Page" /></span>
+                </small>
+            </div>
+            <div>
+                <DxButton Text="Zurück" RenderStyle="ButtonRenderStyle.Secondary" Outline="true" NavigateUrl="wiki" CssClass="me-2" />
+                <DxButton Text="Bearbeiten" RenderStyle="ButtonRenderStyle.Primary" IconCssClass="oi oi-pencil" NavigateUrl="@($"wiki/edit/{Page.Id}")" />
+            </div>
+        </div>
+
+        <!-- Content Viewer -->
+        <div class="flex-grow-1 bg-white border rounded shadow-sm" style="min-height: 600px;">
+            <!-- ReadOnly Modus und versteckte Toolbar für reines Lesen -->
+            <DxRichEdit DocumentContent="@Page.Content" 
+                        ReadOnly="true"
+                        ViewType="ViewType.Simple"
+                        BarMode="BarMode.None" 
+                        CssClass="w-100 h-100 border-0" />
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+    private WikiPage? Page;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var userId = await GetCurrentUserIdAsync();
+        Page = await WikiService.GetPageForUserAsync(Id, userId);
+        if (Page == null)
+        {
+            NavManager.NavigateTo("/wiki");
+            return;
+        }
+
+        if (Page.EntryType == WikiEntryType.Form)
+        {
+            NavManager.NavigateTo($"/wiki/forms/view/{Page.Id}");
+        }
+    }
+
+    private async Task<string?> GetCurrentUserIdAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        if (user?.Identity?.IsAuthenticated != true)
+        {
+            return null;
+        }
+
+        var userId = UserManager.GetUserId(user);
+        if (!string.IsNullOrWhiteSpace(userId))
+        {
+            return userId;
+        }
+
+        userId = user.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!string.IsNullOrWhiteSpace(userId))
+        {
+            return userId;
+        }
+
+        userId = user.FindFirstValue("sub");
+
+        return string.IsNullOrWhiteSpace(userId) ? null : userId;
+    }
+}

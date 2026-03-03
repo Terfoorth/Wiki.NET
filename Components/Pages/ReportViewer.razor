@@ -1,0 +1,14 @@
+﻿@page "/reportviewer"
+@rendermode InteractiveServer
+@using DevExpress.XtraReports.UI
+@using Wiki_Blaze.Reports
+
+<PageTitle>Report Viewer</PageTitle>
+
+<h1>Report Viewer</h1>
+
+<DxReportViewer CssClass="h-100" Report="Report" Zoom="1" />
+
+@code {
+    XtraReport Report { get; set; } = new Report();
+}

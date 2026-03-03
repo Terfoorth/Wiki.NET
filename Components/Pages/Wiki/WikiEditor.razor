@@ -1,0 +1,388 @@
+﻿@page "/wiki/create"
+@page "/wiki/templates/create"
+@page "/wiki/edit/{Id:int}"
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Text.Json
+@using Wiki_Blaze.Data
+@using Wiki_Blaze.Data.Entities
+@using Wiki_Blaze.Services
+@inject IWikiService WikiService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IUserIdResolver UserIdResolver
+@inject NavigationManager NavManager
+@inject IJSRuntime Js
+@inject ILogger<WikiEditor> Logger
+@rendermode InteractiveServer
+@implements IAsyncDisposable
+
+<PageTitle>@(IsTemplateCreation ? "Neue Vorlage" : IsNew ? "Neuer Eintrag" : "Eintrag bearbeiten")</PageTitle>
+
+<div class="container-fluid h-100 d-flex flex-column">
+
+    <!-- Toolbar Header -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h3 class="mb-0">
+            @(IsTemplateCreation ? "Neue Vorlage" : IsNew ? "Neuer Wiki-Eintrag" : $"Bearbeite: {WikiPageModel.Title}")
+        </h3>
+        <div>
+            <DxButton Text="Abbrechen"
+                      RenderStyle="ButtonRenderStyle.Secondary"
+                      Click="NavigateBack"
+                      CssClass="me-2" />
+            <DxButton Text="Speichern"
+                      RenderStyle="ButtonRenderStyle.Primary"
+                      IconCssClass="oi oi-check"
+                      Click="HandleValidSubmit" />
+        </div>
+    </div>
+
+    @if (IsLoading)
+    {
+        <div class="text-center p-5"><div class="spinner-border"></div></div>
+    }
+    else
+    {
+        <EditForm Model="@WikiPageModel" OnValidSubmit="HandleValidSubmit" Context="editContext">
+            <DataAnnotationsValidator />
+
+            <!-- Metadaten Form -->
+            <div class="card mb-3 border-0 shadow-sm">
+                <div class="card-body bg-light">
+                    <DxFormLayout>
+                        <DxFormLayoutItem Caption="Titel" ColSpanMd="8">
+                            <DxTextBox @bind-Text="@WikiPageModel.Title" />
+                            <ValidationMessage For="@(() => WikiPageModel.Title)" />
+                        </DxFormLayoutItem>
+
+                        <DxFormLayoutItem Caption="Kategorie" ColSpanMd="4">
+                            <DxComboBox Data="@Categories"
+                                        TextFieldName="Name"
+                                        ValueFieldName="Id"
+                                        @bind-Value="@WikiPageModel.CategoryId"
+                                        NullText="Kategorie wählen..." />
+                            <ValidationMessage For="@(() => WikiPageModel.CategoryId)" />
+                        </DxFormLayoutItem>
+
+                        @if (!IsTemplateCreation)
+                        {
+                            <DxFormLayoutItem Caption="Sichtbarkeit" ColSpanMd="4">
+                                <DxComboBox Data="@PublicationOptions"
+                                            TextFieldName="Text"
+                                            ValueFieldName="Value"
+                                            @bind-Value="@SelectedPublicationOption"
+                                            NullText="Status wählen..." />
+                            </DxFormLayoutItem>
+                        }
+                    </DxFormLayout>
+                </div>
+            </div>
+
+            <!-- Editor Bereich -->
+            <div class="flex-grow-1 border rounded shadow-sm bg-white" style="min-height: 500px; height: 60vh;">
+                <!--
+                     DocumentFormat: Wir nutzen OpenXml (docx) als internes Speicherformat.
+                     DocumentContent: Bindet direkt an das Byte-Array der Entität.
+                -->
+                <DxRichEdit @ref="richEdit"
+                            DocumentFormat="DocumentFormat.OpenXml"
+                            DocumentContent="@WikiPageModel.Content"
+                            CssClass="w-100 h-100"
+                            BarMode="BarMode.Ribbon"/>
+            </div>
+
+        </EditForm>
+    }
+</div>
+
+@code {
+    [Parameter] public int? Id { get; set; }
+
+    private WikiPage WikiPageModel { get; set; } = new();
+    private List<WikiCategory> Categories { get; set; } = new();
+    private PublicationMode SelectedPublicationOption { get; set; } = PublicationMode.Private;
+    private static readonly IReadOnlyList<PublicationOption> PublicationOptions =
+    [
+        new("Privat", PublicationMode.Private),
+        new("Veröffentlicht", PublicationMode.Published)
+    ];
+
+    private DxRichEdit? richEdit;
+    private bool IsLoading = true;
+    private bool DraftBufferRestored;
+    private bool DraftAutosaveStarted;
+    private PeriodicTimer? DraftAutosaveTimer;
+    private CancellationTokenSource? DraftAutosaveCts;
+    private string? CurrentUserId;
+    private bool IsNew => Id == null || Id == 0;
+    private bool IsTemplateCreation => IsNew && NavManager.Uri.EndsWith("/wiki/templates/create", StringComparison.OrdinalIgnoreCase);
+
+    protected override async Task OnInitializedAsync()
+    {
+        IsLoading = true;
+        try
+        {
+            Categories = await WikiService.GetCategoriesAsync();
+            CurrentUserId = await GetCurrentUserIdAsync();
+
+            if (!IsNew)
+            {
+                var existing = await WikiService.GetPageForUserAsync(Id!.Value, CurrentUserId);
+                if (existing != null)
+                {
+                    if (existing.IsEditLocked)
+                    {
+                        NavManager.NavigateTo($"/wiki/view/{existing.Id}");
+                        return;
+                    }
+                    // Wir klonen das Objekt flach, um nicht direkt am EF-getrackten Objekt zu arbeiten
+                    // bis gespeichert wird (optional, aber sauberer in Blazor).
+                    // Hier vereinfacht: wir nutzen es direkt, aber detached durch Service.
+                    WikiPageModel = existing;
+                    SelectedPublicationOption = ResolvePublicationMode(WikiPageModel);
+                }
+                else
+                {
+                    NavManager.NavigateTo("/wiki");
+                }
+            }
+            else
+            {
+                // Default Werte
+                WikiPageModel = new WikiPage
+                {
+                    CategoryId = Categories.FirstOrDefault()?.Id ?? 0,
+                    Status = IsTemplateCreation ? WikiPageStatus.Template : WikiPageStatus.Draft,
+                    Visibility = IsTemplateCreation ? WikiPageVisibility.Team : WikiPageVisibility.Private,
+                    EntryType = WikiEntryType.Standard
+                };
+
+                SelectedPublicationOption = IsTemplateCreation ? PublicationMode.Published : PublicationMode.Private;
+            }
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!IsLoading && richEdit != null)
+        {
+            if (!DraftBufferRestored)
+            {
+                DraftBufferRestored = true;
+                await RestoreDraftBufferIfAvailableAsync();
+                StateHasChanged();
+            }
+
+            if (!DraftAutosaveStarted)
+            {
+                DraftAutosaveStarted = true;
+                StartDraftAutosaveLoop();
+            }
+        }
+
+        await base.OnAfterRenderAsync(firstRender);
+    }
+
+    private async Task HandleValidSubmit()
+    {
+        if (richEdit == null) return;
+
+        try
+        {
+            var currentUserId = await GetCurrentUserIdAsync();
+            if (string.IsNullOrWhiteSpace(currentUserId))
+            {
+                Logger.LogWarning("Speichern abgebrochen: Kein angemeldeter Benutzer erkannt.");
+                return;
+            }
+
+            if (!IsTemplateCreation)
+            {
+                ApplyPublicationMode();
+            }
+
+            if (IsNew)
+            {
+                WikiPageModel.OwnerId = currentUserId;
+            }
+
+            WikiPageModel.Content = await richEdit.ExportDocumentAsync(DocumentFormat.OpenXml, CancellationToken.None);
+            // 2. Einen Vorschautext generieren (Optional, aber gut für die Suche/Kacheln)
+            // Wir speichern es temporär als PlainText, um die ersten Zeichen zu extrahieren
+            // Hinweis: Dies ist ein "Trick", um PlainText zu bekommen ohne komplexes Parsing
+            // Wir könnten auch client-side JS nutzen, aber Server-Side Export ist sicherer.
+            // Achtung: Das ist ein extra Roundtrip. Wenn Performance kritisch, weglassen.
+            try
+            {
+                // Da wir Server-seitig keine einfache "ToPlainText" Methode ohne DevExpress Document Server Lizenz haben
+                // (DxRichEdit ist UI), lassen wir den PreviewText erstmal leer oder setzen einen Placeholder.
+                // Wenn du die DevExpress.Docs Library hast, könntest du hier konvertieren.
+                WikiPageModel.PreviewText = "Vorschau wird generiert...";
+            }
+            catch { }
+
+            // 3. Speichern
+            await WikiService.SavePageAsync(WikiPageModel);
+
+            await RemoveDraftBufferAsync();
+
+            NavManager.NavigateTo(WikiPageModel.Status == WikiPageStatus.Template ? "/wiki/templates" : "/wiki");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Fehler beim Speichern");
+            // Hier könnte man noch eine Notification anzeigen
+        }
+    }
+
+    private string GetDraftBufferKey()
+    {
+        var userPart = string.IsNullOrWhiteSpace(CurrentUserId) ? "anonymous" : CurrentUserId;
+        var pagePart = IsNew ? "new" : Id!.Value.ToString();
+        return $"wikiBlaze.wikiDraftBuffer.{userPart}.{pagePart}";
+    }
+
+    private async Task RestoreDraftBufferIfAvailableAsync()
+    {
+        var payloadJson = await Js.InvokeAsync<string?>("wikiBlaze.loadDashboardSettings", GetDraftBufferKey());
+        if (string.IsNullOrWhiteSpace(payloadJson))
+        {
+            return;
+        }
+
+        DraftBufferPayload? payload;
+        try
+        {
+            payload = JsonSerializer.Deserialize<DraftBufferPayload>(payloadJson);
+        }
+        catch
+        {
+            return;
+        }
+
+        if (payload is null)
+        {
+            return;
+        }
+
+        var shouldApply = IsNew || payload.SavedAtUtc.UtcDateTime > WikiPageModel.LastModified;
+        if (!shouldApply)
+        {
+            return;
+        }
+
+        WikiPageModel.Title = payload.Title ?? WikiPageModel.Title;
+        WikiPageModel.CategoryId = payload.CategoryId;
+        SelectedPublicationOption = payload.PublicationMode;
+
+        if (!string.IsNullOrWhiteSpace(payload.ContentBase64))
+        {
+            WikiPageModel.Content = Convert.FromBase64String(payload.ContentBase64);
+        }
+    }
+
+    private void StartDraftAutosaveLoop()
+    {
+        DraftAutosaveCts = new CancellationTokenSource();
+        DraftAutosaveTimer = new PeriodicTimer(TimeSpan.FromSeconds(20));
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                while (await DraftAutosaveTimer.WaitForNextTickAsync(DraftAutosaveCts.Token))
+                {
+                    await SaveDraftBufferSnapshotAsync();
+                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        });
+    }
+
+    private async Task SaveDraftBufferSnapshotAsync()
+    {
+        if (richEdit == null)
+        {
+            return;
+        }
+
+        var content = await richEdit.ExportDocumentAsync(DocumentFormat.OpenXml, CancellationToken.None);
+        var payload = new DraftBufferPayload(
+            WikiPageModel.Title,
+            WikiPageModel.CategoryId,
+            SelectedPublicationOption,
+            Convert.ToBase64String(content),
+            DateTimeOffset.UtcNow);
+
+        await Js.InvokeVoidAsync("wikiBlaze.saveDashboardSettings", GetDraftBufferKey(), JsonSerializer.Serialize(payload));
+    }
+
+    private Task RemoveDraftBufferAsync()
+    {
+        return Js.InvokeVoidAsync("wikiBlaze.saveDashboardSettings", GetDraftBufferKey(), (string?)null).AsTask();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (DraftAutosaveCts is not null)
+        {
+            await DraftAutosaveCts.CancelAsync();
+            DraftAutosaveCts.Dispose();
+            DraftAutosaveCts = null;
+        }
+
+        DraftAutosaveTimer?.Dispose();
+        DraftAutosaveTimer = null;
+    }
+
+    private async Task<string?> GetCurrentUserIdAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        if (user?.Identity?.IsAuthenticated != true)
+        {
+            return null;
+        }
+
+        return UserIdResolver.ResolveCurrentUserId(user);
+    }
+
+    private void NavigateBack()
+    {
+        NavManager.NavigateTo(WikiPageModel.Status == WikiPageStatus.Template ? "/wiki/templates" : "/wiki");
+    }
+
+    private void ApplyPublicationMode()
+    {
+        if (SelectedPublicationOption == PublicationMode.Private)
+        {
+            WikiPageModel.Status = WikiPageStatus.Draft;
+            WikiPageModel.Visibility = WikiPageVisibility.Private;
+            return;
+        }
+
+        WikiPageModel.Status = WikiPageStatus.Published;
+        WikiPageModel.Visibility = WikiPageVisibility.Team;
+    }
+
+    private static PublicationMode ResolvePublicationMode(WikiPage page)
+    {
+        return page.Visibility == WikiPageVisibility.Private
+            ? PublicationMode.Private
+            : PublicationMode.Published;
+    }
+
+    private enum PublicationMode
+    {
+        Private,
+        Published
+    }
+
+    private sealed record PublicationOption(string Text, PublicationMode Value);
+    private sealed record DraftBufferPayload(string? Title, int CategoryId, PublicationMode PublicationMode, string? ContentBase64, DateTimeOffset SavedAtUtc);
+}

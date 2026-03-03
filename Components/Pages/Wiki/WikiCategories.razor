@@ -1,0 +1,295 @@
+﻿@page "/wiki/categories"
+@using Wiki_Blaze.Data.Entities
+@using Wiki_Blaze.Services
+@using DevExpress.Blazor
+@inject IWikiService WikiService
+@inject ILogger<WikiCategories> Logger
+@inject IJSRuntime Js
+@rendermode InteractiveServer
+
+<PageTitle>Kategorien Verwaltung</PageTitle>
+
+<div class="container-fluid p-0">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h3 class="mb-0">Kategorien Verwaltung</h3>
+            <small class="text-muted">Hierarchische Struktur der Wiki-Bereiche</small>
+        </div>
+    </div>
+
+    @if (Categories == null)
+    {
+        <div class="d-flex justify-content-center p-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Laden...</span>
+            </div>
+        </div>
+    }
+    else
+    {
+        <DxTreeList Data="Categories"
+                    KeyFieldName="Id"
+                    ParentKeyFieldName="ParentId"
+                    EditMode="TreeListEditMode.EditRow"
+                    EditModelSaving="OnEditModelSaving"
+                    DataItemDeleting="OnDataItemDeleting"
+                    AutoExpandAllNodes="true"
+                    CssClass="shadow-sm rounded">
+            
+            <Columns>
+                <DxTreeListDataColumn FieldName="Name" Caption="Kategorie Name">
+                    <CellDisplayTemplate>
+                        @{
+                            var category = (WikiCategory)context.DataItem;
+                        }
+                        <span class="fw-bold text-primary"
+                              @oncontextmenu="(args) => OnCategoryContextMenuAsync(args, category)"
+                              @oncontextmenu:preventDefault>
+                            <span class="oi oi-folder me-2"></span>@category.Name
+                        </span>
+                    </CellDisplayTemplate>
+                </DxTreeListDataColumn>
+                
+                <DxTreeListDataColumn FieldName="Description" Caption="Beschreibung" />
+
+
+                <DxTreeListDataColumn FieldName="IsFormCategory" Caption="Wiki.Forms Kategorie" Width="180px">
+                    <CellDisplayTemplate>
+                        @{ var category = (WikiCategory)context.DataItem; }
+                        <span>@(category.IsFormCategory ? "Ja" : "Nein")</span>
+                    </CellDisplayTemplate>
+                    <CellEditTemplate>
+                        @{ var editModel = (WikiCategory)context.EditModel; }
+                        <DxCheckBox @bind-Checked="editModel.IsFormCategory" />
+                    </CellEditTemplate>
+                </DxTreeListDataColumn>
+
+                <DxTreeListDataColumn FieldName="ParentId" Caption="Übergeordnete Kategorie">
+                    <CellDisplayTemplate>
+                        @{
+                            var category = (WikiCategory)context.DataItem;
+                            var parentName = Categories?.FirstOrDefault(c => c.Id == category.ParentId)?.Name;
+                        }
+                        <span>@(string.IsNullOrWhiteSpace(parentName) ? "-" : parentName)</span>
+                    </CellDisplayTemplate>
+                    <CellEditTemplate>
+                        @{
+                            var editModel = (WikiCategory)context.EditModel;
+                            var availableParents = GetPotentialParents(editModel.Id);
+                        }
+                        <DxComboBox Data="availableParents"
+                                    TData="WikiCategory"
+                                    TValue="int?"
+                                    TextFieldName="Name"
+                                    ValueFieldName="Id"
+                                    NullText="(Keine)"
+                                    ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto"
+                                    @bind-Value="editModel.ParentId" />
+                    </CellEditTemplate>
+                </DxTreeListDataColumn>
+   
+                <DxTreeListCommandColumn Width="150px" NewButtonVisible="true" EditButtonVisible="true" DeleteButtonVisible="true" />
+            </Columns>
+        </DxTreeList>
+    }
+
+    @if (!string.IsNullOrEmpty(ErrorMessage))
+    {
+        <div class="alert alert-danger mt-3 alert-dismissible fade show" role="alert">
+            @ErrorMessage
+            <button type="button" class="btn-close" @onclick="() => ErrorMessage = null"></button>
+        </div>
+    }
+</div>
+
+<DxContextMenu @ref="CategoryContextMenu" ItemClick="OnCategoryContextMenuItemClick">
+    <Items>
+        <DxContextMenuItem Text="Neue Unterkategorie" IconCssClass="oi oi-plus" Name="new-child" />
+        <DxContextMenuItem Text="Umbenennen" IconCssClass="oi oi-pencil" Name="rename" />
+        <DxContextMenuItem Text="Löschen" IconCssClass="oi oi-trash" Name="delete" BeginGroup="true" />
+    </Items>
+</DxContextMenu>
+
+@code {
+    private List<WikiCategory>? Categories;
+    private string? ErrorMessage;
+    private DxContextMenu? CategoryContextMenu;
+    private WikiCategory? ContextMenuCategory;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        try
+        {
+            Categories = await WikiService.GetCategoriesAsync();
+            ErrorMessage = null;
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Fehler beim Laden der Daten: {ex.Message}";
+            Logger.LogError(ex, "LoadDataAsync Error");
+        }
+    }
+
+    private List<WikiCategory> GetPotentialParents(int currentId)
+    {
+        if (Categories == null) return new();
+        var invalidParentIds = GetDescendantIds(currentId);
+        invalidParentIds.Add(currentId);
+        return Categories.Where(c => !invalidParentIds.Contains(c.Id)).ToList();
+    }
+
+    private HashSet<int> GetDescendantIds(int currentId)
+    {
+        var result = new HashSet<int>();
+        if (Categories == null || currentId == 0)
+        {
+            return result;
+        }
+
+        var queue = new Queue<int>();
+        queue.Enqueue(currentId);
+
+        while (queue.Count > 0)
+        {
+            var parentId = queue.Dequeue();
+            var children = Categories.Where(c => c.ParentId == parentId).Select(c => c.Id);
+            foreach (var childId in children)
+            {
+                if (result.Add(childId))
+                {
+                    queue.Enqueue(childId);
+                }
+            }
+        }
+
+        return result;
+    }
+
+    private async Task OnEditModelSaving(TreeListEditModelSavingEventArgs e)
+    {
+        try
+        {
+            var editableCategory = (WikiCategory)e.EditModel;
+
+            // Zirkelbezugsprüfung
+            if (editableCategory.ParentId == editableCategory.Id && editableCategory.Id != 0)
+            {
+                e.Cancel = true;
+                ErrorMessage = "Eine Kategorie kann nicht ihr eigener Elternteil sein.";
+                return;
+            }
+
+            if (editableCategory.Id != 0 && editableCategory.ParentId.HasValue)
+            {
+                var invalidParentIds = GetDescendantIds(editableCategory.Id);
+                if (invalidParentIds.Contains(editableCategory.ParentId.Value))
+                {
+                    e.Cancel = true;
+                    ErrorMessage = "Eine Kategorie kann nicht einem Unterelement zugeordnet werden.";
+                    return;
+                }
+            }
+
+            await WikiService.SaveCategoryAsync(editableCategory);
+            
+            await LoadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            e.Cancel = true;
+            ErrorMessage = $"Fehler beim Speichern: {ex.Message}";
+        }
+    }
+
+    private async Task OnDataItemDeleting(TreeListDataItemDeletingEventArgs e)
+    {
+        try
+        {
+            var categoryToDelete = (WikiCategory)e.DataItem;
+            await WikiService.DeleteCategoryAsync(categoryToDelete);
+            await LoadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            e.Cancel = true;
+            ErrorMessage = $"Löschen fehlgeschlagen: {ex.Message}";
+        }
+    }
+
+    private async Task OnCategoryContextMenuAsync(MouseEventArgs args, WikiCategory category)
+    {
+        ContextMenuCategory = category;
+        if (CategoryContextMenu != null)
+        {
+            await CategoryContextMenu.ShowAsync(args);
+        }
+    }
+
+    private async Task OnCategoryContextMenuItemClick(ContextMenuItemClickEventArgs args)
+    {
+        if (ContextMenuCategory == null)
+        {
+            return;
+        }
+
+        try
+        {
+            switch (args.ItemInfo.Name)
+            {
+                case "new-child":
+                {
+                    var name = await Js.InvokeAsync<string>("prompt", "Name der Unterkategorie:", "");
+                    if (string.IsNullOrWhiteSpace(name))
+                    {
+                        return;
+                    }
+
+                    var newCategory = new WikiCategory
+                    {
+                        Name = name.Trim(),
+                        ParentId = ContextMenuCategory.Id
+                    };
+
+                    await WikiService.SaveCategoryAsync(newCategory);
+                    await LoadDataAsync();
+                    break;
+                }
+                case "rename":
+                {
+                    var name = await Js.InvokeAsync<string>("prompt", "Neuer Kategoriename:", ContextMenuCategory.Name);
+                    if (string.IsNullOrWhiteSpace(name))
+                    {
+                        return;
+                    }
+
+                    ContextMenuCategory.Name = name.Trim();
+                    await WikiService.SaveCategoryAsync(ContextMenuCategory);
+                    await LoadDataAsync();
+                    break;
+                }
+                case "delete":
+                {
+                    var confirmed = await Js.InvokeAsync<bool>("confirm",
+                        $"Kategorie \"{ContextMenuCategory.Name}\" wirklich löschen?");
+                    if (!confirmed)
+                    {
+                        return;
+                    }
+
+                    await WikiService.DeleteCategoryAsync(ContextMenuCategory);
+                    await LoadDataAsync();
+                    break;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Aktion fehlgeschlagen: {ex.Message}";
+        }
+    }
+}

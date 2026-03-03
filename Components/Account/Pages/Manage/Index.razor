@@ -1,0 +1,153 @@
+﻿@page "/Account/Manage"
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Identity
+@using Wiki_Blaze.Data
+
+@inject UserManager<ApplicationUser> UserManager
+@inject SignInManager<ApplicationUser> SignInManager
+@inject IdentityUserAccessor UserAccessor
+@inject IdentityRedirectManager RedirectManager
+<PageTitle>Profile</PageTitle>
+
+<div class="block-content">
+    <StatusMessage Message="@message" />
+    <EditForm Model="Input" FormName="profile" OnValidSubmit="OnValidSubmitAsync" method="post" Context="editContext">
+        <DataAnnotationsValidator />
+        <ValidationSummary class="text-danger" role="alert" />
+        <DxFormLayout CaptionPosition=@CaptionPosition.Vertical Context="formLayout">
+            <DxFormLayoutGroup Caption="Account">
+                <DxFormLayoutItem Caption="Username" ColSpanMd="6">
+                    <InteractiveServerTextBox Name="username" Value="@username" Enabled="false" />
+                </DxFormLayoutItem>
+                <DxFormLayoutItem Caption="Display name" ColSpanMd="6">
+                    <InteractiveServerTextBox Name="Input.DisplayName" Value="@Input.DisplayName" />
+                </DxFormLayoutItem>
+            </DxFormLayoutGroup>
+            <DxFormLayoutGroup Caption="Personal details">
+                <DxFormLayoutItem Caption="First name" ColSpanMd="6">
+                    <InteractiveServerTextBox Name="Input.FirstName" Value="@Input.FirstName" />
+                </DxFormLayoutItem>
+                <DxFormLayoutItem Caption="Last name" ColSpanMd="6">
+                    <InteractiveServerTextBox Name="Input.LastName" Value="@Input.LastName" />
+                </DxFormLayoutItem>
+                <DxFormLayoutItem Caption="Job title" ColSpanMd="6">
+                    <InteractiveServerTextBox Name="Input.JobTitle" Value="@Input.JobTitle" Enabled="@isAdmin" />
+                </DxFormLayoutItem>
+                <DxFormLayoutItem Caption="Department" ColSpanMd="6">
+                    <InteractiveServerTextBox Name="Input.Department" Value="@Input.Department" Enabled="@isAdmin" />
+                </DxFormLayoutItem>
+                <DxFormLayoutItem Caption="Location" ColSpanMd="6">
+                    <InteractiveServerTextBox Name="Input.Location" Value="@Input.Location" />
+                </DxFormLayoutItem>
+                <DxFormLayoutItem Caption="Phone number" ColSpanMd="6">
+                    <InteractiveServerMaskedInput Name="Input.PhoneNumber" Value="@Input.PhoneNumber" Mask="(999)000-0000"></InteractiveServerMaskedInput>
+                </DxFormLayoutItem>
+                <DxFormLayoutItem Caption="Bio" ColSpanMd="12">
+                    <DxMemo @bind-Text="Input.Bio" Rows="4" />
+                </DxFormLayoutItem>
+                @if (!isAdmin)
+                {
+                    <DxFormLayoutItem ColSpanMd="12">
+                        <div class="text-muted small">Contact an administrator to update your job title or department.</div>
+                    </DxFormLayoutItem>
+                }
+            </DxFormLayoutGroup>
+            <DxFormLayoutItem ColSpanMd="12" BeginRow="true">
+                <DxButton CssClass="w-100" SubmitFormOnClick="true" Text="Save"></DxButton>
+            </DxFormLayoutItem>
+        </DxFormLayout>
+    </EditForm>
+</div>
+
+@code {
+    private ApplicationUser user = default!;
+    private string? username;
+    private string? phoneNumber;
+    private bool isAdmin;
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+    string message = "";
+
+    [SupplyParameterFromForm]
+    private InputModel Input { get; set; } = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        user = await UserAccessor.GetRequiredUserAsync(HttpContext);
+        username = await UserManager.GetUserNameAsync(user);
+        phoneNumber = await UserManager.GetPhoneNumberAsync(user);
+        isAdmin = await UserManager.IsInRoleAsync(user, "Admin");
+
+        Input.PhoneNumber ??= phoneNumber;
+        Input.FirstName ??= user.FirstName;
+        Input.LastName ??= user.LastName;
+        Input.DisplayName ??= user.DisplayName;
+        Input.JobTitle ??= user.JobTitle;
+        Input.Department ??= user.Department;
+        Input.Location ??= user.Location;
+        Input.Bio ??= user.Bio;
+    }
+
+    private async Task OnValidSubmitAsync()
+    {
+        if (Input.PhoneNumber != phoneNumber)
+        {
+            var setPhoneResult = await UserManager.SetPhoneNumberAsync(user, Input.PhoneNumber);
+            if (!setPhoneResult.Succeeded)
+            {
+                message = "Error: Failed to set phone number.";
+                return;
+            }
+        }
+
+        user.FirstName = Input.FirstName;
+        user.LastName = Input.LastName;
+        user.DisplayName = Input.DisplayName;
+        user.Location = Input.Location;
+        user.Bio = Input.Bio;
+
+        if (isAdmin)
+        {
+            user.JobTitle = Input.JobTitle;
+            user.Department = Input.Department;
+        }
+
+        var updateResult = await UserManager.UpdateAsync(user);
+        if (!updateResult.Succeeded)
+        {
+            message = "Error: Failed to update profile.";
+            return;
+        }
+
+        message = "Your profile has been updated";
+    }
+
+    private sealed class InputModel
+    {
+        [Phone]
+        [Display(Name = "Phone number")]
+        public string? PhoneNumber { get; set; }
+
+        [MaxLength(100)]
+        public string? FirstName { get; set; }
+
+        [MaxLength(100)]
+        public string? LastName { get; set; }
+
+        [MaxLength(150)]
+        public string? DisplayName { get; set; }
+
+        [MaxLength(150)]
+        public string? JobTitle { get; set; }
+
+        [MaxLength(150)]
+        public string? Department { get; set; }
+
+        [MaxLength(150)]
+        public string? Location { get; set; }
+
+        [MaxLength(500)]
+        public string? Bio { get; set; }
+    }
+}

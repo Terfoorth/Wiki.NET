@@ -1,0 +1,66 @@
+﻿@inject NavigationManager NavigationManager
+@implements IDisposable
+
+
+<div>
+    <DxMenu Orientation="@Orientation.Vertical" CssClass="menu display-mobile">
+        <Items>
+            <AuthorizeView>
+                <Authorized>
+                    <DxMenuItem NavigateUrl="Account/Manage" Text="@context.User.Identity?.Name" CssClass="@MenuItemCssClass("/Account/Manage")" IconCssClass="icon icon-user"></DxMenuItem>
+                    <AuthorizeView Roles="Admin" Context="adminContext">
+                        <Authorized>
+                            <DxMenuItem NavigateUrl="/admin/users" Text="User Management" CssClass="@MenuItemCssClass("/admin/users")" IconCssClass="icon icon-user"></DxMenuItem>
+                        </Authorized>
+                    </AuthorizeView>
+                    <DxMenuItem NavigateUrl="Account/Logout" Text="Log out" CssClass="@MenuItemCssClass("/Account/Logout")" IconCssClass="icon icon-log-out"></DxMenuItem>
+                </Authorized>
+                <NotAuthorized>
+                    <DxMenuItem NavigateUrl="Account/Login" Text="Log in" CssClass="@MenuItemCssClass("/Account/Login")" IconCssClass="icon icon-log-in"></DxMenuItem>
+                </NotAuthorized>
+            </AuthorizeView>
+        </Items>
+    </DxMenu>
+    <DxMenu Orientation="@Orientation.Vertical" CssClass="menu">
+        <Items>
+            <DxMenuItem NavigateUrl="/wiki" Text="Wiki Dashboard" CssClass="@MenuItemCssClass("/wiki")" IconCssClass="icon icon-report-designer"></DxMenuItem>
+            <AuthorizeView>
+                <Authorized>
+                    <AuthorizeView Roles="Admin" Context="adminContext">
+                        <Authorized>
+                            <DxMenuItem NavigateUrl="/admin/users" Text="User Management" CssClass="@MenuItemCssClass("/admin/users")" IconCssClass="icon icon-user"></DxMenuItem>
+                        </Authorized>
+                    </AuthorizeView>
+                </Authorized>
+            </AuthorizeView>
+            <DxMenuItem NavigateUrl="/wiki/favorites" Text="Wiki.Books" CssClass="@MenuItemCssClass("/wiki/favorites")" IconCssClass="icon icon-report-viewer"></DxMenuItem>
+            <DxMenuItem NavigateUrl="/wiki/templates" Text="Wiki.Templates" CssClass="@MenuItemCssClass("/wiki/templates")" IconCssClass="icon icon-report-designer"></DxMenuItem>
+            <DxMenuItem NavigateUrl="/wiki/drafts" Text="Wiki.Drafts" CssClass="@MenuItemCssClass("/wiki/templates")" IconCssClass="icon icon-book"></DxMenuItem>
+            <DxMenuItem NavigateUrl="/reportdesigner" Text="Report Designer" CssClass="@MenuItemCssClass("/reportdesigner")" IconCssClass="icon icon-report-designer"></DxMenuItem>
+            <DxMenuItem NavigateUrl="/reportviewer" Text="Report Viewer" CssClass="@MenuItemCssClass("/reportviewer")" IconCssClass="icon icon-report-viewer"></DxMenuItem>
+            <DxMenuItem NavigateUrl="Account/Manage" Text="Settings" CssClass="@MenuItemCssClass("/Account/Manage")" IconCssClass="icon icon-settings"></DxMenuItem>
+        </Items>
+    </DxMenu>
+</div>
+
+@code {
+    private string? currentLocalPath;
+
+    protected override void OnInitialized() {
+        currentLocalPath = new Uri(NavigationManager.Uri).LocalPath;
+        NavigationManager.LocationChanged += OnLocationChanged;
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e) {
+        currentLocalPath = new Uri(NavigationManager.Uri).LocalPath;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private string? MenuItemCssClass(string itemPath) {
+        return string.Equals(currentLocalPath, itemPath, StringComparison.OrdinalIgnoreCase) ? "menu-item-active" : null;
+    }
+
+    public void Dispose() {
+        NavigationManager.LocationChanged -= OnLocationChanged;
+    }
+}

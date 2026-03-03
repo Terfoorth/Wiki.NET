@@ -1,0 +1,107 @@
+.icon {
+    width: 1rem;
+    height: 1rem;
+    background-color: currentcolor;
+    mask-image: var(--icon-mask-image);
+    mask-position: center;
+    mask-repeat: no-repeat;
+}
+
+.icon-image {
+    width: 1rem;
+    height: 1rem;
+    background-image: var(--icon-background-image);
+    background-position: center;
+    background-repeat: no-repeat;
+}
+
+.icon-back {
+    --icon-mask-image: url("/images/back.svg");
+}
+.icon-close {
+    --icon-mask-image: url("/images/close.svg");
+}
+.icon-demos {
+    --icon-mask-image: url("/images/demos.svg");
+}
+.icon-docs {
+    --icon-mask-image: url("/images/doc.svg");
+}
+.icon-menu {
+    --icon-mask-image: url("/images/menu.svg");
+}
+
+/* pages */
+.icon-counter {
+    --icon-mask-image: url("/images/pages/counter.svg");
+}
+.icon-home {
+    --icon-mask-image: url("/images/pages/home.svg");
+}
+.icon-pdf-viewer {
+    --icon-mask-image: url("/images/pages/document-pdf.svg");
+}
+.icon-pivot-table {
+    --icon-mask-image: url("/images/pages/pivot-table.svg");
+}
+.icon-report-designer {
+    --icon-mask-image: url("/images/pages/document-data-edit.svg");
+}
+.icon-report-viewer {
+    --icon-mask-image: url("/images/pages/document-data.svg");
+}
+.icon-rich-edit {
+    --icon-mask-image: url("/images/pages/text-description-edit.svg");
+}
+.icon-tree-list {
+    --icon-mask-image: url("/images/pages/list-bar-tree.svg");
+}
+.icon-weather {
+    --icon-mask-image: url("/images/pages/weather.svg");
+}
+
+/* account */
+.icon-email {
+    --icon-mask-image: url("/images/account/manage-email.svg");
+}
+.icon-external {
+    --icon-mask-image: url("/images/account/user.svg");
+}
+.icon-log-in {
+    --icon-mask-image: url("/images/account/log-in.svg");
+}
+.icon-log-out {
+    --icon-mask-image: url("/images/account/log-out.svg");
+}
+.icon-password {
+    --icon-mask-image: url("/images/account/manage-password.svg");
+}
+.icon-personal {
+    --icon-mask-image: url("/images/account/manage-personal.svg");
+}
+.icon-profile {
+    --icon-mask-image: url("/images/account/manage-profile.svg");
+}
+.icon-settings {
+    --icon-mask-image: url("/images/account/settings.svg");
+}
+.icon-two-factor {
+    --icon-mask-image: url("/images/account/manage-two-factor.svg");
+}
+.icon-user {
+    --icon-mask-image: url("/images/account/user.svg");
+}
+
+/* account/providers */
+.icon-facebook {
+    --icon-background-image: url("/images/account/providers/facebook-logo.svg");
+}
+.icon-google {
+    --icon-background-image: url("/images/account/providers/google-logo.svg");
+}
+.icon-microsoft {
+    --icon-background-image: url("/images/account/providers/microsoft-logo.svg");
+}
+.icon-twitter {
+    --icon-background-image: url("/images/account/providers/x-logo.svg");
+}

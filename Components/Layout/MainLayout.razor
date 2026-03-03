@@ -1,0 +1,162 @@
+﻿@inherits DrawerStateLayoutComponentBase
+@implements IDisposable
+@inject NavigationManager NavigationManager
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject UserManager<Wiki_Blaze.Data.ApplicationUser> UserManager
+@inject IJSRuntime JsRuntime
+@using Wiki_Blaze.Services
+
+<div class="page">
+    <Drawer CssClass="navigation-drawer" PanelWidth="240px">
+        <HeaderTemplate>
+            <div class="navigation-drawer-header">
+                <NavLink href="@AddDrawerStateToUrl(UserStartPage)">
+                    <img class="logo" src="images/knowledge-base-logo.png" alt="Knowledge Base logo" />
+                </NavLink>
+                <NavLink aria-label="Close menu" href="@AddDrawerStateToUrlToggled(LocalPath)">
+                    <DxButton aria-label="Close menu" RenderStyle="ButtonRenderStyle.Secondary" RenderStyleMode="ButtonRenderStyleMode.Text" CssClass="btn-icon-only" IconCssClass="@(ToggledDrawer ? "icon icon-close" : "icon icon-menu")"></DxButton>
+                </NavLink>
+            </div>
+        </HeaderTemplate>
+        <BodyTemplate>
+            <div class="w-100">
+                <NavMenu></NavMenu>
+            </div>
+        </BodyTemplate>
+        <FooterTemplate>
+            <div class="navigation-drawer-footer">
+                <NavLink href="https://docs.devexpress.com/Blazor/400725/blazor-components" class="button-link">
+                    <DxButton Text="Docs" RenderStyle="ButtonRenderStyle.Primary" RenderStyleMode="ButtonRenderStyleMode.Text" IconCssClass="icon icon-docs"></DxButton>
+                </NavLink>
+                <NavLink href="https://demos.devexpress.com/blazor/" class="button-link">
+                    <DxButton Text="Demos" RenderStyle="ButtonRenderStyle.Primary" RenderStyleMode="ButtonRenderStyleMode.Text" IconCssClass="icon icon-demos"></DxButton>
+                </NavLink>
+            </div>
+        </FooterTemplate>
+        <TargetContent>
+            <div class="drawer-content">
+                <div class="nav-buttons-container">
+                    <NavLink aria-label="Open menu" href="@AddDrawerStateToUrlToggled(LocalPath)" class="menu-button">
+                        <DxButton aria-label="Open menu" RenderStyle="ButtonRenderStyle.Secondary" RenderStyleMode="ButtonRenderStyleMode.Text" CssClass="btn-icon-only" IconCssClass="icon icon-menu"></DxButton>
+                    </NavLink>
+                    @if (LocalPath != "/") {
+                        <NavLink href="@AddDrawerStateToUrl(UserStartPage)" class="button-link">
+                            <DxButton Text="Back to Home" RenderStyle="ButtonRenderStyle.Secondary" RenderStyleMode="ButtonRenderStyleMode.Text" CssClass="back-button" IconCssClass="icon icon-back"></DxButton>
+                        </NavLink>
+                    }
+                    <AuthorizeView>
+                        <Authorized>
+                            <NavLink href="@AddDrawerStateToUrl("Account/Manage")" class="button-link menu-button-float-end display-desktop">
+                                <DxButton Text="@context.User.Identity?.Name" RenderStyle="ButtonRenderStyle.Secondary" RenderStyleMode="ButtonRenderStyleMode.Text" IconCssClass="icon icon-user"></DxButton>
+                            </NavLink>
+                            <form action="@AddDrawerStateToUrl("Account/Logout")" method="post" class="display-desktop">
+                                <AntiforgeryToken />
+                                <input type="hidden" name="ReturnUrl" value="@currentUrl" />
+                                <DxButton SubmitFormOnClick="true" Text="Log out" RenderStyle="ButtonRenderStyle.Secondary" RenderStyleMode="ButtonRenderStyleMode.Text" IconCssClass="icon icon-log-out"></DxButton>
+                            </form>
+                        </Authorized>
+                        <NotAuthorized>
+                            <NavLink href="@AddDrawerStateToUrl("Account/Login")" class="button-link menu-button-float-end display-desktop">
+                                <DxButton Text="Log in" RenderStyle="ButtonRenderStyle.Secondary" RenderStyleMode="ButtonRenderStyleMode.Text" IconCssClass="icon icon-log-in"></DxButton>
+                            </NavLink>
+                        </NotAuthorized>
+                    </AuthorizeView>
+                </div>
+                <div class="page-content-container">
+                    @Body
+                </div>
+            </div>
+        </TargetContent>
+    </Drawer>
+</div>
+
+@code {
+    string LocalPath => new Uri(NavigationManager.Uri).LocalPath;
+    string UserStartPage { get; set; } = Wiki_Blaze.Data.ApplicationUser.DefaultStartPage;
+
+    private string? currentUrl;
+    private bool preferencesApplied;
+
+    private sealed record EffectivePreferences(string Theme, string Density, string StartPage);
+
+    private static readonly EffectivePreferences DefaultPreferences = new(
+        Wiki_Blaze.Data.ApplicationUser.DefaultThemePreference,
+        Wiki_Blaze.Data.ApplicationUser.DefaultDensityPreference,
+        Wiki_Blaze.Data.ApplicationUser.DefaultStartPage);
+
+    protected override void OnInitialized() {
+        currentUrl = NavigationManager.ToBaseRelativePath(NavigationManager.Uri);
+        NavigationManager.LocationChanged += OnLocationChanged;
+        AuthenticationStateProvider.AuthenticationStateChanged += OnAuthenticationStateChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || preferencesApplied)
+        {
+            return;
+        }
+
+        await ApplyUserPreferencesAsync();
+    }
+
+    private async Task ApplyUserPreferencesAsync(AuthenticationState? authState = null)
+    {
+        var effectivePreferences = await LoadEffectivePreferencesAsync(authState);
+        await ApplyPreferencesToUiAsync(effectivePreferences);
+        preferencesApplied = false;
+        StateHasChanged();
+    }
+
+    private async Task<EffectivePreferences> LoadEffectivePreferencesAsync(AuthenticationState? authState = null)
+    {
+        var currentAuthState = authState ?? await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var userPrincipal = currentAuthState.User;
+
+        if (userPrincipal.Identity?.IsAuthenticated == true)
+        {
+            var user = await UserManager.GetUserAsync(userPrincipal);
+            if (user is not null)
+            {
+                return
+                    new EffectivePreferences(
+                        user.ThemePreference ?? Wiki_Blaze.Data.ApplicationUser.DefaultThemePreference,
+                        user.DensityPreference ?? Wiki_Blaze.Data.ApplicationUser.DefaultDensityPreference,
+                        user.StartPage ?? Wiki_Blaze.Data.ApplicationUser.DefaultStartPage);
+            }
+        }
+        return new EffectivePreferences(
+                        Wiki_Blaze.Data.ApplicationUser.DefaultThemePreference,
+                        Wiki_Blaze.Data.ApplicationUser.DefaultDensityPreference,
+                        Wiki_Blaze.Data.ApplicationUser.DefaultStartPage);
+
+
+    }
+
+    private async Task ApplyPreferencesToUiAsync(EffectivePreferences preferences)
+    {
+        UserStartPage = preferences.StartPage;
+        await JsRuntime.InvokeVoidAsync("wikiBlaze.setTheme", preferences.Theme);
+        await JsRuntime.InvokeVoidAsync("wikiBlaze.setDensity", preferences.Density);
+    }
+
+    private void OnAuthenticationStateChanged(Task<AuthenticationState> authenticationStateTask)
+    {
+        _ = InvokeAsync(async () =>
+        {
+            var authState = await authenticationStateTask;
+            preferencesApplied = true;
+            await ApplyUserPreferencesAsync(authState);
+        });
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e) {
+        currentUrl = NavigationManager.ToBaseRelativePath(e.Location);
+        StateHasChanged();
+    }
+
+    public void Dispose() {
+        NavigationManager.LocationChanged -= OnLocationChanged;
+        AuthenticationStateProvider.AuthenticationStateChanged -= OnAuthenticationStateChanged;
+    }
+}

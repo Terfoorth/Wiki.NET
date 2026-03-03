@@ -1,0 +1,61 @@
+﻿::deep .index-gridlayout {
+    container-type: inline-size;
+    height: auto;
+    margin-top: auto;
+    margin-bottom: auto;
+    padding-bottom: 9rem;
+}
+
+::deep .title {
+    padding-bottom: 3rem;
+    text-align: center;
+}
+
+::deep .tiles {
+    --tile-column-count: 4;
+
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: repeat(var(--tile-column-count), max-content);
+    justify-content: center;
+
+    @container (max-width: 60.5rem) {
+        --tile-column-count: 3;
+    }
+    @container (max-width: 45.125rem) {
+        --tile-column-count: 2;
+    }
+    @container (max-width: 29.75rem) {
+        --tile-column-count: 1;
+    }
+}
+.custom-drop-zone {
+    padding: 0 !important;
+    border-style: dashed;
+    border-width: 2px !important;
+    height: 230px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background-color: rgba(183, 183, 183, 0.1);
+}
+
+    .custom-drop-zone.custom-drop-zone-hover {
+        border-style: solid;
+    }
+
+    .custom-drop-zone svg {
+        width: 42px;
+        height: 42px;
+    }
+
+    .custom-drop-zone > *:not(#overviewDemoSelectButton) {
+        pointer-events: none;
+    }
+
+.upload-validation-text {
+    flex-direction: column;
+    align-items: flex-end;
+    font-size: 12px;
+}

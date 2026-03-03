@@ -1,0 +1,250 @@
+﻿@page "/Account/Manage/Preferences"
+@rendermode InteractiveServer
+@using System.ComponentModel.DataAnnotations
+@using System.Linq
+@using Microsoft.AspNetCore.Identity
+@using Wiki_Blaze.Data
+@using Wiki_Blaze.Services
+@inject UserManager<ApplicationUser> UserManager
+@inject IJSRuntime JsRuntime
+
+<PageTitle>Preferences</PageTitle>
+
+<div class="block-content">
+    <StatusMessage Message="@message" />
+    <EditForm Model="Input" FormName="preferences" OnValidSubmit="OnValidSubmitAsync" Context="editContext">
+        <DataAnnotationsValidator />
+        <ValidationSummary class="text-danger" role="alert" />
+        <DxFormLayout CaptionPosition=@CaptionPosition.Vertical Context="formLayout">
+            <DxFormLayoutGroup Caption="Appearance">
+                <DxFormLayoutItem Caption="Theme" ColSpanMd="6">
+                    <InteractiveServerComboBox Data="@(themeOptions.Cast<object>())"
+                                               Name="Input.ThemePreference"
+                                               TextFieldName="Text"
+                                               ValueFieldName="Value"
+                                               @bind-Value="Input.ThemePreference" />
+                </DxFormLayoutItem>
+                <DxFormLayoutItem Caption="Density" ColSpanMd="6">
+                    <InteractiveServerComboBox Data="@(densityOptions.Cast<object>())"
+                                               Name="Input.DensityPreference"
+                                               TextFieldName="Text"
+                                               ValueFieldName="Value"
+                                               @bind-Value="Input.DensityPreference" />
+                </DxFormLayoutItem>
+            </DxFormLayoutGroup>
+            <DxFormLayoutGroup Caption="Regional settings">
+                <DxFormLayoutItem Caption="Preferred language" ColSpanMd="6">
+                    <InteractiveServerComboBox Data="@(languageOptions.Cast<object>())"
+                                               Name="Input.PreferredLanguage"
+                                               TextFieldName="Text"
+                                               ValueFieldName="Value"
+                                               @bind-Value="Input.PreferredLanguage" />
+                </DxFormLayoutItem>
+                <DxFormLayoutItem Caption="Time zone" ColSpanMd="6">
+                    <InteractiveServerComboBox Data="@(timeZoneOptions.Cast<object>())"
+                                               Name="Input.TimeZone"
+                                               TextFieldName="Text"
+                                               ValueFieldName="Value"
+                                               @bind-Value="Input.TimeZone" />
+                </DxFormLayoutItem>
+            </DxFormLayoutGroup>
+            <DxFormLayoutGroup Caption="Navigation">
+                <DxFormLayoutItem Caption="Start page" ColSpanMd="6">
+                    <InteractiveServerComboBox Data="@(startPageOptions.Cast<object>())"
+                                               Name="Input.StartPage"
+                                               TextFieldName="Text"
+                                               ValueFieldName="Value"
+                                               @bind-Value="Input.StartPage" />
+                </DxFormLayoutItem>
+            </DxFormLayoutGroup>
+            <DxFormLayoutGroup Caption="Notifications">
+                <DxFormLayoutItem ColSpanMd="6">
+                    <InteractiveServerCheckbox Name="Input.ReceiveProductUpdates" @bind-Value="Input.ReceiveProductUpdates" LabelText="Product updates" />
+                </DxFormLayoutItem>
+                <DxFormLayoutItem ColSpanMd="6">
+                    <InteractiveServerCheckbox Name="Input.ReceiveWeeklyDigest" @bind-Value="Input.ReceiveWeeklyDigest" LabelText="Weekly digest" />
+                </DxFormLayoutItem>
+            </DxFormLayoutGroup>
+            <DxFormLayoutItem ColSpanMd="12" BeginRow="true">
+                <DxButton CssClass="w-100" SubmitFormOnClick="true" Text="Save"></DxButton>
+            </DxFormLayoutItem>
+        </DxFormLayout>
+    </EditForm>
+</div>
+
+@code {
+    private ApplicationUser user = default!;
+    private string message = string.Empty;
+
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthenticationStateTask { get; set; } = default!;
+
+    private List<OptionItem> themeOptions =
+    [
+        new("System (auto)", "system"),
+        new("Light", "light"),
+        new("Dark", "dark"),
+        new("Cerulean (Bootswatch)", "bootswatch:cerulean"),
+        new("Cosmo (Bootswatch)", "bootswatch:cosmo"),
+        new("Cyborg (Bootswatch)", "bootswatch:cyborg"),
+        new("Darkly (Bootswatch)", "bootswatch:darkly"),
+        new("Flatly (Bootswatch)", "bootswatch:flatly"),
+        new("Journal (Bootswatch)", "bootswatch:journal"),
+        new("Litera (Bootswatch)", "bootswatch:litera"),
+        new("Lumen (Bootswatch)", "bootswatch:lumen"),
+        new("Lux (Bootswatch)", "bootswatch:lux"),
+        new("Materia (Bootswatch)", "bootswatch:materia"),
+        new("Minty (Bootswatch)", "bootswatch:minty"),
+        new("Morph (Bootswatch)", "bootswatch:morph"),
+        new("Pulse (Bootswatch)", "bootswatch:pulse"),
+        new("Quartz (Bootswatch)", "bootswatch:quartz"),
+        new("Sandstone (Bootswatch)", "bootswatch:sandstone"),
+        new("Simplex (Bootswatch)", "bootswatch:simplex"),
+        new("Sketchy (Bootswatch)", "bootswatch:sketchy"),
+        new("Slate (Bootswatch)", "bootswatch:slate"),
+        new("Solar (Bootswatch)", "bootswatch:solar"),
+        new("Spacelab (Bootswatch)", "bootswatch:spacelab"),
+        new("Superhero (Bootswatch)", "bootswatch:superhero"),
+        new("United (Bootswatch)", "bootswatch:united"),
+        new("Vapor (Bootswatch)", "bootswatch:vapor"),
+        new("Yeti (Bootswatch)", "bootswatch:yeti"),
+        new("Zephyr (Bootswatch)", "bootswatch:zephyr"),
+    ];
+
+    private List<OptionItem> densityOptions =
+    [
+        new("Comfortable", "comfortable"),
+        new("Compact", "compact"),
+    ];
+
+    private List<OptionItem> languageOptions =
+    [
+        new("English", "en"),
+        new("Deutsch", "de"),
+        new("Français", "fr"),
+        new("Español", "es"),
+        new("Italiano", "it"),
+        new("Dansk", "da"),
+        new("Norsk", "no"),
+        new("Nederlands", "nl"),
+        new("Polski", "pl"),
+        new("Português", "pt"),
+        new("Suomi", "fi"),
+        new("Svenska", "sv"),
+        new("Ελληνικά", "el"),
+        new("Русский", "ru"),
+        new("Українська", "uk"),
+        new("日本語", "ja"),
+        new("한국어", "ko"),
+        new("中文 (简体)", "zh-hans"),
+        new("中文 (繁體)", "zh-hant"),
+        new("Türkçe", "tr"),
+    ];
+
+    private List<OptionItem> timeZoneOptions =
+    [
+        new("UTC", "UTC"),
+        new("Europe/Berlin", "Europe/Berlin"),
+        new("Europe/London", "Europe/London"),
+        new("Europe/Paris", "Europe/Paris"),
+        new("Europe/Zurich", "Europe/Zurich"),
+        new("America/New_York", "America/New_York"),
+        new("America/Los_Angeles", "America/Los_Angeles"),
+        new("America/Chicago", "America/Chicago"),
+        new("America/Denver", "America/Denver"),
+        new("America/Sao_Paulo", "America/Sao_Paulo"),
+        new("Asia/Tokyo", "Asia/Tokyo"),
+        new("Asia/Dubai", "Asia/Dubai"),
+        new("Asia/Hong_Kong", "Asia/Hong_Kong"),
+        new("Asia/Singapore", "Asia/Singapore"),
+        new("Asia/Seoul", "Asia/Seoul"),
+        new("Australia/Sydney", "Australia/Sydney"),
+        new("Australia/Melbourne", "Australia/Melbourne"),
+    ];
+
+    private List<OptionItem> startPageOptions =
+    [
+        new("Home", "/"),
+        new("Wiki overview", "/wiki"),
+        new("Wiki categories", "/wiki/categories"),
+        new("Create wiki page", "/wiki/create"),
+        new("Report center", "/reportviewer"),
+        new("Report designer", "/reportdesigner"),
+        new("Account settings", "/Account/Manage"),
+    ];
+
+    private InputModel Input { get; set; } = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateTask;
+        user = await UserManager.GetUserAsync(authState.User);
+        if (user is null)
+        {
+            message = "Error: Unable to load the current user.";
+            return;
+        }
+
+        Input.ThemePreference = user.ThemePreference ?? "system";
+        Input.DensityPreference = user.DensityPreference ??"compact";
+        Input.PreferredLanguage = user.PreferredLanguage ?? "en";
+        Input.TimeZone = user.TimeZone;
+        Input.StartPage = string.IsNullOrWhiteSpace(user.StartPage) ? "/" : user.StartPage;
+        Input.ReceiveProductUpdates = user.ReceiveProductUpdates;
+        Input.ReceiveWeeklyDigest = user.ReceiveWeeklyDigest;
+    }
+
+    private async Task OnValidSubmitAsync()
+    {
+        if (user is null)
+        {
+            message = "Error: Unable to load the current user.";
+            return;
+        }
+
+        user.ThemePreference = Input.ThemePreference;
+        user.DensityPreference = Input.DensityPreference;
+        user.PreferredLanguage = Input.PreferredLanguage;
+        user.TimeZone = Input.TimeZone;
+        user.StartPage = Input.StartPage;
+        user.ReceiveProductUpdates = Input.ReceiveProductUpdates;
+        user.ReceiveWeeklyDigest = Input.ReceiveWeeklyDigest;
+
+        var updateResult = await UserManager.UpdateAsync(user);
+        if (!updateResult.Succeeded)
+        {
+            message = "Error: Failed to update preferences.";
+            return;
+        }
+
+        await JsRuntime.InvokeVoidAsync("wikiBlaze.setTheme", user.ThemePreference);
+        await JsRuntime.InvokeVoidAsync("wikiBlaze.setDensity", user.DensityPreference);
+
+        message = "Your preferences have been updated";
+    }
+
+    private record OptionItem(string Text, string Value);
+
+    private sealed class InputModel
+    {
+        [Required]
+        public string ThemePreference { get; set; } = "system";
+
+        [Required]
+        public string DensityPreference { get; set; } = "comfortable";
+
+        [MaxLength(80)]
+        public string? PreferredLanguage { get; set; }
+
+        [MaxLength(120)]
+        public string? TimeZone { get; set; }
+
+        [Required]
+        [MaxLength(80)]
+        public string StartPage { get; set; } = "/";
+
+        public bool ReceiveProductUpdates { get; set; }
+
+        public bool ReceiveWeeklyDigest { get; set; }
+    }
+}

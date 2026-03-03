@@ -1,0 +1,244 @@
+﻿using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
+using Wiki_Blaze.Data.Entities;
+
+namespace Wiki_Blaze.Data
+{
+
+   
+
+    public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : IdentityDbContext<ApplicationUser>(options)
+    {
+        public DbSet<WikiCategory> WikiCategories { get; set; }
+        public DbSet<WikiPage> WikiPages { get; set; }
+        public DbSet<WikiAttributeDefinition> WikiAttributeDefinitions { get; set; }
+        public DbSet<WikiPageAttributeValue> WikiPageAttributeValues { get; set; }
+        public DbSet<WikiPageFavorite> WikiPageFavorites { get; set; }
+        public DbSet<WikiFavoriteGroup> WikiFavoriteGroups { get; set; }
+        public DbSet<WikiTemplateGroup> WikiTemplateGroups { get; set; }
+        public DbSet<WikiAttributeTemplate> WikiAttributeTemplates { get; set; }
+        public DbSet<WikiAttributeTemplateAttribute> WikiAttributeTemplateAttributes { get; set; }
+        public DbSet<WikiComment> WikiComments { get; set; }
+        public DbSet<WikiAssignment> WikiAssignments { get; set; }
+        public DbSet<WikiChangeLog> WikiChangeLogs { get; set; }
+
+        protected override void OnModelCreating(ModelBuilder builder)
+        {
+            base.OnModelCreating(builder);
+
+            builder.Entity<ApplicationUser>(user =>
+            {
+                user.Property(u => u.ThemePreference)
+                    .HasMaxLength(20)
+                    .HasDefaultValue(ApplicationUser.DefaultThemePreference);
+
+                user.Property(u => u.DensityPreference)
+                    .HasMaxLength(20)
+                    .HasDefaultValue(ApplicationUser.DefaultDensityPreference);
+
+                user.Property(u => u.PreferredLanguage)
+                    .HasMaxLength(80)
+                    .HasDefaultValue(ApplicationUser.DefaultPreferredLanguage);
+
+                user.Property(u => u.TimeZone)
+                    .HasMaxLength(120)
+                    .HasDefaultValue("UTC");
+
+                user.Property(u => u.StartPage)
+                    .HasMaxLength(80)
+                    .HasDefaultValue(ApplicationUser.DefaultStartPage);
+
+                user.Property(u => u.ReceiveProductUpdates)
+                    .HasDefaultValue(true);
+
+                user.Property(u => u.ReceiveWeeklyDigest)
+                    .HasDefaultValue(false);
+            });
+
+            builder.Entity<WikiPage>()
+                .Property(page => page.Status)
+                .HasDefaultValue(WikiPageStatus.Published)
+                .HasSentinel((WikiPageStatus)(-1));
+
+            builder.Entity<WikiPage>()
+                .Property(page => page.Visibility)
+                .HasDefaultValue(WikiPageVisibility.Public)
+                .HasSentinel((WikiPageVisibility)(-1));
+
+
+            builder.Entity<WikiPage>()
+                .Property(page => page.EntryType)
+                .HasDefaultValue(WikiEntryType.Standard)
+                .HasSentinel((WikiEntryType)(-1));
+
+            builder.Entity<WikiPageAttributeValue>()
+                .HasIndex(value => new { value.WikiPageId, value.AttributeDefinitionId })
+                .IsUnique();
+
+            builder.Entity<WikiPageFavorite>()
+                .HasIndex(favorite => new { favorite.UserId, favorite.WikiPageId, favorite.FavoriteGroupId })
+                .IsUnique();
+
+            builder.Entity<WikiFavoriteGroup>()
+                .HasIndex(group => new { group.UserId, group.Name })
+                .IsUnique();
+
+            builder.Entity<WikiTemplateGroup>()
+                .HasIndex(group => new { group.UserId, group.Name })
+                .IsUnique();
+
+            builder.Entity<WikiPageFavorite>()
+                .HasOne(favorite => favorite.WikiPage)
+                .WithMany()
+                .HasForeignKey(favorite => favorite.WikiPageId);
+
+            builder.Entity<WikiPageFavorite>()
+                .HasOne(favorite => favorite.User)
+                .WithMany()
+                .HasForeignKey(favorite => favorite.UserId);
+
+            builder.Entity<WikiPageFavorite>()
+                .HasOne(favorite => favorite.FavoriteGroup)
+                .WithMany(group => group.Favorites)
+                .HasForeignKey(favorite => favorite.FavoriteGroupId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            builder.Entity<WikiFavoriteGroup>()
+                .HasOne(group => group.User)
+                .WithMany()
+                .HasForeignKey(group => group.UserId);
+
+            builder.Entity<WikiTemplateGroup>()
+                .HasOne(group => group.User)
+                .WithMany()
+                .HasForeignKey(group => group.UserId);
+
+            builder.Entity<WikiPage>()
+                .HasOne(page => page.TemplateGroup)
+                .WithMany(group => group.Templates)
+                .HasForeignKey(page => page.TemplateGroupId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            builder.Entity<WikiAttributeTemplateAttribute>()
+                .HasIndex(templateAttribute => new { templateAttribute.TemplateId, templateAttribute.AttributeDefinitionId })
+                .IsUnique();
+
+            builder.Entity<WikiComment>()
+                .HasIndex(comment => new { comment.WikiPageId, comment.CreatedAt });
+
+            builder.Entity<WikiComment>()
+                .HasOne(comment => comment.WikiPage)
+                .WithMany(page => page.Comments)
+                .HasForeignKey(comment => comment.WikiPageId);
+
+            builder.Entity<WikiComment>()
+                .HasOne(comment => comment.Author)
+                .WithMany()
+                .HasForeignKey(comment => comment.AuthorId);
+
+            builder.Entity<WikiAssignment>()
+                .HasIndex(assignment => new { assignment.WikiPageId, assignment.AssigneeId })
+                .IsUnique();
+
+            builder.Entity<WikiAssignment>()
+                .HasOne(assignment => assignment.WikiPage)
+                .WithMany(page => page.Assignments)
+                .HasForeignKey(assignment => assignment.WikiPageId);
+
+            builder.Entity<WikiAssignment>()
+                .HasOne(assignment => assignment.Assignee)
+                .WithMany()
+                .HasForeignKey(assignment => assignment.AssigneeId);
+
+            builder.Entity<WikiChangeLog>()
+                .HasIndex(changeLog => new { changeLog.WikiPageId, changeLog.CreatedAt });
+
+            builder.Entity<WikiChangeLog>()
+                .HasOne(changeLog => changeLog.WikiPage)
+                .WithMany(page => page.ChangeLogs)
+                .HasForeignKey(changeLog => changeLog.WikiPageId);
+
+            builder.Entity<WikiChangeLog>()
+                .HasOne(changeLog => changeLog.Author)
+                .WithMany()
+                .HasForeignKey(changeLog => changeLog.AuthorId);
+
+            // Initiales Seeding für Kategorien (Beispiel-Daten)
+            builder.Entity<WikiCategory>().HasData(
+                new WikiCategory { Id = 1, Name = "Allgemein", Description = "Generelle Informationen", ParentId = null },
+                new WikiCategory { Id = 2, Name = "IT & Entwicklung", Description = "Softwareentwicklung und Infrastruktur", ParentId = null },
+                new WikiCategory { Id = 3, Name = "Web Entwicklung", Description = "Blazor, ASP.NET Core, JavaScript", ParentId = 2 }, // Kind von ID 2
+                new WikiCategory { Id = 4, Name = "Datenbanken", Description = "SQL Server, PostgreSQL", ParentId = 2 }, // Kind von ID 2
+                new WikiCategory { Id = 5, Name = "Wiki.Forms", Description = "Interaktive PDF-Formulare", ParentId = null, IsFormCategory = true }
+            );
+
+            builder.Entity<WikiAttributeDefinition>().HasData(
+                new WikiAttributeDefinition
+                {
+                    Id = 1,
+                    Name = "Owner",
+                    Description = "Verantwortliche Person",
+                    ValueType = "text",
+                    IsRequired = true,
+                    IsAutoGenerated = false
+                },
+                new WikiAttributeDefinition
+                {
+                    Id = 2,
+                    Name = "ReviewDate",
+                    Description = "Nächstes Review-Datum",
+                    ValueType = "date",
+                    IsRequired = false,
+                    IsAutoGenerated = false
+                },
+                new WikiAttributeDefinition
+                {
+                    Id = 3,
+                    Name = "Keywords",
+                    Description = "Such-Schlagwörter",
+                    ValueType = "text",
+                    IsRequired = false,
+                    IsAutoGenerated = false
+                }
+            );
+
+            builder.Entity<WikiAttributeTemplate>().HasData(
+                new WikiAttributeTemplate
+                {
+                    Id = 1,
+                    Name = "Standard",
+                    Description = "Standardvorlage für neue Wiki-Seiten"
+                }
+            );
+
+            builder.Entity<WikiAttributeTemplateAttribute>().HasData(
+                new WikiAttributeTemplateAttribute
+                {
+                    Id = 1,
+                    TemplateId = 1,
+                    AttributeDefinitionId = 1,
+                    SortOrder = 1,
+                    IsRequired = true
+                },
+                new WikiAttributeTemplateAttribute
+                {
+                    Id = 2,
+                    TemplateId = 1,
+                    AttributeDefinitionId = 2,
+                    SortOrder = 2,
+                    IsRequired = false
+                },
+                new WikiAttributeTemplateAttribute
+                {
+                    Id = 3,
+                    TemplateId = 1,
+                    AttributeDefinitionId = 3,
+                    SortOrder = 3,
+                    IsRequired = false
+                }
+            );
+        }
+    }
+
+
+}

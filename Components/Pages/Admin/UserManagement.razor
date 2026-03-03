@@ -1,0 +1,194 @@
+﻿@page "/admin/users"
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Identity
+@using Wiki_Blaze.Data
+@attribute [Authorize(Roles = "Admin")]
+@inject UserManager<ApplicationUser> UserManager
+@inject RoleManager<IdentityRole> RoleManager
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<PageTitle>User Management</PageTitle>
+
+<div class="block-content block-content-wide">
+    <h2>User management</h2>
+    <p class="text-muted">Manage access, roles, and account status for users. Only administrators can make changes.</p>
+
+    @if (isLoading)
+    {
+        <p>Loading users...</p>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-striped align-middle">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Role</th>
+                        <th>Status</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var userEntry in users)
+                    {
+                        <tr>
+                            <td>
+                                <div class="fw-semibold">@userEntry.DisplayLabel</div>
+                                <div class="text-muted small">@userEntry.UserName</div>
+                            </td>
+                            <td>
+                                <div>@userEntry.Email</div>
+                                <div class="text-muted small">Email confirmed: @(userEntry.EmailConfirmed ? "Yes" : "No")</div>
+                            </td>
+                            <td>@(userEntry.IsAdmin ? "Admin" : "User")</td>
+                            <td>
+                                @if (userEntry.IsLockedOut)
+                                {
+                                    <span class="badge bg-danger">Locked</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-success">Active</span>
+                                }
+                            </td>
+                            <td class="text-end">
+                                <div class="d-flex justify-content-end gap-2 flex-wrap">
+                                    <button type="button"
+                                            class="btn btn-outline-secondary"
+                                            disabled="@userEntry.IsCurrentUser"
+                                            @onclick="() => ToggleAdminAsync(userEntry)">
+                                        @(userEntry.IsAdmin ? "Remove admin" : "Make admin")
+                                    </button>
+                                    <button type="button"
+                                            class="btn btn-outline-secondary"
+                                            disabled="@userEntry.IsCurrentUser"
+                                            @onclick="() => ToggleLockAsync(userEntry)">
+                                        @(userEntry.IsLockedOut ? "Unlock" : "Lock")
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(message))
+    {
+        <div class="alert alert-info mt-3">@message</div>
+    }
+</div>
+
+@code {
+    private bool isLoading = true;
+    private string? message;
+    private List<UserEntry> users = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        message = null;
+        await EnsureRolesAsync();
+        await LoadUsersAsync();
+    }
+
+    private async Task EnsureRolesAsync()
+    {
+        var roles = new[] { "Admin", "User" };
+        foreach (var role in roles)
+        {
+            if (!await RoleManager.RoleExistsAsync(role))
+            {
+                await RoleManager.CreateAsync(new IdentityRole(role));
+            }
+        }
+    }
+
+    private async Task LoadUsersAsync()
+    {
+        isLoading = true;
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var currentUserId = UserManager.GetUserId(authState.User);
+        var results = new List<UserEntry>();
+        foreach (var user in UserManager.Users.OrderBy(u => u.UserName))
+        {
+            var roles = await UserManager.GetRolesAsync(user);
+            var isAdmin = roles.Contains("Admin");
+            results.Add(new UserEntry
+            {
+                Id = user.Id,
+                UserName = user.UserName ?? string.Empty,
+                Email = user.Email ?? string.Empty,
+                EmailConfirmed = user.EmailConfirmed,
+                DisplayLabel = string.IsNullOrWhiteSpace(user.DisplayName) ? user.UserName ?? user.Email ?? "User" : user.DisplayName,
+                IsAdmin = isAdmin,
+                IsLockedOut = user.LockoutEnd.HasValue && user.LockoutEnd.Value > DateTimeOffset.UtcNow,
+                IsCurrentUser = user.Id == currentUserId
+            });
+        }
+
+        users = results;
+        isLoading = false;
+    }
+
+    private async Task ToggleAdminAsync(UserEntry entry)
+    {
+        var user = await UserManager.FindByIdAsync(entry.Id);
+        if (user is null)
+        {
+            message = "User no longer exists.";
+            return;
+        }
+
+        if (entry.IsAdmin)
+        {
+            var result = await UserManager.RemoveFromRoleAsync(user, "Admin");
+            message = result.Succeeded ? $"Removed admin access for {entry.DisplayLabel}." : "Failed to remove admin access.";
+        }
+        else
+        {
+            var result = await UserManager.AddToRoleAsync(user, "Admin");
+            message = result.Succeeded ? $"Granted admin access to {entry.DisplayLabel}." : "Failed to grant admin access.";
+        }
+
+        await LoadUsersAsync();
+    }
+
+    private async Task ToggleLockAsync(UserEntry entry)
+    {
+        var user = await UserManager.FindByIdAsync(entry.Id);
+        if (user is null)
+        {
+            message = "User no longer exists.";
+            return;
+        }
+
+        if (entry.IsLockedOut)
+        {
+            await UserManager.SetLockoutEndDateAsync(user, null);
+            message = $"Unlocked {entry.DisplayLabel}.";
+        }
+        else
+        {
+            await UserManager.SetLockoutEndDateAsync(user, DateTimeOffset.UtcNow.AddYears(100));
+            message = $"Locked {entry.DisplayLabel}.";
+        }
+
+        await LoadUsersAsync();
+    }
+
+    private sealed class UserEntry
+    {
+        public string Id { get; init; } = string.Empty;
+        public string UserName { get; init; } = string.Empty;
+        public string Email { get; init; } = string.Empty;
+        public bool EmailConfirmed { get; init; }
+        public string DisplayLabel { get; init; } = string.Empty;
+        public bool IsAdmin { get; set; }
+        public bool IsLockedOut { get; set; }
+        public bool IsCurrentUser { get; set; }
+    }
+}

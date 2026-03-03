@@ -1,0 +1,79 @@
+﻿@using Microsoft.AspNetCore.Identity
+@using Wiki_Blaze.Data
+
+@rendermode InteractiveServer
+
+@inherits DrawerStateComponentBase
+
+@inject SignInManager<ApplicationUser> SignInManager
+@inject NavigationManager NavigationManager
+
+<DxTabs ActiveTabIndex="ActiveTabIndex"
+        ActiveTabIndexChanged="@OnTabIndexChanged">
+    @foreach(var tab in tabs) {
+        <DxTab TabIconCssClass="@($"icon {tab.IconCssClass}")"
+        Text="@tab.Text"
+        Visible="@tab.Visible" />
+    }
+</DxTabs>
+
+@code {
+    bool hasExternalLogins;
+    ManageNavMenuTabModel[] tabs = Array.Empty<ManageNavMenuTabModel>();
+
+    int ActiveTabIndex { get; set; }
+
+    protected override async Task OnInitializedAsync() {
+        hasExternalLogins = (await SignInManager.GetExternalAuthenticationSchemesAsync()).Any();
+
+        tabs = [
+            new("Profile", "Account/Manage", "icon-profile"),
+            new("Preferences", "Account/Manage/Preferences", "icon-settings"),
+            new("Email", "Account/Manage/Email", "icon-email"),
+            new("Password", "Account/Manage/ChangePassword", "icon-password") {
+                SubPages = [
+                    "Account/Manage/SetPassword",
+                ]
+            },
+            new("External login", "Account/Manage/ExternalLogins", "icon-external") { Visible = hasExternalLogins },
+            new("Two-factor authentication", "Account/Manage/TwoFactorAuthentication", "icon-two-factor") {
+                SubPages = [
+                    "Account/Manage/Disable2fa",
+                    "Account/Manage/EnableAuthenticator",
+                    "Account/Manage/GenerateRecoveryCodes",
+                    "Account/Manage/ResetAuthenticator",
+                ]
+            },
+            new("Personal Data", "Account/Manage/PersonalData", "icon-personal") {
+                SubPages = [
+                    "Account/Manage/DeletePersonalData",
+                ]
+            },
+        ];
+    }
+
+    protected override void OnAfterRender(bool firstRender) {
+        int index = Array.FindLastIndex(tabs, tab => tab.Pages.Any(page => NavigationManager.Uri.Contains(page)));
+        if(index != ActiveTabIndex && index >= 0) {
+            ActiveTabIndex = index;
+            StateHasChanged();
+        }
+    }
+
+    private void OnTabIndexChanged(int index) {
+        if(index != ActiveTabIndex) {
+            ActiveTabIndex = index;
+            NavigationManager.NavigateTo(AddDrawerStateToUrl(tabs[index].Uri));
+        }
+    }
+
+    class ManageNavMenuTabModel(string text, string uri, string iconCssClass) {
+        public string Text { get; } = text;
+        public string Uri { get; } = uri;
+        public string IconCssClass { get; } = iconCssClass;
+        public string[] SubPages { get; init; } = Array.Empty<string>();
+        public bool Visible { get; init; } = true;
+
+        public IEnumerable<string> Pages => SubPages.Concat(new[] { Uri });
+    }
+}

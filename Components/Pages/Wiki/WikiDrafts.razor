@@ -1,0 +1,792 @@
+@page "/wiki/drafts"
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.AspNetCore.Identity
+@using System.Security.Claims
+@using Wiki_Blaze.Data
+@using Wiki_Blaze.Data.Entities
+@using Wiki_Blaze.Services
+@using Wiki_Blaze.Components.Pages.Wiki.Components
+@inject IWikiService WikiService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject UserManager<ApplicationUser> UserManager
+@inject NavigationManager NavManager
+@inject IJSRuntime Js
+@rendermode InteractiveServer
+
+<PageTitle>Wiki Entwürfe</PageTitle>
+
+<div class="container-fluid h-100 d-flex flex-column">
+    <div class="row mb-4 align-items-center">
+        <div class="col">
+            <h2 class="mb-0 fw-bold text-primary">
+                <span class="oi oi-document me-2"></span>Entwürfe
+            </h2>
+            <small class="text-muted">Entwürfe und offene Texte im persönlichen Arbeitsbereich</small>
+        </div>
+        <div class="col-auto">
+            <DxButton RenderStyle="ButtonRenderStyle.Success"
+                      Text="Neuer Eintrag"
+                      IconCssClass="oi oi-plus"
+                      NavigateUrl="wiki/create" />
+        </div>
+    </div>
+
+    @if (!IsAuthenticated)
+    {
+        <div class="alert alert-info">Bitte melden Sie sich an, um Ihre Entwürfe zu sehen.</div>
+    }
+
+    <div class="row flex-grow-1">
+        <div class="col-lg-3 col-md-4 mb-4">
+            <div class="card shadow-sm h-100 border-0 bg-light">
+                <div class="card-body">
+                    <h5 class="card-title text-secondary mb-3">Navigation</h5>
+
+                    <div class="mb-4">
+                        <DxTextBox NullText="Suchen..."
+                                   BindValueMode="BindValueMode.OnInput"
+                                   TextChanged="OnSearchTextChanged"
+                                   ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto">
+                            <Buttons>
+                                <DxEditorButton IconCssClass="oi oi-magnifying-glass" Tooltip="Suchen" />
+                            </Buttons>
+                        </DxTextBox>
+                    </div>
+
+                    <h6 class="text-uppercase text-muted small fw-bold mt-4 mb-2">Sichtbarkeit</h6>
+                    <div class="list-group list-group-flush bg-transparent">
+                        <button class="list-group-item list-group-item-action bg-transparent border-0 rounded px-2 py-2 @(SelectedVisibilityFilter is null ? "active-filter" : "")"
+                                @onclick="() => FilterVisibility(null)">
+                            <span><span class="oi oi-eye me-2"></span>Alle</span>
+                        </button>
+                        <button class="list-group-item list-group-item-action bg-transparent border-0 rounded px-2 py-2 @(SelectedVisibilityFilter == WikiPageVisibility.Private ? "active-filter" : "")"
+                                @onclick="() => FilterVisibility(WikiPageVisibility.Private)">
+                            <span><span class="oi oi-lock-locked me-2"></span>Nur Privat</span>
+                        </button>
+                    </div>
+
+                    <h6 class="text-uppercase text-muted small fw-bold mt-4 mb-2">Kategorien</h6>
+                    <div class="list-group list-group-flush bg-transparent">
+                        <button class="list-group-item list-group-item-action bg-transparent border-0 rounded px-2 py-2 @(SelectedCategoryId == 0 ? "active-filter" : "")"
+                                @onclick="() => FilterCategory(0)">
+                            <span class="d-flex justify-content-between align-items-center w-100">
+                                <span><span class="oi oi-grid-three-up me-2"></span> Alle Einträge</span>
+                                <span class="badge rounded-pill bg-light text-dark border">(@GetAllEntriesCount())</span>
+                            </span>
+                        </button>
+                        @if (CategoryNavigationItems.Count != 0)
+                        {
+                            @foreach (var navItem in CategoryNavigationItems)
+                            {
+                                if (!IsCategoryVisible(navItem))
+                                {
+                                    continue;
+                                }
+
+                                var category = navItem.Category;
+                                var hasChildren = HasChildCategories(category.Id);
+
+                                <div class="wiki-nav-item d-flex align-items-center"
+                                     style="padding-left:@($"{0.5 + (navItem.Level * 1.0):0.0}rem")">
+                                    @if (hasChildren)
+                                    {
+                                        <button type="button"
+                                                class="btn btn-link category-toggle px-1 py-0"
+                                                title="Unterkategorien ein-/ausklappen"
+                                                @onclick="() => ToggleCategoryExpansion(category.Id)">
+                                            <span class="oi @(ExpandedCategoryIds.Contains(category.Id) ? "oi-caret-bottom" : "oi-caret-right")"></span>
+                                        </button>
+                                    }
+                                    else
+                                    {
+                                        <span class="category-toggle-placeholder"></span>
+                                    }
+
+                                    <button class="list-group-item list-group-item-action bg-transparent border-0 rounded px-2 py-2 flex-grow-1 @(SelectedCategoryId == category.Id ? "active-filter" : "")"
+                                            @onclick="() => FilterCategory(category.Id)">
+                                        <span class="d-flex justify-content-between align-items-center w-100">
+                                            <span><span class="oi oi-folder me-2 text-warning"></span> @category.Name</span>
+                                            @if (hasChildren)
+                                            {
+                                                var count = GetCategoryCount(category.Id);
+                                                <span class="badge rounded-pill bg-light text-dark border" title="Direkt/inkl. Unterkategorien">
+                                                    D:@count.DirectCount · Σ:@count.TotalCount
+                                                </span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge rounded-pill bg-light text-dark border">(@GetCategoryCount(category.Id).DirectCount)</span>
+                                            }
+                                        </span>
+                                    </button>
+                                </div>
+                            }
+                        }
+                    </div>
+                    <div class="small text-muted mt-3">
+                        <strong>Fachliche Definition:</strong> Ein Entwurf ist ein Eintrag mit <code>WikiPageStatus.Draft</code>.
+                        <br />Lokale, ungespeicherte Änderungen sind separat und derzeit nicht als eigener Draft-Status in der DB modelliert.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-9 col-md-8">
+            @if (IsLoading)
+            {
+                <div class="d-flex justify-content-center align-items-center h-50">
+                    <div class="spinner-border text-primary" role="status"></div>
+                </div>
+            }
+            else if (FilteredPages != null && FilteredPages.Any())
+            {
+                <div class="@CardGridCss">
+                    @foreach (var page in FilteredPages)
+                    {
+                        <div class="col">
+                            <div class="card h-100 shadow-sm border-0 hover-card wiki-card @(UseLargeCards ? "wiki-card--large" : "wiki-card--compact")"
+                                 @oncontextmenu="(args) => OnContextMenuAsync(args, page)" @oncontextmenu:preventDefault>
+                                <div class="card-body d-flex flex-column">
+                                    <div class="d-flex justify-content-between align-items-start mb-2">
+                                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                                            <span class="badge bg-light text-dark border">
+                                                @GetCategoryLabel(page)
+                                            </span>
+                                            <span class="badge @WikiStatusDisplayHelper.GetBadgeCssClass(page.Status)">
+                                                @WikiStatusDisplayHelper.GetLabel(page.Status)
+                                            </span>
+                                            <span class="badge @WikiStatusDisplayHelper.GetVisibilityBadgeCssClass(page.Visibility)">
+                                                @WikiStatusDisplayHelper.GetVisibilityLabel(page.Visibility)
+                                            </span>
+                                        </div>
+                                        <div class="d-flex align-items-center gap-2">
+                                            <small class="text-muted">@(page.LastModified.ToString("dd.MM.yy"))</small>
+                                            <button class="btn btn-sm wiki-favorite-btn @(IsFavorite(page.Id) ? "is-active" : string.Empty)"
+                                                    type="button"
+                                                    title="@(GetFavoriteTooltip(page.Id))"
+                                                    aria-label="@(GetFavoriteTooltip(page.Id))"
+                                                    aria-pressed="@IsFavorite(page.Id)"
+                                                    @onclick="() => ToggleFavoriteAsync(page)"
+                                                    @onclick:stopPropagation>
+                                                <span class="wiki-favorite-icon" aria-hidden="true">@(IsFavorite(page.Id) ? "★" : "☆")</span>
+                                            </button>
+                                            <div class="dropdown">
+                                                <button class="btn btn-sm btn-light border dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="Aktionen">
+                                                    <span class="oi oi-ellipses"></span>
+                                                </button>
+                                                <ul class="dropdown-menu dropdown-menu-end">
+                                                    <li>
+                                                        <button class="dropdown-item" type="button" @onclick="() => OpenEntry(page)">
+                                                            <span class="oi oi-eye me-2"></span>Öffnen
+                                                        </button>
+                                                    </li>
+                                                    <li>
+                                                        <button class="dropdown-item" type="button" @onclick="() => EditEntry(page)">
+                                                            <span class="oi oi-pencil me-2"></span>Bearbeiten
+                                                        </button>
+                                                    </li>
+                                                    <li>
+                                                        <button class="dropdown-item" type="button" @onclick="() => PublishDraftAsync(page)">
+                                                            <span class="oi oi-cloud-upload me-2"></span>Veröffentlichen
+                                                        </button>
+                                                    </li>
+                                                    <li>
+                                                        <button class="dropdown-item" type="button" @onclick="() => OpenProperties(page)">
+                                                            <span class="oi oi-info me-2"></span>Eigenschaften
+                                                        </button>
+                                                    </li>
+                                                    <li>
+                                                        <button class="dropdown-item" type="button" @onclick="() => ToggleFavoriteAsync(page)">
+                                                            <span class="oi oi-star me-2"></span>@GetFavoriteMenuText(page.Id)
+                                                        </button>
+                                                    </li>
+                                                    <li>
+                                                        <button class="dropdown-item" type="button" @onclick="ToggleEntryViewMode">
+                                                            <span class="oi oi-resize-height me-2"></span>@(UseLargeCards ? "Kompakte Ansicht" : "Große Ansicht")
+                                                        </button>
+                                                    </li>
+                                                    <li><hr class="dropdown-divider"></li>
+                                                    <li>
+                                                        <button class="dropdown-item text-danger" type="button" @onclick="() => DeleteEntryAsync(page)">
+                                                            <span class="oi oi-trash me-2"></span>Löschen
+                                                        </button>
+                                                    </li>
+                                                </ul>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <h5 class="card-title fw-bold">
+                                        <a href="@($"wiki/view/{page.Id}")" class="text-decoration-none text-dark">
+                                            @(page.Title)
+                                        </a>
+                                    </h5>
+
+                                    @if (page.Content != null && page.Content.Length > 0)
+                                    {
+                                        <div class="wiki-preview flex-grow-1 @(UseLargeCards ? "preview-large" : "preview-compact")">
+                                            <DxRichEdit DocumentContent="@(page.Content)"
+                                                        ReadOnly="true"
+                                                        ViewType="ViewType.Simple"
+                                                        BarMode="BarMode.None"
+                                                        CssClass="w-100 h-100 border-0 preview-rich-edit" />
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <p class="card-text text-muted small flex-grow-1 text-truncate-multiline">
+                                            @(string.IsNullOrWhiteSpace(page.PreviewText) ? "Keine Vorschau verfügbar..." : page.PreviewText)
+                                        </p>
+                                    }
+
+                                    <div class="mt-3 pt-2 border-top d-flex align-items-center text-muted small">
+                                        <WikiAuthorFooter Page="page" />
+                                        <button class="btn btn-link btn-sm ms-auto p-0" @onclick="() => EditEntry(page)">Weiter bearbeiten</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+            else
+            {
+                <div class="text-center mt-5 text-muted">
+                    <span class="oi oi-inbox display-4 mb-3 d-block"></span>
+                    <p>Keine Entwürfe gefunden.</p>
+                    @if (SelectedCategoryId != 0 || !string.IsNullOrEmpty(SearchTerm) || SelectedVisibilityFilter is not null)
+                    {
+                        <p class="small mb-1">Aktive Filter (Kategorie, Suche oder Sichtbarkeit) können zurückgesetzt werden.</p>
+                        <button class="btn btn-link" @onclick="ResetFilters">Filter zurücksetzen</button>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+<style>
+    .active-filter {
+        background-color: #e9ecef !important;
+        color: #0d6efd !important;
+        font-weight: 600;
+    }
+    .hover-card {
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .hover-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 .5rem 1rem rgba(0,0,0,.15)!important;
+    }
+    .text-truncate-multiline {
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+    .wiki-preview {
+        overflow: hidden;
+        pointer-events: none;
+    }
+    .wiki-card--large .wiki-preview.preview-large {
+        max-height: 240px;
+    }
+    .wiki-card--compact .wiki-preview.preview-compact {
+        max-height: 140px;
+    }
+    .wiki-card--large .card-body {
+        min-height: 420px;
+    }
+    .wiki-card--compact .card-body {
+        min-height: 320px;
+    }
+    .wiki-preview .preview-rich-edit {
+        background-color: transparent;
+    }
+    .wiki-favorite-btn {
+        border: 1px solid #d0d7de;
+        background: #fff;
+        color: #6c757d;
+        border-radius: 999px;
+        width: 2rem;
+        height: 2rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        transition: all .2s ease;
+    }
+    .wiki-favorite-btn:hover {
+        color: #f59f00;
+        border-color: #f59f00;
+        transform: translateY(-1px);
+    }
+    .wiki-favorite-btn.is-active {
+        color: #f59f00;
+        border-color: #f59f00;
+        background: #fff8db;
+    }
+    .wiki-favorite-icon {
+        font-size: 1rem;
+        line-height: 1;
+    }
+</style>
+
+<DxContextMenu @ref="ContextMenu" ItemClick="OnContextMenuItemClick">
+    <Items>
+        <DxContextMenuItem Text="Öffnen" IconCssClass="oi oi-eye" Name="open" />
+        <DxContextMenuItem Text="Bearbeiten" IconCssClass="oi oi-pencil" Name="edit" />
+        <DxContextMenuItem Text="Veröffentlichen" IconCssClass="oi oi-cloud-upload" Name="publish" />
+        <DxContextMenuItem Text="Eigenschaften" IconCssClass="oi oi-info" Name="properties" />
+        <DxContextMenuItem Text="Favorit umschalten" IconCssClass="oi oi-star" Name="toggle-favorite" />
+        <DxContextMenuItem Text="Ansicht umschalten" IconCssClass="oi oi-resize-height" Name="toggle-view" />
+        <DxContextMenuItem Text="Löschen" IconCssClass="oi oi-trash" Name="delete" BeginGroup="true" />
+    </Items>
+</DxContextMenu>
+
+<WikiEntryPropertiesDialog IsVisible="@IsPropertiesDialogOpen"
+                           IsVisibleChanged="OnPropertiesDialogVisibleChanged"
+                           Page="@SelectedPropertiesPage"
+                           OnSaved="OnPropertiesSaved" />
+
+@code {
+    private List<WikiCategory>? Categories;
+    private List<WikiPage>? AllPages;
+    private List<WikiPage>? FilteredPages;
+
+    private int SelectedCategoryId = 0;
+    private string? SearchTerm;
+    private WikiPageVisibility? SelectedVisibilityFilter;
+    private bool IsLoading = true;
+    private bool UseLargeCards = true;
+    private bool IsAuthenticated = true;
+    private string? CurrentUserId;
+    private HashSet<int> FavoritePageIds = new();
+    private DxContextMenu? ContextMenu;
+    private WikiPage? ContextMenuPage;
+    private bool IsPropertiesDialogOpen;
+    private WikiPage? SelectedPropertiesPage;
+    private IReadOnlyDictionary<int, CategoryCount> CategoryCounts = new Dictionary<int, CategoryCount>();
+    private List<CategoryNavigationItem> CategoryNavigationItems = new();
+    private Dictionary<int, List<WikiCategory>> CategoriesByParent = new();
+    private Dictionary<int, int?> CategoryParentLookup = new();
+    private HashSet<int> ExpandedCategoryIds = new();
+
+    private string CardGridCss => UseLargeCards
+        ? "row row-cols-1 row-cols-lg-2 g-4"
+        : "row row-cols-1 row-cols-md-2 row-cols-xl-3 g-4";
+
+    protected override async Task OnInitializedAsync()
+    {
+        IsLoading = true;
+        try
+        {
+            var catTask = WikiService.GetCategoriesAsync();
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+
+            if (user.Identity?.IsAuthenticated != true)
+            {
+                IsAuthenticated = false;
+                Categories = await catTask;
+                AllPages = new List<WikiPage>();
+                ApplyFilters();
+                return;
+            }
+
+            CurrentUserId = ResolveCurrentUserId(user);
+            if (string.IsNullOrWhiteSpace(CurrentUserId))
+            {
+                IsAuthenticated = false;
+                Categories = await catTask;
+                AllPages = new List<WikiPage>();
+                ApplyFilters();
+                return;
+            }
+
+            var pageTask = WikiService.GetDraftsAsync(CurrentUserId);
+            var favoritesTask = WikiService.GetFavoritesAsync(CurrentUserId);
+
+            await Task.WhenAll(catTask, pageTask, favoritesTask);
+
+            Categories = await catTask;
+            AllPages = await pageTask;
+            FavoritePageIds = (await favoritesTask).Select(f => f.WikiPageId).ToHashSet();
+
+            BuildCategoryNavigation();
+            ApplyFilters();
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+
+    private static string? ResolveCurrentUserId(ClaimsPrincipal user)
+    {
+        var userId = user.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!string.IsNullOrWhiteSpace(userId))
+        {
+            return userId;
+        }
+
+        userId = user.FindFirstValue(ClaimTypes.Email)
+            ?? user.Identity?.Name
+            ?? user.FindFirstValue("sub");
+
+        return string.IsNullOrWhiteSpace(userId) ? null : userId;
+    }
+
+    private void OnSearchTextChanged(string text)
+    {
+        SearchTerm = text;
+        ApplyFilters();
+    }
+
+    private void FilterCategory(int categoryId)
+    {
+        SelectedCategoryId = categoryId;
+        ApplyFilters();
+    }
+
+    private void ResetFilters()
+    {
+        SearchTerm = null;
+        SelectedCategoryId = 0;
+        SelectedVisibilityFilter = null;
+        ApplyFilters();
+    }
+
+    private void FilterVisibility(WikiPageVisibility? visibility)
+    {
+        SelectedVisibilityFilter = visibility;
+        ApplyFilters();
+    }
+
+    private void ApplyFilters()
+    {
+        if (AllPages == null)
+        {
+            return;
+        }
+
+        var query = AllPages.AsEnumerable();
+
+        RecalculateCategoryCounts();
+
+        if (SelectedCategoryId != 0)
+        {
+            query = query.Where(p => p.CategoryId == SelectedCategoryId);
+        }
+
+        if (!string.IsNullOrWhiteSpace(SearchTerm))
+        {
+            query = query.Where(p =>
+                p.Title.Contains(SearchTerm, StringComparison.OrdinalIgnoreCase) ||
+                (p.PreviewText != null && p.PreviewText.Contains(SearchTerm, StringComparison.OrdinalIgnoreCase))
+            );
+        }
+
+        if (SelectedVisibilityFilter == WikiPageVisibility.Private)
+        {
+            query = query.Where(p => p.Visibility == WikiPageVisibility.Private);
+        }
+
+        FilteredPages = query.ToList();
+    }
+
+    private string GetCategoryLabel(WikiPage page)
+    {
+        if (page.Category is not null)
+        {
+            return page.Category.Name;
+        }
+
+        var category = Categories?.FirstOrDefault(c => c.Id == page.CategoryId);
+        if (category is not null)
+        {
+            return category.Name;
+        }
+
+        return page.CategoryId == 0 ? "Ohne Kategorie" : "Kategorie gelöscht";
+    }
+
+    private void BuildCategoryNavigation()
+    {
+        CategoriesByParent = Categories?
+            .Where(c => c.ParentId.HasValue)
+            .GroupBy(c => c.ParentId!.Value)
+            .ToDictionary(g => g.Key, g => g.OrderBy(c => c.Name, StringComparer.OrdinalIgnoreCase).ToList())
+            ?? new Dictionary<int, List<WikiCategory>>();
+
+        CategoryParentLookup = Categories?
+            .ToDictionary(c => c.Id, c => c.ParentId)
+            ?? new Dictionary<int, int?>();
+
+        var expanded = ExpandedCategoryIds;
+        CategoryNavigationItems = BuildNavigationItems();
+
+        var parentIdsWithChildren = CategoriesByParent
+            .Where(entry => entry.Value.Count != 0)
+            .Select(entry => entry.Key)
+            .ToHashSet();
+
+        ExpandedCategoryIds = expanded.Count == 0
+            ? parentIdsWithChildren
+            : expanded.Where(parentIdsWithChildren.Contains).ToHashSet();
+    }
+
+    private List<CategoryNavigationItem> BuildNavigationItems()
+    {
+        if (Categories == null || Categories.Count == 0)
+        {
+            return new();
+        }
+
+        var categoryIdSet = Categories.Select(c => c.Id).ToHashSet();
+        var rootNodes = Categories
+            .Where(c => !c.ParentId.HasValue || !categoryIdSet.Contains(c.ParentId.Value))
+            .OrderBy(c => c.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var items = new List<CategoryNavigationItem>();
+        foreach (var root in rootNodes)
+        {
+            AddNavigationItem(root, 0, items);
+        }
+
+        return items;
+    }
+
+    private void AddNavigationItem(WikiCategory category, int level, List<CategoryNavigationItem> items)
+    {
+        items.Add(new CategoryNavigationItem(category, level));
+
+        if (!CategoriesByParent.TryGetValue(category.Id, out var children))
+        {
+            return;
+        }
+
+        foreach (var child in children)
+        {
+            AddNavigationItem(child, level + 1, items);
+        }
+    }
+
+    private bool HasChildCategories(int categoryId)
+    {
+        return CategoriesByParent.TryGetValue(categoryId, out var children) && children.Count > 0;
+    }
+
+    private bool IsCategoryVisible(CategoryNavigationItem item)
+    {
+        var parentId = item.Category.ParentId;
+        while (parentId.HasValue)
+        {
+            if (!ExpandedCategoryIds.Contains(parentId.Value))
+            {
+                return false;
+            }
+
+            if (!CategoryParentLookup.TryGetValue(parentId.Value, out parentId))
+            {
+                break;
+            }
+        }
+
+        return true;
+    }
+
+    private void ToggleCategoryExpansion(int categoryId)
+    {
+        if (!ExpandedCategoryIds.Add(categoryId))
+        {
+            ExpandedCategoryIds.Remove(categoryId);
+        }
+    }
+
+    private void RecalculateCategoryCounts()
+    {
+        CategoryCounts = CategoryCountCalculator.Calculate(Categories, AllPages);
+    }
+
+    private int GetAllEntriesCount()
+    {
+        return AllPages?.Count ?? 0;
+    }
+
+    private CategoryCount GetCategoryCount(int categoryId)
+    {
+        return CategoryCounts.GetValueOrDefault(categoryId, new CategoryCount(0, 0));
+    }
+
+    private void OpenEntry(WikiPage page)
+    {
+        NavManager.NavigateTo($"/wiki/view/{page.Id}");
+    }
+
+    private void EditEntry(WikiPage page)
+    {
+        NavManager.NavigateTo($"/wiki/edit/{page.Id}");
+    }
+
+    private void OpenProperties(WikiPage page)
+    {
+        SelectedPropertiesPage = page;
+        IsPropertiesDialogOpen = true;
+    }
+
+    private Task OnPropertiesDialogVisibleChanged(bool isVisible)
+    {
+        IsPropertiesDialogOpen = isVisible;
+        if (!isVisible)
+        {
+            SelectedPropertiesPage = null;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private Task OnPropertiesSaved(WikiPage page)
+    {
+        var target = AllPages?.FirstOrDefault(p => p.Id == page.Id);
+        if (target is not null)
+        {
+            target.AttributeValues = page.AttributeValues;
+        }
+
+        ApplyFilters();
+        return Task.CompletedTask;
+    }
+
+    private async Task DeleteEntryAsync(WikiPage page)
+    {
+        var confirmed = await Js.InvokeAsync<bool>("confirm", $"Eintrag \"{page.Title}\" wirklich löschen?");
+        if (!confirmed)
+        {
+            return;
+        }
+
+        await WikiService.DeletePageAsync(page.Id);
+        if (AllPages != null)
+        {
+            AllPages = AllPages.Where(p => p.Id != page.Id).ToList();
+            ApplyFilters();
+        }
+    }
+
+    private void ToggleEntryViewMode()
+    {
+        UseLargeCards = !UseLargeCards;
+    }
+
+    private async Task OnContextMenuAsync(MouseEventArgs args, WikiPage page)
+    {
+        ContextMenuPage = page;
+        if (ContextMenu != null)
+        {
+            await ContextMenu.ShowAsync(args);
+        }
+    }
+
+    private async Task OnContextMenuItemClick(ContextMenuItemClickEventArgs args)
+    {
+        if (ContextMenuPage == null)
+        {
+            return;
+        }
+
+        switch (args.ItemInfo.Name)
+        {
+            case "open":
+                OpenEntry(ContextMenuPage);
+                break;
+            case "edit":
+                EditEntry(ContextMenuPage);
+                break;
+            case "properties":
+                OpenProperties(ContextMenuPage);
+                break;
+            case "publish":
+                await PublishDraftAsync(ContextMenuPage);
+                break;
+            case "toggle-favorite":
+                await ToggleFavoriteAsync(ContextMenuPage);
+                break;
+            case "toggle-view":
+                ToggleEntryViewMode();
+                break;
+            case "delete":
+                await DeleteEntryAsync(ContextMenuPage);
+                break;
+        }
+    }
+
+    private bool IsFavorite(int pageId) => FavoritePageIds.Contains(pageId);
+
+    private string GetFavoriteTooltip(int pageId)
+        => IsFavorite(pageId) ? "Aus Favoriten entfernen" : "Zu Favoriten hinzufügen";
+
+    private string GetFavoriteMenuText(int pageId)
+        => IsFavorite(pageId) ? "Favorit entfernen" : "Als Favorit markieren";
+
+    private async Task ToggleFavoriteAsync(WikiPage page)
+    {
+        if (string.IsNullOrWhiteSpace(CurrentUserId))
+        {
+            return;
+        }
+
+        var wasFavorite = IsFavorite(page.Id);
+        if (wasFavorite)
+        {
+            FavoritePageIds.Remove(page.Id);
+        }
+        else
+        {
+            FavoritePageIds.Add(page.Id);
+        }
+
+        try
+        {
+            if (wasFavorite)
+            {
+                await WikiService.RemoveFavoriteAsync(CurrentUserId, page.Id);
+            }
+            else
+            {
+                await WikiService.AddOrMoveFavoriteAsync(CurrentUserId, page.Id);
+            }
+        }
+        catch
+        {
+            if (wasFavorite)
+            {
+                FavoritePageIds.Add(page.Id);
+            }
+            else
+            {
+                FavoritePageIds.Remove(page.Id);
+            }
+        }
+    }
+
+    private async Task PublishDraftAsync(WikiPage page)
+    {
+        page.Status = WikiPageStatus.Published;
+        if (page.Visibility == WikiPageVisibility.Private)
+        {
+            page.Visibility = WikiPageVisibility.Team;
+        }
+
+        await WikiService.SavePageAsync(page);
+
+        if (AllPages is not null)
+        {
+            AllPages = AllPages.Where(p => p.Id != page.Id).ToList();
+            ApplyFilters();
+        }
+    }
+
+    private sealed record CategoryNavigationItem(WikiCategory Category, int Level);
+}

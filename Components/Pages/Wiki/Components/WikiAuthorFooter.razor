@@ -1,0 +1,16 @@
+@using Wiki_Blaze.Data.Entities
+
+<span class="oi oi-person me-1"></span> Autor: @ResolveAuthorDisplayName(Page)
+
+@code {
+    [Parameter, EditorRequired] public WikiPage Page { get; set; } = default!;
+
+    private static string ResolveAuthorDisplayName(WikiPage page)
+    {
+        return !string.IsNullOrWhiteSpace(page.AuthorDisplayName)
+            ? page.AuthorDisplayName
+            : !string.IsNullOrWhiteSpace(page.OwnerDisplayName)
+                ? page.OwnerDisplayName
+                : "-";
+    }
+}

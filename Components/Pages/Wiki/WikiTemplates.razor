@@ -1,0 +1,833 @@
+@page "/wiki/templates"
+@using Microsoft.AspNetCore.Components.Web
+@using Wiki_Blaze.Data.Entities
+@using Wiki_Blaze.Services
+@inject IWikiService WikiService
+@inject NavigationManager NavManager
+@inject IJSRuntime Js
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@rendermode InteractiveServer
+
+<PageTitle>Wiki Vorlagen</PageTitle>
+
+<div class="container-fluid h-100 d-flex flex-column">
+    <div class="row mb-4 align-items-center">
+        <div class="col">
+            <h2 class="mb-0 fw-bold text-primary">
+                <span class="oi oi-copywriting me-2"></span>Vorlagen
+            </h2>
+            <small class="text-muted">Vorbereitete Strukturen für schnelle neue Wiki-Einträge</small>
+        </div>
+        <div class="col-auto">
+            <DxButton RenderStyle="ButtonRenderStyle.Success"
+                      Text="Neue Vorlage"
+                      IconCssClass="oi oi-plus"
+                      NavigateUrl="wiki/templates/create" />
+        </div>
+    </div>
+
+    <div class="row flex-grow-1">
+        <div class="col-lg-3 col-md-4 mb-4">
+            <div class="card shadow-sm h-100 border-0 bg-light">
+                <div class="card-body">
+                    <h5 class="card-title text-secondary mb-3">Navigation</h5>
+
+                    <div class="mb-4">
+                        <DxTextBox NullText="Suchen..."
+                                   BindValueMode="BindValueMode.OnInput"
+                                   TextChanged="OnSearchTextChanged"
+                                   ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto">
+                            <Buttons>
+                                <DxEditorButton IconCssClass="oi oi-magnifying-glass" Tooltip="Suchen" />
+                            </Buttons>
+                        </DxTextBox>
+                    </div>
+
+                    <div class="d-flex justify-content-between align-items-center mt-4 mb-2">
+                        <h6 class="text-uppercase text-muted small fw-bold mb-0">Gruppen</h6>
+                        <button type="button" class="btn btn-sm btn-primary" @onclick="StartCreateGroup">
+                            <span class="oi oi-plus me-1"></span>Gruppe erstellen
+                        </button>
+                    </div>
+
+                    @if (!string.IsNullOrWhiteSpace(GroupActionError))
+                    {
+                        <div class="alert alert-danger py-2 px-3 small mb-3" role="alert">
+                            @GroupActionError
+                        </div>
+                    }
+
+                    @if (IsCreatingGroup)
+                    {
+                        <div class="border rounded p-2 mb-3 bg-white">
+                            <DxTextBox NullText="Name der Gruppe"
+                                       Text="@NewGroupName"
+                                       TextChanged="OnNewGroupNameChanged"
+                                       BindValueMode="BindValueMode.OnInput"
+                                       ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto" />
+                            <div class="d-flex justify-content-end gap-2 mt-2">
+                                <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="CancelCreateGroup">Abbrechen</button>
+                                <button type="button" class="btn btn-sm btn-primary" @onclick="CreateGroupAsync">Erstellen</button>
+                            </div>
+                        </div>
+                    }
+
+                    <div class="list-group list-group-flush bg-transparent">
+                        <button class="list-group-item list-group-item-action bg-transparent border-0 rounded px-2 py-2 @(SelectedGroupId == 0 ? "active-filter" : "")"
+                                @onclick="() => FilterGroup(0)">
+                            <span class="d-flex justify-content-between align-items-center w-100">
+                                <span><span class="oi oi-grid-three-up me-2"></span> Alle Einträge</span>
+                                <span class="badge rounded-pill bg-light text-dark border">(@GetAllEntriesCount())</span>
+                            </span>
+                        </button>
+                        @if (TemplateGroups != null)
+                        {
+                            @foreach (var group in TemplateGroups)
+                            {
+                                <div class="list-group-item bg-transparent border-0 rounded px-2 py-2 @(SelectedGroupId == group.Id ? "active-filter" : "")">
+                                    @if (EditingGroupId == group.Id)
+                                    {
+                                        <DxTextBox NullText="Neuer Name"
+                                                   Text="@EditGroupName"
+                                                   TextChanged="OnEditGroupNameChanged"
+                                                   BindValueMode="BindValueMode.OnInput"
+                                                   ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto" />
+                                        <div class="d-flex justify-content-end gap-2 mt-2">
+                                            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="CancelRenameGroup">Abbrechen</button>
+                                            <button type="button" class="btn btn-sm btn-primary" @onclick="() => SaveRenameGroupAsync(group)">Speichern</button>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div class="d-flex justify-content-between align-items-center gap-2 w-100">
+                                            <button class="btn btn-link text-decoration-none text-start text-reset p-0 flex-grow-1"
+                                                    type="button"
+                                                    @onclick="() => FilterGroup(group.Id)">
+                                                <span><span class="oi oi-layers me-2 text-primary"></span> @group.Name</span>
+                                            </button>
+                                            <div class="d-flex align-items-center gap-1">
+                                                <span class="badge rounded-pill bg-light text-dark border">(@GetGroupCount(group.Id))</span>
+                                                @if (!IsDefaultTemplateGroup(group))
+                                                {
+                                                    <button type="button" class="btn btn-sm btn-light border" title="Umbenennen" @onclick="() => StartRenameGroup(group)">
+                                                        <span class="oi oi-pencil"></span>
+                                                    </button>
+                                                    <button type="button" class="btn btn-sm btn-light border text-danger" title="Löschen" @onclick="() => DeleteGroupAsync(group)">
+                                                        <span class="oi oi-trash"></span>
+                                                    </button>
+                                                }
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-9 col-md-8">
+            @if (IsLoading)
+            {
+                <div class="d-flex justify-content-center align-items-center h-50">
+                    <div class="spinner-border text-primary" role="status"></div>
+                </div>
+            }
+            else if (FilteredPages != null && FilteredPages.Any())
+            {
+                <div class="@CardGridCss">
+                    @foreach (var page in FilteredPages)
+                    {
+                        <div class="col">
+                            <div class="card h-100 shadow-sm border-0 hover-card wiki-card @(UseLargeCards ? "wiki-card--large" : "wiki-card--compact")"
+                                 @oncontextmenu="(args) => OnContextMenuAsync(args, page)" @oncontextmenu:preventDefault>
+                                <div class="card-body d-flex flex-column">
+                                    <div class="d-flex justify-content-between align-items-start mb-2">
+                                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                                            <span class="badge bg-light text-dark border">
+                                                @(page.TemplateGroup?.Name ?? "Ohne Gruppe")
+                                            </span>
+                                            <span class="badge @WikiStatusDisplayHelper.GetBadgeCssClass(page.Status)">
+                                                @WikiStatusDisplayHelper.GetLabel(page.Status)
+                                            </span>
+                                            <span class="badge @WikiStatusDisplayHelper.GetVisibilityBadgeCssClass(page.Visibility)">
+                                                @WikiStatusDisplayHelper.GetVisibilityLabel(page.Visibility)
+                                            </span>
+                                        </div>
+                                        <div class="d-flex align-items-center gap-2">
+                                            <small class="text-muted">@(page.LastModified.ToString("dd.MM.yy"))</small>
+                                            <div class="dropdown">
+                                                <button class="btn btn-sm btn-light border dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="Aktionen">
+                                                    <span class="oi oi-ellipses"></span>
+                                                </button>
+                                                <ul class="dropdown-menu dropdown-menu-end">
+                                                    <li>
+                                                        <button class="dropdown-item" type="button" @onclick="() => OpenEntry(page)">
+                                                            <span class="oi oi-eye me-2"></span>Öffnen
+                                                        </button>
+                                                    </li>
+                                                    <li>
+                                                        <button class="dropdown-item" type="button" @onclick="() => EditEntry(page)">
+                                                            <span class="oi oi-pencil me-2"></span>Bearbeiten
+                                                        </button>
+                                                    </li>
+                                                    <li>
+                                                        <button class="dropdown-item" type="button" @onclick="() => OpenProperties(page)">
+                                                            <span class="oi oi-info me-2"></span>Eigenschaften
+                                                        </button>
+                                                    </li>
+                                                    <li><hr class="dropdown-divider"></li>
+                                                    @if (page.Status == WikiPageStatus.Template)
+                                                    {
+                                                        <li>
+                                                            <button class="dropdown-item" type="button" @onclick="() => MarkAsPublishedAsync(page)">
+                                                                <span class="oi oi-check me-2"></span>Als veröffentlicht markieren
+                                                            </button>
+                                                        </li>
+                                                    }
+                                                    else
+                                                    {
+                                                        <li>
+                                                            <button class="dropdown-item" type="button" @onclick="() => MarkAsTemplateAsync(page)">
+                                                                <span class="oi oi-reload me-2"></span>Zurück zu Vorlage
+                                                            </button>
+                                                        </li>
+                                                    }
+                                                    @if (TemplateGroups is not null && TemplateGroups.Count > 0)
+                                                    {
+                                                        <li><hr class="dropdown-divider"></li>
+                                                        @foreach (var group in TemplateGroups)
+                                                        {
+                                                            <li>
+                                                                <button class="dropdown-item" type="button" @onclick="() => AssignTemplateGroupAsync(page, group.Id)">
+                                                                    <span class="oi oi-layers me-2"></span>In Gruppe: @group.Name
+                                                                </button>
+                                                            </li>
+                                                        }
+                                                    }
+                                                    <li>
+                                                        <button class="dropdown-item" type="button" @onclick="ToggleEntryViewMode">
+                                                            <span class="oi oi-resize-height me-2"></span>@(UseLargeCards ? "Kompakte Ansicht" : "Große Ansicht")
+                                                        </button>
+                                                    </li>
+                                                    <li><hr class="dropdown-divider"></li>
+                                                    <li>
+                                                        <button class="dropdown-item text-danger" type="button" @onclick="() => DeleteEntryAsync(page)">
+                                                            <span class="oi oi-trash me-2"></span>Löschen
+                                                        </button>
+                                                    </li>
+                                                </ul>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <h5 class="card-title fw-bold">
+                                        <a href="@($"wiki/view/{page.Id}")" class="text-decoration-none text-dark">
+                                            @(page.Title)
+                                        </a>
+                                    </h5>
+
+                                    @if (page.Content != null && page.Content.Length > 0)
+                                    {
+                                        <div class="wiki-preview flex-grow-1 @(UseLargeCards ? "preview-large" : "preview-compact")">
+                                            <DxRichEdit DocumentContent="@(page.Content)"
+                                                        ReadOnly="true"
+                                                        ViewType="ViewType.Simple"
+                                                        BarMode="BarMode.None"
+                                                        CssClass="w-100 h-100 border-0 preview-rich-edit" />
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <p class="card-text text-muted small flex-grow-1 text-truncate-multiline">
+                                            @(string.IsNullOrWhiteSpace(page.PreviewText) ? "Keine Vorschau verfügbar..." : page.PreviewText)
+                                        </p>
+                                    }
+
+                                    <div class="mt-3 pt-2 border-top d-flex align-items-center text-muted small">
+                                        <WikiAuthorFooter Page="page" />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+            else
+            {
+                <div class="text-center mt-5 text-muted">
+                    <span class="oi oi-inbox display-4 mb-3 d-block"></span>
+                    <p>Keine Vorlagen gefunden.</p>
+                    @if (SelectedGroupId != 0 || !string.IsNullOrEmpty(SearchTerm))
+                    {
+                        <button class="btn btn-link" @onclick="ResetFilters">Filter zurücksetzen</button>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+<style>
+    .active-filter {
+        background-color: #e9ecef !important;
+        color: #0d6efd !important;
+        font-weight: 600;
+    }
+    .hover-card {
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .hover-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 .5rem 1rem rgba(0,0,0,.15)!important;
+    }
+    .text-truncate-multiline {
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+    .wiki-preview {
+        overflow: hidden;
+        pointer-events: none;
+    }
+    .wiki-card--large .wiki-preview.preview-large {
+        max-height: 240px;
+    }
+    .wiki-card--compact .wiki-preview.preview-compact {
+        max-height: 140px;
+    }
+    .wiki-card--large .card-body {
+        min-height: 420px;
+    }
+    .wiki-card--compact .card-body {
+        min-height: 320px;
+    }
+    .wiki-preview .preview-rich-edit {
+        background-color: transparent;
+    }
+</style>
+
+<DxContextMenu @ref="ContextMenu" ItemClick="OnContextMenuItemClick">
+    <Items>
+        <DxContextMenuItem Text="Öffnen" IconCssClass="oi oi-eye" Name="open" />
+        <DxContextMenuItem Text="Bearbeiten" IconCssClass="oi oi-pencil" Name="edit" />
+        <DxContextMenuItem Text="Eigenschaften" IconCssClass="oi oi-info" Name="properties" />
+        <DxContextMenuItem Text="Als veröffentlicht markieren" IconCssClass="oi oi-check" Name="publish" />
+        <DxContextMenuItem Text="Zurück zu Vorlage" IconCssClass="oi oi-reload" Name="to-template" />
+        @if (CanShowTemplateGroupContextItems)
+        {
+            <DxContextMenuItem Text="Gruppe zuweisen" IconCssClass="oi oi-layers" Name="assign-group-root" BeginGroup="true">
+                <Items>
+                    @foreach (var group in TemplateGroups!)
+                    {
+                        <DxContextMenuItem Text="@group.Name" IconCssClass="oi oi-chevron-right" Name="@GetAssignGroupMenuItemName(group.Id)" />
+                    }
+                    <DxContextMenuItem Text="Neue Gruppe erstellen" IconCssClass="oi oi-plus" Name="create-group" BeginGroup="true" />
+                </Items>
+            </DxContextMenuItem>
+        }
+        <DxContextMenuItem Text="Ansicht umschalten" IconCssClass="oi oi-resize-height" Name="toggle-view" />
+        <DxContextMenuItem Text="Löschen" IconCssClass="oi oi-trash" Name="delete" BeginGroup="true" />
+    </Items>
+</DxContextMenu>
+
+<WikiEntryPropertiesDialog IsVisible="@IsPropertiesDialogOpen"
+                           IsVisibleChanged="OnPropertiesDialogVisibilityChanged"
+                           Page="@SelectedPropertiesPage"
+                           OnSaved="OnPropertiesSavedAsync" />
+
+@code {
+    private List<WikiTemplateGroup>? TemplateGroups;
+    private List<WikiPage>? AllPages;
+    private List<WikiPage>? FilteredPages;
+
+    private int SelectedGroupId = 0;
+    private string? SearchTerm;
+    private bool IsLoading = true;
+    private bool UseLargeCards = true;
+    private DxContextMenu? ContextMenu;
+    private WikiPage? ContextMenuPage;
+    private Dictionary<int, int> TemplateCountsByGroupId = new();
+    private string? CurrentUserId;
+    private bool IsPropertiesDialogOpen;
+    private WikiPage? SelectedPropertiesPage;
+    private bool IsCreatingGroup;
+    private string NewGroupName = string.Empty;
+    private int? EditingGroupId;
+    private string EditGroupName = string.Empty;
+    private string? GroupActionError;
+    private const string AssignGroupNamePrefix = "assign-group-";
+
+    private bool CanShowTemplateGroupContextItems =>
+        !string.IsNullOrWhiteSpace(CurrentUserId) && TemplateGroups is { Count: > 0 };
+
+    private string CardGridCss => UseLargeCards
+        ? "row row-cols-1 row-cols-lg-2 g-4"
+        : "row row-cols-1 row-cols-md-2 row-cols-xl-3 g-4";
+
+    protected override async Task OnInitializedAsync()
+    {
+        IsLoading = true;
+        try
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            CurrentUserId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+
+            var pageTask = WikiService.GetTemplatesAsync();
+            var groupTask = !string.IsNullOrWhiteSpace(CurrentUserId)
+                ? WikiService.GetTemplateGroupsAsync(CurrentUserId)
+                : Task.FromResult(new List<WikiTemplateGroup>());
+
+            await Task.WhenAll(pageTask, groupTask);
+
+            AllPages = await pageTask;
+            TemplateGroups = await groupTask;
+
+            ApplyFilters();
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    private void OnSearchTextChanged(string text)
+    {
+        SearchTerm = text;
+        ApplyFilters();
+    }
+
+    private void FilterGroup(int groupId)
+    {
+        GroupActionError = null;
+        SelectedGroupId = groupId;
+        ApplyFilters();
+    }
+
+    private void ResetFilters()
+    {
+        SearchTerm = null;
+        SelectedGroupId = 0;
+        ApplyFilters();
+    }
+
+    private void StartCreateGroup()
+    {
+        GroupActionError = null;
+        IsCreatingGroup = true;
+        EditingGroupId = null;
+        NewGroupName = string.Empty;
+    }
+
+    private void CancelCreateGroup()
+    {
+        IsCreatingGroup = false;
+        NewGroupName = string.Empty;
+    }
+
+    private void OnNewGroupNameChanged(string value)
+    {
+        NewGroupName = value;
+    }
+
+    private async Task CreateGroupAsync()
+    {
+        GroupActionError = null;
+        if (string.IsNullOrWhiteSpace(CurrentUserId))
+        {
+            GroupActionError = "Unbekannter Benutzer.";
+            return;
+        }
+
+        var normalizedName = NewGroupName?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(normalizedName))
+        {
+            GroupActionError = "Ein Gruppenname ist erforderlich.";
+            return;
+        }
+
+        var duplicateExists = (TemplateGroups ?? new List<WikiTemplateGroup>())
+            .Any(group => string.Equals(group.Name, normalizedName, StringComparison.OrdinalIgnoreCase));
+        if (duplicateExists)
+        {
+            GroupActionError = "Eine Vorlagen-Gruppe mit diesem Namen existiert bereits.";
+            return;
+        }
+
+        try
+        {
+            var createdGroup = await WikiService.CreateTemplateGroupAsync(CurrentUserId, normalizedName);
+            TemplateGroups ??= new List<WikiTemplateGroup>();
+            TemplateGroups.Add(createdGroup);
+            TemplateGroups = TemplateGroups.OrderBy(group => group.Name).ToList();
+
+            IsCreatingGroup = false;
+            NewGroupName = string.Empty;
+            SelectedGroupId = createdGroup.Id;
+            ApplyFilters();
+        }
+        catch (InvalidOperationException ex)
+        {
+            GroupActionError = ex.Message;
+        }
+    }
+
+    private void StartRenameGroup(WikiTemplateGroup group)
+    {
+        GroupActionError = null;
+        IsCreatingGroup = false;
+        EditingGroupId = group.Id;
+        EditGroupName = group.Name;
+    }
+
+    private void CancelRenameGroup()
+    {
+        EditingGroupId = null;
+        EditGroupName = string.Empty;
+    }
+
+    private void OnEditGroupNameChanged(string value)
+    {
+        EditGroupName = value;
+    }
+
+    private async Task SaveRenameGroupAsync(WikiTemplateGroup group)
+    {
+        GroupActionError = null;
+        if (string.IsNullOrWhiteSpace(CurrentUserId))
+        {
+            GroupActionError = "Unbekannter Benutzer.";
+            return;
+        }
+
+        var normalizedName = EditGroupName?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(normalizedName))
+        {
+            GroupActionError = "Ein Gruppenname ist erforderlich.";
+            return;
+        }
+
+        var duplicateExists = (TemplateGroups ?? new List<WikiTemplateGroup>())
+            .Any(item => item.Id != group.Id && string.Equals(item.Name, normalizedName, StringComparison.OrdinalIgnoreCase));
+        if (duplicateExists)
+        {
+            GroupActionError = "Eine Vorlagen-Gruppe mit diesem Namen existiert bereits.";
+            return;
+        }
+
+        try
+        {
+            var updatedGroup = await WikiService.RenameTemplateGroupAsync(CurrentUserId, group.Id, normalizedName);
+            if (TemplateGroups is not null)
+            {
+                var index = TemplateGroups.FindIndex(item => item.Id == group.Id);
+                if (index >= 0)
+                {
+                    TemplateGroups[index].Name = updatedGroup.Name;
+                }
+
+                TemplateGroups = TemplateGroups.OrderBy(item => item.Name).ToList();
+            }
+
+            if (AllPages is not null)
+            {
+                foreach (var page in AllPages.Where(page => page.TemplateGroupId == group.Id))
+                {
+                    page.TemplateGroup ??= new WikiTemplateGroup { Id = group.Id, Name = updatedGroup.Name };
+                    page.TemplateGroup.Name = updatedGroup.Name;
+                }
+            }
+
+            EditingGroupId = null;
+            EditGroupName = string.Empty;
+            ApplyFilters();
+        }
+        catch (InvalidOperationException ex)
+        {
+            GroupActionError = ex.Message;
+        }
+    }
+
+    private async Task DeleteGroupAsync(WikiTemplateGroup group)
+    {
+        GroupActionError = null;
+        if (string.IsNullOrWhiteSpace(CurrentUserId))
+        {
+            GroupActionError = "Unbekannter Benutzer.";
+            return;
+        }
+
+        var confirmed = await Js.InvokeAsync<bool>("confirm", $"Gruppe \"{group.Name}\" wirklich löschen?");
+        if (!confirmed)
+        {
+            return;
+        }
+
+        try
+        {
+            await WikiService.DeleteTemplateGroupAsync(CurrentUserId, group.Id);
+
+            var defaultGroup = GetDefaultTemplateGroup();
+            if (AllPages is not null)
+            {
+                foreach (var page in AllPages.Where(page => page.TemplateGroupId == group.Id))
+                {
+                    page.TemplateGroupId = defaultGroup?.Id;
+                    page.TemplateGroup = defaultGroup;
+                }
+            }
+
+            if (TemplateGroups is not null)
+            {
+                TemplateGroups = TemplateGroups.Where(item => item.Id != group.Id).OrderBy(item => item.Name).ToList();
+            }
+
+            if (SelectedGroupId == group.Id)
+            {
+                SelectedGroupId = defaultGroup?.Id ?? 0;
+            }
+
+            ApplyFilters();
+        }
+        catch (InvalidOperationException ex)
+        {
+            GroupActionError = ex.Message;
+        }
+    }
+
+    private bool IsDefaultTemplateGroup(WikiTemplateGroup group)
+    {
+        return string.Equals(group.Name, WikiTemplateGroup.DefaultGroupName, StringComparison.Ordinal);
+    }
+
+    private WikiTemplateGroup? GetDefaultTemplateGroup()
+    {
+        return TemplateGroups?.FirstOrDefault(IsDefaultTemplateGroup);
+    }
+
+    private void ApplyFilters()
+    {
+        if (AllPages == null)
+        {
+            return;
+        }
+
+        var query = AllPages.AsEnumerable();
+
+        RecalculateTemplateCounts();
+
+        if (SelectedGroupId != 0)
+        {
+            query = query.Where(p => (p.TemplateGroupId ?? 0) == SelectedGroupId);
+        }
+
+        if (!string.IsNullOrWhiteSpace(SearchTerm))
+        {
+            query = query.Where(p =>
+                p.Title.Contains(SearchTerm, StringComparison.OrdinalIgnoreCase) ||
+                (p.PreviewText != null && p.PreviewText.Contains(SearchTerm, StringComparison.OrdinalIgnoreCase))
+            );
+        }
+
+        FilteredPages = query.ToList();
+    }
+
+    private void RecalculateTemplateCounts()
+    {
+        TemplateCountsByGroupId = (AllPages ?? new List<WikiPage>())
+            .GroupBy(page => page.TemplateGroupId ?? 0)
+            .ToDictionary(grouping => grouping.Key, grouping => grouping.Count());
+    }
+
+    private int GetAllEntriesCount()
+    {
+        return AllPages?.Count ?? 0;
+    }
+
+    private int GetGroupCount(int groupId)
+    {
+        return TemplateCountsByGroupId.GetValueOrDefault(groupId, 0);
+    }
+
+    private void OpenEntry(WikiPage page)
+    {
+        NavManager.NavigateTo($"/wiki/view/{page.Id}");
+    }
+
+    private void EditEntry(WikiPage page)
+    {
+        NavManager.NavigateTo($"/wiki/edit/{page.Id}");
+    }
+
+    private async Task DeleteEntryAsync(WikiPage page)
+    {
+        var confirmed = await Js.InvokeAsync<bool>("confirm", $"Eintrag \"{page.Title}\" wirklich löschen?");
+        if (!confirmed)
+        {
+            return;
+        }
+
+        await WikiService.DeletePageAsync(page.Id);
+        if (AllPages != null)
+        {
+            AllPages = AllPages.Where(p => p.Id != page.Id).ToList();
+            ApplyFilters();
+        }
+    }
+
+    private void OpenProperties(WikiPage page)
+    {
+        SelectedPropertiesPage = page;
+        IsPropertiesDialogOpen = true;
+    }
+
+    private async Task OnPropertiesSavedAsync(WikiPage page)
+    {
+        if (AllPages is null)
+        {
+            return;
+        }
+
+        var index = AllPages.FindIndex(item => item.Id == page.Id);
+        if (index >= 0)
+        {
+            AllPages[index] = page;
+            ApplyFilters();
+        }
+
+        await Task.CompletedTask;
+    }
+
+    private Task OnPropertiesDialogVisibilityChanged(bool isVisible)
+    {
+        IsPropertiesDialogOpen = isVisible;
+        if (!isVisible)
+        {
+            SelectedPropertiesPage = null;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private async Task MarkAsPublishedAsync(WikiPage page)
+    {
+        page.Status = WikiPageStatus.Published;
+        await WikiService.SavePageAsync(page);
+        if (AllPages is not null)
+        {
+            AllPages = AllPages.Where(item => item.Id != page.Id).ToList();
+            ApplyFilters();
+        }
+    }
+
+    private async Task MarkAsTemplateAsync(WikiPage page)
+    {
+        page.Status = WikiPageStatus.Template;
+        await WikiService.SavePageAsync(page);
+        ApplyFilters();
+    }
+
+    private async Task AssignTemplateGroupAsync(WikiPage page, int groupId)
+    {
+        if (string.IsNullOrWhiteSpace(CurrentUserId))
+        {
+            return;
+        }
+
+        await WikiService.AssignTemplateToGroupAsync(CurrentUserId, page.Id, groupId);
+
+        if (AllPages is null)
+        {
+            return;
+        }
+
+        var group = TemplateGroups?.FirstOrDefault(item => item.Id == groupId);
+        var existing = AllPages.FirstOrDefault(item => item.Id == page.Id);
+        if (existing is not null)
+        {
+            existing.TemplateGroupId = groupId;
+            existing.TemplateGroup = group;
+            ApplyFilters();
+        }
+    }
+
+    private static string GetAssignGroupMenuItemName(int groupId)
+    {
+        return $"{AssignGroupNamePrefix}{groupId}";
+    }
+
+    private static bool TryGetGroupIdFromMenuItem(string? menuItemName, out int groupId)
+    {
+        groupId = 0;
+        if (string.IsNullOrWhiteSpace(menuItemName) || !menuItemName.StartsWith(AssignGroupNamePrefix, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var suffix = menuItemName[AssignGroupNamePrefix.Length..];
+        return int.TryParse(suffix, out groupId);
+    }
+
+    private void ToggleEntryViewMode()
+    {
+        UseLargeCards = !UseLargeCards;
+    }
+
+    private async Task OnContextMenuAsync(MouseEventArgs args, WikiPage page)
+    {
+        ContextMenuPage = page;
+        if (ContextMenu != null)
+        {
+            await ContextMenu.ShowAsync(args);
+        }
+    }
+
+    private async Task OnContextMenuItemClick(ContextMenuItemClickEventArgs args)
+    {
+        if (ContextMenuPage == null)
+        {
+            return;
+        }
+
+        if (TryGetGroupIdFromMenuItem(args.ItemInfo.Name, out var groupId) && CanShowTemplateGroupContextItems)
+        {
+            var groupExists = TemplateGroups!.Any(group => group.Id == groupId);
+            if (groupExists)
+            {
+                await AssignTemplateGroupAsync(ContextMenuPage, groupId);
+            }
+
+            return;
+        }
+
+        switch (args.ItemInfo.Name)
+        {
+            case "open":
+                OpenEntry(ContextMenuPage);
+                break;
+            case "edit":
+                EditEntry(ContextMenuPage);
+                break;
+            case "properties":
+                OpenProperties(ContextMenuPage);
+                break;
+            case "publish":
+                await MarkAsPublishedAsync(ContextMenuPage);
+                break;
+            case "to-template":
+                await MarkAsTemplateAsync(ContextMenuPage);
+                break;
+            case "toggle-view":
+                ToggleEntryViewMode();
+                break;
+            case "delete":
+                await DeleteEntryAsync(ContextMenuPage);
+                break;
+            case "create-group":
+                StartCreateGroup();
+                break;
+        }
+    }
+}

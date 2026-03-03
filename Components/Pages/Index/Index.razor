@@ -1,0 +1,63 @@
+﻿@page "/"
+@inject NavigationManager NavigationManager
+
+<PageTitle>Welcome</PageTitle>
+
+<div id="overviewDemoDropZone" class="card custom-drop-zone rounded-3 w-100 m-0">
+    <span class="drop-file-icon mb-3"></span>
+    <span class="drop-file-label">Drag and Drop File Here</span><span class="m-1">or</span>
+    <DxButton Id="overviewDemoSelectButton"
+              CssClass="m-1"
+              RenderStyle="ButtonRenderStyle.Primary"
+              Text="Select File" />
+</div>
+<DxUpload Name="myFile"
+          Visible="@UploadVisible"
+          ExternalSelectButtonCssSelector="#overviewDemoSelectButton"
+          ExternalDropZoneCssSelector="#overviewDemoDropZone"
+          ExternalDropZoneDragOverCssClass="custom-drop-zone-hover"
+          MaxFileSize="15000000"
+          UploadUrl="@GetUploadUrl("api/Upload/Upload/")"
+          SelectedFilesChanged="@SelectedFilesChanged">
+</DxUpload>
+<div class="upload-validation-text info-text">
+    Uploads are limited to a single file up to 15 MB.
+</div>
+
+@code {
+    bool UploadVisible { get; set; } = false;
+    protected void SelectedFilesChanged(IEnumerable<UploadFileInfo> files)
+    {
+        UploadVisible = files.ToList().Count > 0;
+        InvokeAsync(StateHasChanged);
+    }
+    protected string GetUploadUrl(string url)
+    {
+        return NavigationManager.ToAbsoluteUri(url).AbsoluteUri;
+    }
+}
+
+<div class="main-content">
+    <DxGridLayout CssClass="index-gridlayout">
+        <Rows>
+            <DxGridLayoutRow Height="auto" Areas="header"></DxGridLayoutRow>
+            <DxGridLayoutRow Height="auto" Areas="tiles"></DxGridLayoutRow>
+        </Rows>
+        <Items>
+            <DxGridLayoutItem Area="header" CssClass="title">
+                <Template>
+                    <div class="title-header-text">Wiki-Dashboard</div>
+                    <div class="title-content-text">Welcome to your new Wiki-Dash Blazor Application</div>
+                </Template>
+            </DxGridLayoutItem>
+            <DxGridLayoutItem Area="tiles" CssClass="tiles">
+                <Template>
+                    <IndexTile NavigateUrl="/wiki" Title="Wiki Dashboard" Description="Main Wiki-Entry-View" IconCssClass="icon-tree-list" />
+                    <IndexTile NavigateUrl="/wiki/favorites" Title="Wiki Favorites" Description="Load bookmarkt views show in the web browser." IconCssClass="icon-pdf-viewer" />
+                    <IndexTile NavigateUrl="/reportdesigner" Title="Report Designer" Description="Create report templates populated with external data." IconCssClass="icon-report-designer" />
+                    <IndexTile NavigateUrl="/reportviewer" Title="Report Viewer" Description="View, print, or export reports." IconCssClass="icon-report-viewer" />
+                </Template>
+            </DxGridLayoutItem>
+        </Items>
+    </DxGridLayout>
+</div>

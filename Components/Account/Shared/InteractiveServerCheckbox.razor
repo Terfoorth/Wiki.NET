@@ -1,0 +1,30 @@
+﻿@rendermode InteractiveServer
+
+<DxCheckBox name="@Name"
+            InputId="@InputId"
+            @bind-Checked="BoundValue">
+    @LabelText
+</DxCheckBox>
+
+@code {
+    [Parameter] public bool Value { get; set; }
+    [Parameter] public EventCallback<bool> ValueChanged { get; set; }
+    [Parameter] public string? InputId { get; set; }
+    [Parameter] public string? Name { get; set; }
+    [Parameter] public string? LabelText { get; set; }
+
+    private bool BoundValue
+    {
+        get => Value;
+        set
+        {
+            if (Value == value)
+            {
+                return;
+            }
+
+            Value = value;
+            _ = ValueChanged.InvokeAsync(value);
+        }
+    }
+}

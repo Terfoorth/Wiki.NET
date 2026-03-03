@@ -1,0 +1,35 @@
+﻿@rendermode InteractiveServer
+
+<DxComboBox TData="object"
+            TValue="string"
+            Data="@Data"
+            Name="@Name"
+            TextFieldName="@TextFieldName"
+            ValueFieldName="@ValueFieldName"
+            NullText="@NullText"
+            @bind-Value="BoundValue" />
+
+@code {
+    [Parameter] public IEnumerable<object>? Data { get; set; }
+    [Parameter] public string? Name { get; set; }
+    [Parameter] public string? TextFieldName { get; set; }
+    [Parameter] public string? ValueFieldName { get; set; }
+    [Parameter] public string? NullText { get; set; }
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+
+    private string? BoundValue
+    {
+        get => Value;
+        set
+        {
+            if (Value == value)
+            {
+                return;
+            }
+
+            Value = value;
+            _ = ValueChanged.InvokeAsync(value);
+        }
+    }
+}

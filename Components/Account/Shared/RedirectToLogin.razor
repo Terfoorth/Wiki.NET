@@ -1,0 +1,11 @@
+﻿@inherits DrawerStateComponentBase
+@inject NavigationManager NavigationManager
+
+
+@code {
+    protected override void OnInitialized() {
+        Uri uri = new(NavigationManager.Uri);
+        string relativeUrl = RemoveDrawerStateFromUrl(uri.PathAndQuery);
+        NavigationManager.NavigateTo($"Account/Login?returnUrl={Uri.EscapeDataString(relativeUrl)}", forceLoad: false);
+    }
+}
