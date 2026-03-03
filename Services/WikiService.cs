@@ -346,6 +346,13 @@ namespace Wiki_Blaze.Services
                     throw new InvalidOperationException("OwnerId muss für neue Wiki-Seiten gesetzt sein.");
                 }
 
+                // AuthorId beschreibt den ursprünglichen Ersteller.
+                // Falls nicht explizit gesetzt, übernehmen wir den Owner für konsistente Bestandsdaten.
+                if (string.IsNullOrWhiteSpace(page.AuthorId))
+                {
+                    page.AuthorId = page.OwnerId;
+                }
+
                 page.CreatedAt = DateTime.UtcNow;
                  context.WikiPages.Add(page);
             }
@@ -357,6 +364,10 @@ namespace Wiki_Blaze.Services
                 // Wichtig: Wir wollen nicht, dass das ursprüngliche Erstellungsdatum überschrieben wird.
                 // Wir weisen EF an, die Eigenschaft 'CreatedAt' zu ignorieren beim Update.
                 context.Entry(page).Property(x => x.CreatedAt).IsModified = false;
+
+                // AuthorId bleibt als ursprünglicher Ersteller unverändert.
+                // Änderungen am Autor werden bei regulären Bearbeitungen bewusst ignoriert.
+                context.Entry(page).Property(x => x.AuthorId).IsModified = false;
 
                 if (page.RowVersion is not null)
                 {

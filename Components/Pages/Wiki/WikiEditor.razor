@@ -207,6 +207,7 @@
             if (IsNew)
             {
                 WikiPageModel.OwnerId = currentUserId;
+                WikiPageModel.AuthorId = currentUserId;
             }
 
             WikiPageModel.Content = await richEdit.ExportDocumentAsync(DocumentFormat.OpenXml, CancellationToken.None);
