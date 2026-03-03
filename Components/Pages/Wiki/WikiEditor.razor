@@ -99,7 +99,9 @@
 
     private WikiPage WikiPageModel { get; set; } = new();
     private List<WikiCategory> Categories { get; set; } = new();
+    private List<WikiTemplateGroup> TemplateGroups { get; set; } = new();
     private PublicationMode SelectedPublicationOption { get; set; } = PublicationMode.Private;
+    private int? SelectedTemplateGroupId { get; set; }
     private static readonly IReadOnlyList<PublicationOption> PublicationOptions =
     [
         new("Privat", PublicationMode.Private),
@@ -123,6 +125,10 @@
         {
             Categories = await WikiService.GetCategoriesAsync();
             CurrentUserId = await GetCurrentUserIdAsync();
+            if (!string.IsNullOrWhiteSpace(CurrentUserId))
+            {
+                TemplateGroups = await WikiService.GetTemplateGroupsAsync(CurrentUserId);
+            }
 
             if (!IsNew)
             {
@@ -139,6 +145,11 @@
                     // Hier vereinfacht: wir nutzen es direkt, aber detached durch Service.
                     WikiPageModel = existing;
                     SelectedPublicationOption = ResolvePublicationMode(WikiPageModel);
+
+                    if (WikiPageModel.Status == WikiPageStatus.Template)
+                    {
+                        SelectedTemplateGroupId = existing.TemplateGroupId;
+                    }
                 }
                 else
                 {
@@ -157,6 +168,12 @@
                 };
 
                 SelectedPublicationOption = IsTemplateCreation ? PublicationMode.Published : PublicationMode.Private;
+                if (IsTemplateCreation)
+                {
+                    SelectedTemplateGroupId = TemplateGroups
+                        .FirstOrDefault(group => string.Equals(group.Name, WikiTemplateGroup.DefaultGroupName, StringComparison.Ordinal))?.Id
+                        ?? TemplateGroups.FirstOrDefault()?.Id;
+                }
             }
         }
         finally
@@ -202,6 +219,10 @@
             if (!IsTemplateCreation)
             {
                 ApplyPublicationMode();
+            }
+            else
+            {
+                WikiPageModel.TemplateGroupId = SelectedTemplateGroupId;
             }
 
             if (IsNew)
