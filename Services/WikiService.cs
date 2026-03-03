@@ -374,19 +374,26 @@ namespace Wiki_Blaze.Services
             else
             {
                 // Update eines bestehenden Eintrags
-                context.WikiPages.Update(page);
+                var existingPage = await context.WikiPages
+                    .FirstOrDefaultAsync(existingPage => existingPage.Id == page.Id);
 
-                // Wichtig: Wir wollen nicht, dass das ursprüngliche Erstellungsdatum überschrieben wird.
-                // Wir weisen EF an, die Eigenschaft 'CreatedAt' zu ignorieren beim Update.
-                context.Entry(page).Property(x => x.CreatedAt).IsModified = false;
+                if (existingPage is null)
+                {
+                    throw new InvalidOperationException($"Wiki-Seite mit der ID {page.Id} wurde nicht gefunden.");
+                }
 
-                // AuthorId bleibt als ursprünglicher Ersteller unverändert.
-                // Änderungen am Autor werden bei regulären Bearbeitungen bewusst ignoriert.
-                context.Entry(page).Property(x => x.AuthorId).IsModified = false;
+                var createdAt = existingPage.CreatedAt;
+                var authorId = existingPage.AuthorId;
+
+                context.Entry(existingPage).CurrentValues.SetValues(page);
+
+                // CreatedAt und AuthorId bleiben beim Bearbeiten unverändert.
+                existingPage.CreatedAt = createdAt;
+                existingPage.AuthorId = authorId;
 
                 if (page.RowVersion is not null)
                 {
-                    context.Entry(page).Property(x => x.RowVersion).OriginalValue = page.RowVersion;
+                    context.Entry(existingPage).Property(x => x.RowVersion).OriginalValue = page.RowVersion;
                 }
             }
 
