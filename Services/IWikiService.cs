@@ -23,6 +23,7 @@ namespace Wiki_Blaze.Services
         Task<List<WikiPage>> GetPagesByFilterAsync(WikiPageStatus? status, string? ownerId, string? authorId, WikiPageVisibility? visibility);
         Task<List<WikiPage>> GetDraftsAsync(string userId);
         Task<List<WikiPage>> GetTemplatesAsync();
+        Task<WikiPage?> CreateEntryFromTemplateAsync(string userId, int templatePageId, WikiPageStatus targetStatus);
         Task SavePageAsync(WikiPage page);
         Task DeletePageAsync(int id);
 

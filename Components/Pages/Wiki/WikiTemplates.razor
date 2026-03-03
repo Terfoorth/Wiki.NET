@@ -50,6 +50,13 @@
                         </button>
                     </div>
 
+                    @if (!string.IsNullOrWhiteSpace(TemplateActionMessage))
+                    {
+                        <div class="alert alert-success py-2 px-3 small mb-3" role="status">
+                            @TemplateActionMessage
+                        </div>
+                    }
+
                     @if (!string.IsNullOrWhiteSpace(GroupActionError))
                     {
                         <div class="alert alert-danger py-2 px-3 small mb-3" role="alert">
@@ -253,8 +260,12 @@
         <DxContextMenuItem Text="Öffnen" IconCssClass="oi oi-eye" Name="open" />
         <DxContextMenuItem Text="Bearbeiten" IconCssClass="oi oi-pencil" Name="edit" />
         <DxContextMenuItem Text="Eigenschaften" IconCssClass="oi oi-info" Name="properties" />
-        <DxContextMenuItem Text="Als veröffentlicht markieren" IconCssClass="oi oi-check" Name="publish" />
-        <DxContextMenuItem Text="Zurück zu Vorlage" IconCssClass="oi oi-reload" Name="to-template" />
+        <DxContextMenuItem Text="Eintrag aus Vorlage erstellen" IconCssClass="oi oi-copywriting" Name="create-from-template-root">
+            <Items>
+                <DxContextMenuItem Text="Im Wiki Dashboard erstellen" IconCssClass="oi oi-home" Name="create-from-template-dashboard" />
+                <DxContextMenuItem Text="In Wiki Entwürfen erstellen" IconCssClass="oi oi-document" Name="create-from-template-drafts" />
+            </Items>
+        </DxContextMenuItem>
         @if (CanShowTemplateGroupContextItems)
         {
             <DxContextMenuItem Text="Gruppe zuweisen" IconCssClass="oi oi-layers" Name="assign-group-root" BeginGroup="true">
@@ -297,6 +308,7 @@
     private int? EditingGroupId;
     private string EditGroupName = string.Empty;
     private string? GroupActionError;
+    private string? TemplateActionMessage;
     private const string AssignGroupNamePrefix = "assign-group-";
 
     private bool CanShowTemplateGroupContextItems =>
@@ -650,22 +662,25 @@
         return Task.CompletedTask;
     }
 
-    private async Task MarkAsPublishedAsync(WikiPage page)
+    private async Task CreateEntryFromTemplateAsync(WikiPage templatePage, WikiPageStatus targetStatus, string targetRoute)
     {
-        page.Status = WikiPageStatus.Published;
-        await WikiService.SavePageAsync(page);
-        if (AllPages is not null)
+        TemplateActionMessage = null;
+        GroupActionError = null;
+        if (string.IsNullOrWhiteSpace(CurrentUserId))
         {
-            AllPages = AllPages.Where(item => item.Id != page.Id).ToList();
-            ApplyFilters();
+            GroupActionError = "Unbekannter Benutzer.";
+            return;
         }
-    }
 
-    private async Task MarkAsTemplateAsync(WikiPage page)
-    {
-        page.Status = WikiPageStatus.Template;
-        await WikiService.SavePageAsync(page);
-        ApplyFilters();
+        var createdPage = await WikiService.CreateEntryFromTemplateAsync(CurrentUserId, templatePage.Id, targetStatus);
+        if (createdPage is null)
+        {
+            GroupActionError = "Die Vorlage konnte nicht geladen werden.";
+            return;
+        }
+
+        TemplateActionMessage = $"Eintrag \"{createdPage.Title}\" wurde aus der Vorlage erstellt.";
+        NavManager.NavigateTo(targetRoute);
     }
 
     private async Task AssignTemplateGroupAsync(WikiPage page, int groupId)
@@ -752,11 +767,11 @@
             case "properties":
                 OpenProperties(ContextMenuPage);
                 break;
-            case "publish":
-                await MarkAsPublishedAsync(ContextMenuPage);
+            case "create-from-template-dashboard":
+                await CreateEntryFromTemplateAsync(ContextMenuPage, WikiPageStatus.Published, "/wiki");
                 break;
-            case "to-template":
-                await MarkAsTemplateAsync(ContextMenuPage);
+            case "create-from-template-drafts":
+                await CreateEntryFromTemplateAsync(ContextMenuPage, WikiPageStatus.Draft, "/wiki/drafts");
                 break;
             case "toggle-view":
                 ToggleEntryViewMode();
