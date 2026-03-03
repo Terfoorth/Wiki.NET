@@ -12,24 +12,41 @@
               Text="Select File" />
 </div>
 <DxUpload Name="myFile"
-          Visible="@UploadVisible"
+          Visible="true"
+          UploadMode="UploadMode.Instant"
+          AllowMultiFileUpload="false"
           ExternalSelectButtonCssSelector="#overviewDemoSelectButton"
           ExternalDropZoneCssSelector="#overviewDemoDropZone"
           ExternalDropZoneDragOverCssClass="custom-drop-zone-hover"
           MaxFileSize="15000000"
           UploadUrl="@GetUploadUrl("api/upload/upload")"
-          SelectedFilesChanged="@SelectedFilesChanged">
+          SelectedFilesChanged="@SelectedFilesChanged"
+          FilesUploadComplete="@FilesUploadComplete">
 </DxUpload>
 <div class="upload-validation-text info-text">
     Uploads are limited to a single .txt or .odt file up to 15 MB.
 </div>
+@if (!string.IsNullOrWhiteSpace(UploadStatusMessage))
+{
+    <div class="upload-validation-text info-text">@UploadStatusMessage</div>
+}
 
 @code {
-    bool UploadVisible { get; set; } = false;
+    private string? UploadStatusMessage { get; set; }
+
     protected void SelectedFilesChanged(IEnumerable<UploadFileInfo> files)
     {
-        UploadVisible = files.ToList().Count > 0;
-        InvokeAsync(StateHasChanged);
+        var selectedFile = files.FirstOrDefault();
+        UploadStatusMessage = selectedFile is null
+            ? null
+            : $"Datei '{selectedFile.Name}' wird hochgeladen...";
+    }
+
+    protected void FilesUploadComplete(FilesUploadCompleteEventArgs args)
+    {
+        UploadStatusMessage = args.Files.Any(file => file.Uploaded)
+            ? "Upload erfolgreich. Ein neuer Wiki-Entwurf wurde erstellt."
+            : "Upload fehlgeschlagen. Bitte Datei und Dateityp prüfen.";
     }
     protected string GetUploadUrl(string url)
     {
