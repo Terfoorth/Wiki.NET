@@ -6,11 +6,19 @@
     <UserSecretsId>aspnet-Wiki_Blaze-adc61716-0a08-4a8a-9b63-7320dd731198</UserSecretsId>
     <RootNamespace>Wiki_Blaze</RootNamespace>
     <AssemblyName>$(AssemblyName.Replace(' ', '_'))</AssemblyName>
+    <DefaultItemExcludes>$(DefaultItemExcludes);Onboarding_modul\**\*</DefaultItemExcludes>
   </PropertyGroup>
+
   <ItemGroup>
     <Compile Remove="Components\Pages\Index\Class.cs" />
-    <Compile Remove="Data\Migrations\ApplicationDbContextModelSnapshot.cs" />
+    <Compile Remove="Onboarding_modul\**\*.cs" />
+    <RazorComponent Remove="Onboarding_modul\**\*.razor" />
+    <ScopedCssInput Remove="Onboarding_modul\**\*.razor.css" />
+    <Content Remove="Onboarding_modul\**\*" />
+    <EmbeddedResource Remove="Onboarding_modul\**\*" />
+
   </ItemGroup>
+
   <ItemGroup>
     <Content Remove="Services\MainLayout.razor" />
   </ItemGroup>
@@ -25,14 +33,14 @@
     <PackageReference Include="DevExpress.Blazor.RichEdit" Version="25.2.*" />
     <PackageReference Include="DevExpress.Drawing.Skia" Version="25.2.*" />
     <PackageReference Include="DevExpress.Pdf.SkiaRenderer" Version="25.2.*" />
-    
+
     <PackageReference Include="Microsoft.AspNetCore.Diagnostics.EntityFrameworkCore" Version="8.0.18" />
     <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="8.0.18" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="8.0.18" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="8.0.18" />
     <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.2" />
   </ItemGroup>
-  
+
   <ItemGroup>
     <EmbeddedResource Include="Documents\Example.docx" />
   </ItemGroup>

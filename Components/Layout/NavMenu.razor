@@ -1,6 +1,5 @@
-﻿@inject NavigationManager NavigationManager
+@inject NavigationManager NavigationManager
 @implements IDisposable
-
 
 <div>
     <DxMenu Orientation="@Orientation.Vertical" CssClass="menu display-mobile">
@@ -21,6 +20,7 @@
             </AuthorizeView>
         </Items>
     </DxMenu>
+
     <DxMenu Orientation="@Orientation.Vertical" CssClass="menu">
         <Items>
             <DxMenuItem NavigateUrl="/wiki" Text="Wiki Dashboard" CssClass="@MenuItemCssClass("/wiki")" IconCssClass="icon icon-report-designer"></DxMenuItem>
@@ -35,8 +35,9 @@
             </AuthorizeView>
             <DxMenuItem NavigateUrl="/wiki/favorites" Text="Wiki Favoriten" CssClass="@MenuItemCssClass("/wiki/favorites")" IconCssClass="icon icon-report-viewer"></DxMenuItem>
             <DxMenuItem NavigateUrl="/wiki/templates" Text="Wiki Templates" CssClass="@MenuItemCssClass("/wiki/templates")" IconCssClass="icon icon-report-designer"></DxMenuItem>
-            <DxMenuItem NavigateUrl="/wiki/drafts" Text="Wiki Entwürfe" CssClass="@MenuItemCssClass("/wiki/templates")" IconCssClass="icon icon-book"></DxMenuItem>
-            <DxMenuItem NavigateUrl="/reportdesigner" Text="Onboarding Management" CssClass="@MenuItemCssClass("/reportdesigner")" IconCssClass="icon icon-report-designer"></DxMenuItem>
+            <DxMenuItem NavigateUrl="/wiki/drafts" Text="Wiki Entw�rfe" CssClass="@MenuItemCssClass("/wiki/templates")" IconCssClass="icon icon-book"></DxMenuItem>
+            <DxMenuItem NavigateUrl="/reportdesigner" Text="Onboarding" CssClass="@MenuItemCssClass("/reportdesigner")" IconCssClass="icon icon-report-designer"></DxMenuItem>
+            <DxMenuItem NavigateUrl="/reportdesigner/settings" Text="Onboarding Settings" CssClass="@MenuItemCssClass("/reportdesigner/settings")" IconCssClass="icon icon-settings"></DxMenuItem>
             <DxMenuItem NavigateUrl="Account/Manage" Text="Settings" CssClass="@MenuItemCssClass("/Account/Manage")" IconCssClass="icon icon-settings"></DxMenuItem>
         </Items>
     </DxMenu>
@@ -45,21 +46,25 @@
 @code {
     private string? currentLocalPath;
 
-    protected override void OnInitialized() {
+    protected override void OnInitialized()
+    {
         currentLocalPath = new Uri(NavigationManager.Uri).LocalPath;
         NavigationManager.LocationChanged += OnLocationChanged;
     }
 
-    private void OnLocationChanged(object? sender, LocationChangedEventArgs e) {
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
         currentLocalPath = new Uri(NavigationManager.Uri).LocalPath;
         InvokeAsync(StateHasChanged);
     }
 
-    private string? MenuItemCssClass(string itemPath) {
+    private string? MenuItemCssClass(string itemPath)
+    {
         return string.Equals(currentLocalPath, itemPath, StringComparison.OrdinalIgnoreCase) ? "menu-item-active" : null;
     }
 
-    public void Dispose() {
+    public void Dispose()
+    {
         NavigationManager.LocationChanged -= OnLocationChanged;
     }
 }

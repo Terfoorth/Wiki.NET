@@ -1,4 +1,4 @@
-﻿@page "/Account/Manage/Preferences"
+@page "/Account/Manage/Preferences"
 @rendermode InteractiveServer
 @using System.ComponentModel.DataAnnotations
 @using System.Linq
@@ -121,24 +121,24 @@
     [
         new("English", "en"),
         new("Deutsch", "de"),
-        new("Français", "fr"),
-        new("Español", "es"),
+        new("Fran�ais", "fr"),
+        new("Espa�ol", "es"),
         new("Italiano", "it"),
         new("Dansk", "da"),
         new("Norsk", "no"),
         new("Nederlands", "nl"),
         new("Polski", "pl"),
-        new("Português", "pt"),
+        new("Portugu�s", "pt"),
         new("Suomi", "fi"),
         new("Svenska", "sv"),
-        new("Ελληνικά", "el"),
-        new("Русский", "ru"),
-        new("Українська", "uk"),
-        new("日本語", "ja"),
-        new("한국어", "ko"),
-        new("中文 (简体)", "zh-hans"),
-        new("中文 (繁體)", "zh-hant"),
-        new("Türkçe", "tr"),
+        new("????????", "el"),
+        new("???????", "ru"),
+        new("??????????", "uk"),
+        new("???", "ja"),
+        new("???", "ko"),
+        new("?? (??)", "zh-hans"),
+        new("?? (??)", "zh-hant"),
+        new("T�rk�e", "tr"),
     ];
 
     private List<OptionItem> timeZoneOptions =
@@ -169,7 +169,7 @@
         new("Wiki categories", "/wiki/categories"),
         new("Create wiki page", "/wiki/create"),
         new("Report center", "/reportviewer"),
-        new("Report designer", "/reportdesigner"),
+        new("Onboarding", "/reportdesigner"),
         new("Account settings", "/Account/Manage"),
     ];
 
@@ -248,3 +248,4 @@
         public bool ReceiveWeeklyDigest { get; set; }
     }
 }
+

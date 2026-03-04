@@ -1,0 +1,636 @@
+@page "/reportdesigner/details/{ProfileId:int}"
+@using Microsoft.AspNetCore.Authorization
+@rendermode InteractiveServer
+@attribute [Authorize]
+@using Wiki_Blaze.Data.Entities
+@using Wiki_Blaze.Services
+@inject IOnboardingService OnboardingService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject NavigationManager NavigationManager
+
+<PageTitle>Onboarding Profil Details</PageTitle>
+
+<div class="onboarding-details-root">
+    <div class="card p-3 mb-3">
+        <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
+            <div>
+                <h3 class="mb-0">Onboarding Profil</h3>
+                <small class="text-muted">Vollansicht mit Stammdaten, Maﬂnahmen, Test-Checkliste und Verlauf</small>
+            </div>
+            <div class="d-flex gap-2">
+                <DxButton Text="Zur ‹bersicht" RenderStyle="ButtonRenderStyle.Secondary" Click="NavigateBack" />
+                <DxButton Text="Settings" RenderStyle="ButtonRenderStyle.Secondary" NavigateUrl="/reportdesigner/settings" />
+            </div>
+        </div>
+    </div>
+
+    @if (Profile is null)
+    {
+        <div class="alert alert-warning">Profil wurde nicht gefunden oder konnte nicht geladen werden.</div>
+    }
+    else
+    {
+        <div class="card p-3 mb-3">
+            <div class="d-flex justify-content-between align-items-start gap-2">
+                <div>
+                    <h4 class="mb-1">@Profile.FullName</h4>
+                    <span class="badge @GetStatusBadgeCss(Profile.Status)">@GetStatusLabel(Profile.Status)</span>
+                </div>
+                <div class="text-end">
+                    <small class="text-muted d-block">@GetProgressPercent(Profile)% abgeschlossen</small>
+                    <small class="text-muted">@GetProgressText(Profile)</small>
+                </div>
+            </div>
+            <div class="progress mt-2">
+                <div class="progress-bar" style="@($"width: {GetProgressPercent(Profile)}%")"></div>
+            </div>
+        </div>
+
+        <DxTabs CssClass="card p-2 onboarding-tabs">
+            <DxTabPage Text="Stammdaten">
+                <div class="p-2">
+                    <div class="row g-2">
+                        <div class="col-md-6">
+                            <label class="form-label">Name</label>
+                            <input class="form-control" @bind="Profile.FullName" readonly="@(!CanEdit)" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Abteilung</label>
+                            <input class="form-control" @bind="Profile.Department" readonly="@(!CanEdit)" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Vorgesetzter</label>
+                            <input class="form-control" @bind="Profile.Supervisor" readonly="@(!CanEdit)" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">E-Mail</label>
+                            <input class="form-control" @bind="Profile.Email" readonly="@(!CanEdit)" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Telefonnummer</label>
+                            <input class="form-control" @bind="Profile.PhoneNumber" readonly="@(!CanEdit)" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Druckerkartennummer</label>
+                            <input class="form-control" @bind="Profile.PrinterCardNumber" readonly="@(!CanEdit)" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Startdatum</label>
+                            <input type="date" class="form-control" @bind="StartDateInput" readonly="@(!CanEdit)" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Zieldatum</label>
+                            <input type="date" class="form-control" @bind="TargetDateInput" readonly="@(!CanEdit)" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Status</label>
+                            <select class="form-select" @bind="Profile.Status" disabled="@(!CanEdit)">
+                                @foreach (var status in ProfileStatuses)
+                                {
+                                    <option value="@status">@GetStatusLabel(status)</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-12">
+                            <label class="form-label">Verkn¸pfter Benutzer (Identity Id)</label>
+                            <input class="form-control" @bind="Profile.LinkedUserId" readonly="@(!CanEdit)" />
+                        </div>
+                    </div>
+
+                    @if (CanEdit)
+                    {
+                        <div class="d-flex justify-content-end gap-2 mt-3">
+                            <DxButton Text="Profil speichern" RenderStyle="ButtonRenderStyle.Primary" Click="SaveProfileAsync" />
+                            <DxButton Text="Profil duplizieren" RenderStyle="ButtonRenderStyle.Secondary" Click="DuplicateProfileAsync" />
+                        </div>
+                    }
+                </div>
+            </DxTabPage>
+
+            <DxTabPage Text="Onboarding-Maﬂnahmen">
+                <div class="p-2">
+                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+                        <h5 class="mb-0">Maﬂnahmen</h5>
+                        <DxCheckBox @bind-Checked="ShowOnlyOpenMeasures"
+                                    LabelText="Nur offene Eintr‰ge" />
+                    </div>
+
+                    @if (CanEdit)
+                    {
+                        <div class="row g-2 mb-3 border rounded p-2 bg-light-subtle">
+                            <div class="col-md-4">
+                                <label class="form-label">Feld</label>
+                                <select class="form-select" @bind="NewMeasureCatalogItemId">
+                                    @foreach (var item in MeasureCatalog)
+                                    {
+                                        <option value="@item.Id">@item.Name</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Eintrag</label>
+                                <input class="form-control" @bind="NewMeasureValue" />
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Notiz</label>
+                                <input class="form-control" @bind="NewMeasureNotes" />
+                            </div>
+                            <div class="col-md-1 d-flex align-items-end">
+                                <DxButton Text="+" RenderStyle="ButtonRenderStyle.Primary" Click="AddMeasureEntryAsync" Enabled="@CanAddMeasureEntry" />
+                            </div>
+                        </div>
+                    }
+
+                    @if (FilteredMeasureEntries.Count == 0)
+                    {
+                        <div class="small text-muted">Keine Maﬂnahmen vorhanden.</div>
+                    }
+                    else
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-sm align-middle">
+                                <thead>
+                                    <tr>
+                                        <th>Feld</th>
+                                        <th>Eintrag</th>
+                                        <th>Notiz</th>
+                                        <th>Erledigt</th>
+                                        @if (CanEdit)
+                                        {
+                                            <th class="text-end">Aktionen</th>
+                                        }
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var entry in FilteredMeasureEntries)
+                                    {
+                                        <tr>
+                                            <td>@entry.CatalogItem?.Name</td>
+                                            <td>
+                                                @if (CanEdit)
+                                                {
+                                                    <input class="form-control form-control-sm" @bind="entry.Value" />
+                                                }
+                                                else
+                                                {
+                                                    @entry.Value
+                                                }
+                                            </td>
+                                            <td>
+                                                @if (CanEdit)
+                                                {
+                                                    <input class="form-control form-control-sm" @bind="entry.Notes" />
+                                                }
+                                                else
+                                                {
+                                                    @entry.Notes
+                                                }
+                                            </td>
+                                            <td>
+                                                @if (CanEdit)
+                                                {
+                                                    <DxCheckBox Checked="entry.IsCompleted"
+                                                                CheckedChanged="@(async (bool value) => await SetMeasureCompletedAsync(entry, value))" />
+                                                }
+                                                else
+                                                {
+                                                    <span class="badge @(entry.IsCompleted ? "bg-success" : "bg-secondary")">@(entry.IsCompleted ? "Ja" : "Nein")</span>
+                                                }
+                                            </td>
+                                            @if (CanEdit)
+                                            {
+                                                <td class="text-end">
+                                                    <DxButton Text="Speichern" RenderStyle="ButtonRenderStyle.Secondary" Click="@(async () => await SaveMeasureEntryAsync(entry))" />
+                                                    <DxButton Text="Lˆschen" RenderStyle="ButtonRenderStyle.Danger" Click="@(async () => await DeleteMeasureEntryAsync(entry.Id))" />
+                                                </td>
+                                            }
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            </DxTabPage>
+
+            <DxTabPage Text="Test-Checkliste">
+                <div class="p-2">
+                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+                        <h5 class="mb-0">Checkliste</h5>
+                        <DxCheckBox @bind-Checked="ShowOnlyOpenChecklist"
+                                    LabelText="Nur offene Punkte" />
+                    </div>
+
+                    @if (FilteredChecklistEntries.Count == 0)
+                    {
+                        <div class="small text-muted">Keine Checklistenpunkte vorhanden.</div>
+                    }
+                    else
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-sm align-middle">
+                                <thead>
+                                    <tr>
+                                        <th>Punkt</th>
+                                        <th>Status</th>
+                                        <th>Erledigt</th>
+                                        <th>Notiz</th>
+                                        @if (CanEdit)
+                                        {
+                                            <th class="text-end">Aktionen</th>
+                                        }
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var entry in FilteredChecklistEntries)
+                                    {
+                                        <tr>
+                                            <td>
+                                                <div class="fw-semibold">@entry.CatalogItem?.Name</div>
+                                                <div class="small text-muted">@entry.CatalogItem?.Description</div>
+                                            </td>
+                                            <td>
+                                                @if (CanEdit)
+                                                {
+                                                    <select class="form-select form-select-sm" @onchange="@(async args => await SetChecklistResultAsync(entry, args))" value="@entry.Result">
+                                                        @foreach (var result in ChecklistResults)
+                                                        {
+                                                            <option value="@result">@result</option>
+                                                        }
+                                                    </select>
+                                                }
+                                                else
+                                                {
+                                                    <span>@entry.Result</span>
+                                                }
+                                            </td>
+                                            <td>
+                                                @if (CanEdit)
+                                                {
+                                                    <DxCheckBox Checked="entry.IsCompleted"
+                                                                CheckedChanged="@(async (bool value) => await SetChecklistCompletedAsync(entry, value))" />
+                                                }
+                                                else
+                                                {
+                                                    <span class="badge @(entry.IsCompleted ? "bg-success" : "bg-secondary")">@(entry.IsCompleted ? "Ja" : "Nein")</span>
+                                                }
+                                            </td>
+                                            <td>
+                                                @if (CanEdit)
+                                                {
+                                                    <input class="form-control form-control-sm" @bind="entry.Notes" />
+                                                }
+                                                else
+                                                {
+                                                    @entry.Notes
+                                                }
+                                            </td>
+                                            @if (CanEdit)
+                                            {
+                                                <td class="text-end">
+                                                    <DxButton Text="Speichern" RenderStyle="ButtonRenderStyle.Secondary" Click="@(async () => await SaveChecklistEntryAsync(entry))" />
+                                                </td>
+                                            }
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            </DxTabPage>
+
+            <DxTabPage Text="Verlauf / Notizen">
+                <div class="p-2">
+                    <div class="mb-3">
+                        <label class="form-label">Allgemeine Notizen</label>
+                        <textarea class="form-control" rows="4" @bind="Profile.Notes" readonly="@(!CanEdit)"></textarea>
+                        @if (CanEdit)
+                        {
+                            <div class="mt-2">
+                                <DxButton Text="Notizen speichern" RenderStyle="ButtonRenderStyle.Primary" Click="SaveProfileAsync" />
+                            </div>
+                        }
+                    </div>
+
+                    <h5>Verlauf</h5>
+                    @if (TimelineEntries.Count == 0)
+                    {
+                        <div class="small text-muted">Es sind noch keine Verlaufsinformationen vorhanden.</div>
+                    }
+                    else
+                    {
+                        <ul class="list-group">
+                            @foreach (var item in TimelineEntries)
+                            {
+                                <li class="list-group-item">
+                                    <div class="d-flex justify-content-between align-items-start gap-2">
+                                        <div>
+                                            <div class="fw-semibold">@item.Title</div>
+                                            <div class="small text-muted">@item.Description</div>
+                                        </div>
+                                        <small class="text-muted">@item.Timestamp.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</small>
+                                    </div>
+                                </li>
+                            }
+                        </ul>
+                    }
+                </div>
+            </DxTabPage>
+        </DxTabs>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public int ProfileId { get; set; }
+
+    private OnboardingProfile? Profile { get; set; }
+
+    private bool CanEdit { get; set; }
+    private bool ShowOnlyOpenMeasures { get; set; }
+    private bool ShowOnlyOpenChecklist { get; set; }
+
+    private List<OnboardingMeasureCatalogItem> MeasureCatalog { get; set; } = new();
+
+    private int NewMeasureCatalogItemId { get; set; }
+    private string NewMeasureValue { get; set; } = string.Empty;
+    private string? NewMeasureNotes { get; set; }
+
+    private IReadOnlyList<OnboardingProfileStatus> ProfileStatuses { get; } =
+    [
+        OnboardingProfileStatus.Draft,
+        OnboardingProfileStatus.InProgress,
+        OnboardingProfileStatus.Completed,
+        OnboardingProfileStatus.Archived
+    ];
+
+    private IReadOnlyList<OnboardingChecklistResult> ChecklistResults { get; } =
+    [
+        OnboardingChecklistResult.Pending,
+        OnboardingChecklistResult.Passed,
+        OnboardingChecklistResult.Failed,
+        OnboardingChecklistResult.NotApplicable
+    ];
+
+    private bool CanAddMeasureEntry => CanEdit && NewMeasureCatalogItemId > 0 && !string.IsNullOrWhiteSpace(NewMeasureValue);
+
+    private DateTime? StartDateInput
+    {
+        get => Profile?.StartDate;
+        set
+        {
+            if (Profile is not null)
+            {
+                Profile.StartDate = value;
+            }
+        }
+    }
+
+    private DateTime? TargetDateInput
+    {
+        get => Profile?.TargetDate;
+        set
+        {
+            if (Profile is not null)
+            {
+                Profile.TargetDate = value;
+            }
+        }
+    }
+
+    private List<OnboardingMeasureEntry> FilteredMeasureEntries =>
+        Profile is null
+            ? new List<OnboardingMeasureEntry>()
+            : (ShowOnlyOpenMeasures
+                ? Profile.MeasureEntries.Where(item => !item.IsCompleted)
+                : Profile.MeasureEntries)
+                .OrderBy(item => item.CatalogItem?.SortOrder ?? int.MaxValue)
+                .ThenBy(item => item.CreatedAt)
+                .ToList();
+
+    private List<OnboardingChecklistEntry> FilteredChecklistEntries =>
+        Profile is null
+            ? new List<OnboardingChecklistEntry>()
+            : (ShowOnlyOpenChecklist
+                ? Profile.ChecklistEntries.Where(item => !item.IsCompleted)
+                : Profile.ChecklistEntries)
+                .OrderBy(item => item.CatalogItem?.SortOrder ?? int.MaxValue)
+                .ThenBy(item => item.CreatedAt)
+                .ToList();
+
+    private List<TimelineEntry> TimelineEntries => BuildTimeline(Profile);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        CanEdit = user.IsInRole("Admin") || user.IsInRole("OnboardingManager");
+
+        MeasureCatalog = await OnboardingService.GetMeasureCatalogAsync(includeInactive: false);
+        NewMeasureCatalogItemId = MeasureCatalog.FirstOrDefault()?.Id ?? 0;
+
+        await LoadProfileAsync();
+    }
+
+    private async Task LoadProfileAsync()
+    {
+        Profile = await OnboardingService.GetProfileAsync(ProfileId);
+    }
+
+    private void NavigateBack()
+    {
+        NavigationManager.NavigateTo("/reportdesigner");
+    }
+
+    private async Task SaveProfileAsync()
+    {
+        if (!CanEdit || Profile is null)
+        {
+            return;
+        }
+
+        Profile = await OnboardingService.UpdateProfileAsync(Profile);
+    }
+
+    private async Task DuplicateProfileAsync()
+    {
+        if (!CanEdit || Profile is null)
+        {
+            return;
+        }
+
+        var duplicate = await OnboardingService.DuplicateProfileAsync(Profile.Id);
+        if (duplicate is not null)
+        {
+            NavigationManager.NavigateTo($"/reportdesigner/details/{duplicate.Id}");
+        }
+    }
+
+    private async Task AddMeasureEntryAsync()
+    {
+        if (!CanAddMeasureEntry || Profile is null)
+        {
+            return;
+        }
+
+        await OnboardingService.AddMeasureEntryAsync(Profile.Id, NewMeasureCatalogItemId, NewMeasureValue, NewMeasureNotes);
+        NewMeasureValue = string.Empty;
+        NewMeasureNotes = string.Empty;
+
+        await LoadProfileAsync();
+    }
+
+    private async Task SaveMeasureEntryAsync(OnboardingMeasureEntry entry)
+    {
+        if (!CanEdit)
+        {
+            return;
+        }
+
+        await OnboardingService.UpdateMeasureEntryAsync(entry);
+        await LoadProfileAsync();
+    }
+
+    private async Task DeleteMeasureEntryAsync(int measureEntryId)
+    {
+        if (!CanEdit)
+        {
+            return;
+        }
+
+        await OnboardingService.DeleteMeasureEntryAsync(measureEntryId);
+        await LoadProfileAsync();
+    }
+
+    private async Task SetMeasureCompletedAsync(OnboardingMeasureEntry entry, bool isCompleted)
+    {
+        if (!CanEdit)
+        {
+            return;
+        }
+
+        await OnboardingService.SetMeasureEntryCompletedAsync(entry.Id, isCompleted);
+        await LoadProfileAsync();
+    }
+
+    private async Task SaveChecklistEntryAsync(OnboardingChecklistEntry entry)
+    {
+        if (!CanEdit)
+        {
+            return;
+        }
+
+        await OnboardingService.UpdateChecklistEntryAsync(entry);
+        await LoadProfileAsync();
+    }
+
+    private async Task SetChecklistCompletedAsync(OnboardingChecklistEntry entry, bool isCompleted)
+    {
+        if (!CanEdit)
+        {
+            return;
+        }
+
+        await OnboardingService.SetChecklistEntryCompletedAsync(entry.Id, isCompleted);
+        await LoadProfileAsync();
+    }
+
+    private async Task SetChecklistResultAsync(OnboardingChecklistEntry entry, ChangeEventArgs args)
+    {
+        if (!CanEdit)
+        {
+            return;
+        }
+
+        if (args.Value is null)
+        {
+            return;
+        }
+
+        if (Enum.TryParse<OnboardingChecklistResult>(args.Value.ToString(), out var result))
+        {
+            await OnboardingService.SetChecklistEntryResultAsync(entry.Id, result);
+            await LoadProfileAsync();
+        }
+    }
+
+    private static string GetStatusLabel(OnboardingProfileStatus status)
+    {
+        return status switch
+        {
+            OnboardingProfileStatus.Draft => "Entwurf",
+            OnboardingProfileStatus.InProgress => "In Bearbeitung",
+            OnboardingProfileStatus.Completed => "Abgeschlossen",
+            OnboardingProfileStatus.Archived => "Archiviert",
+            _ => status.ToString()
+        };
+    }
+
+    private static string GetStatusBadgeCss(OnboardingProfileStatus status)
+    {
+        return status switch
+        {
+            OnboardingProfileStatus.Draft => "bg-secondary",
+            OnboardingProfileStatus.InProgress => "bg-primary",
+            OnboardingProfileStatus.Completed => "bg-success",
+            OnboardingProfileStatus.Archived => "bg-dark",
+            _ => "bg-secondary"
+        };
+    }
+
+    private static int GetProgressPercent(OnboardingProfile profile)
+    {
+        var measureDone = profile.MeasureEntries.Count(item => item.IsCompleted);
+        var checklistDone = profile.ChecklistEntries.Count(item => item.IsCompleted);
+        var total = profile.MeasureEntries.Count + profile.ChecklistEntries.Count;
+
+        if (total == 0)
+        {
+            return 0;
+        }
+
+        return (int)Math.Round((measureDone + checklistDone) * 100d / total, MidpointRounding.AwayFromZero);
+    }
+
+    private static string GetProgressText(OnboardingProfile profile)
+    {
+        var measureDone = profile.MeasureEntries.Count(item => item.IsCompleted);
+        var checklistDone = profile.ChecklistEntries.Count(item => item.IsCompleted);
+        return $"Maﬂnahmen {measureDone}/{profile.MeasureEntries.Count} ∑ Tests {checklistDone}/{profile.ChecklistEntries.Count}";
+    }
+
+    private static List<TimelineEntry> BuildTimeline(OnboardingProfile? profile)
+    {
+        if (profile is null)
+        {
+            return new List<TimelineEntry>();
+        }
+
+        var entries = new List<TimelineEntry>
+        {
+            new TimelineEntry(profile.LastModifiedAt, "Profil aktualisiert", "Stammdaten oder Einstellungen ge‰ndert")
+        };
+
+        entries.AddRange(profile.MeasureEntries
+            .Where(item => item.CompletedAt.HasValue)
+            .Select(item => new TimelineEntry(item.CompletedAt!.Value, "Maﬂnahme abgeschlossen", $"{item.CatalogItem?.Name}: {item.Value}")));
+
+        entries.AddRange(profile.ChecklistEntries
+            .Where(item => item.CompletedAt.HasValue)
+            .Select(item => new TimelineEntry(item.CompletedAt!.Value, "Testpunkt abgeschlossen", $"{item.CatalogItem?.Name}: {item.Result}")));
+
+        return entries
+            .OrderByDescending(item => item.Timestamp)
+            .Take(30)
+            .ToList();
+    }
+
+    private sealed record TimelineEntry(DateTime Timestamp, string Title, string Description);
+}
+
+
+
+
+
+

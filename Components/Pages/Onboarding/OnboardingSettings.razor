@@ -1,0 +1,364 @@
+@page "/reportdesigner/settings"
+@using Microsoft.AspNetCore.Authorization
+@rendermode InteractiveServer
+@attribute [Authorize]
+@using Wiki_Blaze.Data.Entities
+@using Wiki_Blaze.Services
+@inject IOnboardingService OnboardingService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<PageTitle>Onboarding Settings</PageTitle>
+
+<div class="onboarding-settings-root">
+    <div class="card p-3 mb-3">
+        <div class="d-flex justify-content-between align-items-start gap-2">
+            <div>
+                <h3 class="mb-0">Onboarding Einstellungen</h3>
+                <small class="text-muted">Globaler Katalog für Maßnahmenfelder und Test-Checkliste</small>
+            </div>
+            <DxButton Text="Zur Übersicht" RenderStyle="ButtonRenderStyle.Secondary" NavigateUrl="/reportdesigner" />
+        </div>
+    </div>
+
+    @if (!CanEdit)
+    {
+        <div class="alert alert-info">Sie haben nur Leserechte. Änderungen sind für die Rollen Admin und OnboardingManager verfügbar.</div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(Message))
+    {
+        <div class="alert alert-info">@Message</div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(ErrorMessage))
+    {
+        <div class="alert alert-danger">@ErrorMessage</div>
+    }
+
+    <div class="row g-3">
+        <div class="col-xl-6">
+            <div class="card p-3 h-100">
+                <h5>Maßnahmenfelder</h5>
+
+                @if (CanEdit)
+                {
+                    <div class="border rounded p-2 mb-3 bg-light-subtle">
+                        <div class="row g-2">
+                            <div class="col-md-4">
+                                <label class="form-label">Name</label>
+                                <input class="form-control" @bind="NewMeasureItem.Name" />
+                            </div>
+                            <div class="col-md-5">
+                                <label class="form-label">Beschreibung</label>
+                                <input class="form-control" @bind="NewMeasureItem.Description" />
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Sort.</label>
+                                <input class="form-control" type="number" @bind="NewMeasureItem.SortOrder" />
+                            </div>
+                            <div class="col-md-1 d-flex align-items-end">
+                                <DxButton Text="+" RenderStyle="ButtonRenderStyle.Primary" Click="AddMeasureItemAsync" Enabled="@(!string.IsNullOrWhiteSpace(NewMeasureItem.Name))" />
+                            </div>
+                        </div>
+                    </div>
+                }
+
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Beschreibung</th>
+                                <th>Sort.</th>
+                                <th>Aktiv</th>
+                                @if (CanEdit)
+                                {
+                                    <th class="text-end">Aktion</th>
+                                }
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var item in MeasureCatalog.OrderBy(entry => entry.SortOrder).ThenBy(entry => entry.Name))
+                            {
+                                <tr>
+                                    <td>
+                                        @if (CanEdit)
+                                        {
+                                            <input class="form-control form-control-sm" @bind="item.Name" />
+                                        }
+                                        else
+                                        {
+                                            @item.Name
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (CanEdit)
+                                        {
+                                            <input class="form-control form-control-sm" @bind="item.Description" />
+                                        }
+                                        else
+                                        {
+                                            @item.Description
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (CanEdit)
+                                        {
+                                            <input class="form-control form-control-sm" type="number" @bind="item.SortOrder" />
+                                        }
+                                        else
+                                        {
+                                            @item.SortOrder
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (CanEdit)
+                                        {
+                                            <DxCheckBox @bind-Checked="item.IsActive" />
+                                        }
+                                        else
+                                        {
+                                            <span class="badge @(item.IsActive ? "bg-success" : "bg-secondary")">@(item.IsActive ? "Ja" : "Nein")</span>
+                                        }
+                                    </td>
+                                    @if (CanEdit)
+                                    {
+                                        <td class="text-end">
+                                            <DxButton Text="Speichern" RenderStyle="ButtonRenderStyle.Secondary" Click="@(async () => await SaveMeasureItemAsync(item))" />
+                                        </td>
+                                    }
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-6">
+            <div class="card p-3 h-100">
+                <h5>Checklistenpunkte</h5>
+
+                @if (CanEdit)
+                {
+                    <div class="border rounded p-2 mb-3 bg-light-subtle">
+                        <div class="row g-2">
+                            <div class="col-md-4">
+                                <label class="form-label">Name</label>
+                                <input class="form-control" @bind="NewChecklistItem.Name" />
+                            </div>
+                            <div class="col-md-5">
+                                <label class="form-label">Beschreibung</label>
+                                <input class="form-control" @bind="NewChecklistItem.Description" />
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Sort.</label>
+                                <input class="form-control" type="number" @bind="NewChecklistItem.SortOrder" />
+                            </div>
+                            <div class="col-md-1 d-flex align-items-end">
+                                <DxButton Text="+" RenderStyle="ButtonRenderStyle.Primary" Click="AddChecklistItemAsync" Enabled="@(!string.IsNullOrWhiteSpace(NewChecklistItem.Name))" />
+                            </div>
+                        </div>
+                    </div>
+                }
+
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Beschreibung</th>
+                                <th>Sort.</th>
+                                <th>Aktiv</th>
+                                @if (CanEdit)
+                                {
+                                    <th class="text-end">Aktion</th>
+                                }
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var item in ChecklistCatalog.OrderBy(entry => entry.SortOrder).ThenBy(entry => entry.Name))
+                            {
+                                <tr>
+                                    <td>
+                                        @if (CanEdit)
+                                        {
+                                            <input class="form-control form-control-sm" @bind="item.Name" />
+                                        }
+                                        else
+                                        {
+                                            @item.Name
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (CanEdit)
+                                        {
+                                            <input class="form-control form-control-sm" @bind="item.Description" />
+                                        }
+                                        else
+                                        {
+                                            @item.Description
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (CanEdit)
+                                        {
+                                            <input class="form-control form-control-sm" type="number" @bind="item.SortOrder" />
+                                        }
+                                        else
+                                        {
+                                            @item.SortOrder
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (CanEdit)
+                                        {
+                                            <DxCheckBox @bind-Checked="item.IsActive" />
+                                        }
+                                        else
+                                        {
+                                            <span class="badge @(item.IsActive ? "bg-success" : "bg-secondary")">@(item.IsActive ? "Ja" : "Nein")</span>
+                                        }
+                                    </td>
+                                    @if (CanEdit)
+                                    {
+                                        <td class="text-end">
+                                            <DxButton Text="Speichern" RenderStyle="ButtonRenderStyle.Secondary" Click="@(async () => await SaveChecklistItemAsync(item))" />
+                                        </td>
+                                    }
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private bool CanEdit { get; set; }
+    private string? Message { get; set; }
+    private string? ErrorMessage { get; set; }
+
+    private List<OnboardingMeasureCatalogItem> MeasureCatalog { get; set; } = new();
+    private List<OnboardingChecklistCatalogItem> ChecklistCatalog { get; set; } = new();
+
+    private OnboardingMeasureCatalogItem NewMeasureItem { get; set; } = CreateNewMeasureItem();
+    private OnboardingChecklistCatalogItem NewChecklistItem { get; set; } = CreateNewChecklistItem();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        CanEdit = user.IsInRole("Admin") || user.IsInRole("OnboardingManager");
+
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        Message = null;
+        ErrorMessage = null;
+
+        MeasureCatalog = await OnboardingService.GetMeasureCatalogAsync(includeInactive: true);
+        ChecklistCatalog = await OnboardingService.GetChecklistCatalogAsync(includeInactive: true);
+    }
+
+    private async Task AddMeasureItemAsync()
+    {
+        if (!CanEdit)
+        {
+            return;
+        }
+
+        try
+        {
+            await OnboardingService.SaveMeasureCatalogItemAsync(NewMeasureItem);
+            NewMeasureItem = CreateNewMeasureItem();
+            await LoadDataAsync();
+            Message = "Maßnahmenfeld wurde hinzugefügt.";
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+        }
+    }
+
+    private async Task SaveMeasureItemAsync(OnboardingMeasureCatalogItem item)
+    {
+        if (!CanEdit)
+        {
+            return;
+        }
+
+        try
+        {
+            await OnboardingService.SaveMeasureCatalogItemAsync(item);
+            await LoadDataAsync();
+            Message = "Maßnahmenfeld wurde gespeichert.";
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+        }
+    }
+
+    private async Task AddChecklistItemAsync()
+    {
+        if (!CanEdit)
+        {
+            return;
+        }
+
+        try
+        {
+            await OnboardingService.SaveChecklistCatalogItemAsync(NewChecklistItem);
+            NewChecklistItem = CreateNewChecklistItem();
+            await LoadDataAsync();
+            Message = "Checklistenpunkt wurde hinzugefügt.";
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+        }
+    }
+
+    private async Task SaveChecklistItemAsync(OnboardingChecklistCatalogItem item)
+    {
+        if (!CanEdit)
+        {
+            return;
+        }
+
+        try
+        {
+            await OnboardingService.SaveChecklistCatalogItemAsync(item);
+            await LoadDataAsync();
+            Message = "Checklistenpunkt wurde gespeichert.";
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+        }
+    }
+
+    private static OnboardingMeasureCatalogItem CreateNewMeasureItem()
+    {
+        return new OnboardingMeasureCatalogItem
+        {
+            IsActive = true
+        };
+    }
+
+    private static OnboardingChecklistCatalogItem CreateNewChecklistItem()
+    {
+        return new OnboardingChecklistCatalogItem
+        {
+            IsActive = true
+        };
+    }
+}
+
+
+

@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using System.Linq;
 using DevExpress.AspNetCore.Reporting;
 using DevExpress.Blazor.Reporting;
@@ -49,7 +49,6 @@ builder.Services.AddAuthentication(options =>
 })
     .AddIdentityCookies();
 
-
 var dataDirectoryPath = Path.Combine(builder.Environment.ContentRootPath, "Data");
 Directory.CreateDirectory(dataDirectoryPath);
 
@@ -85,10 +84,11 @@ builder.Services.AddIdentityCore<ApplicationUser>(options => options.SignIn.Requ
     .AddSignInManager()
     .AddDefaultTokenProviders();
 
-// Wiki Service registrieren
+// Wiki + Onboarding Services registrieren
 builder.Services.AddScoped<IWikiService, WikiService>();
 builder.Services.AddScoped<IWikiFavoriteGroupService, WikiFavoriteGroupService>();
 builder.Services.AddScoped<IUserIdResolver, UserIdResolver>();
+builder.Services.AddScoped<IOnboardingService, OnboardingService>();
 
 builder.Services.AddSingleton<IEmailSender<ApplicationUser>, IdentityNoOpEmailSender>();
 
@@ -99,7 +99,7 @@ await using (var scope = app.Services.CreateAsyncScope())
     var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
     var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
     var configuration = scope.ServiceProvider.GetRequiredService<IConfiguration>();
-    var roles = new[] { "Admin", "User" };
+    var roles = new[] { "Admin", "User", "OnboardingManager" };
     foreach (var role in roles)
     {
         if (!await roleManager.RoleExistsAsync(role))
@@ -151,7 +151,6 @@ if (app.Environment.IsDevelopment())
 else
 {
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
-    // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
     app.UseHsts();
 }
 

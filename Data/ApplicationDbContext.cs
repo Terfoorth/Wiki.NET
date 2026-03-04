@@ -1,12 +1,9 @@
-ï»¿using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Wiki_Blaze.Data.Entities;
 
 namespace Wiki_Blaze.Data
 {
-
-   
-
     public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : IdentityDbContext<ApplicationUser>(options)
     {
         public DbSet<WikiCategory> WikiCategories { get; set; }
@@ -21,6 +18,12 @@ namespace Wiki_Blaze.Data
         public DbSet<WikiComment> WikiComments { get; set; }
         public DbSet<WikiAssignment> WikiAssignments { get; set; }
         public DbSet<WikiChangeLog> WikiChangeLogs { get; set; }
+
+        public DbSet<OnboardingProfile> OnboardingProfiles { get; set; }
+        public DbSet<OnboardingMeasureCatalogItem> OnboardingMeasureCatalogItems { get; set; }
+        public DbSet<OnboardingMeasureEntry> OnboardingMeasureEntries { get; set; }
+        public DbSet<OnboardingChecklistCatalogItem> OnboardingChecklistCatalogItems { get; set; }
+        public DbSet<OnboardingChecklistEntry> OnboardingChecklistEntries { get; set; }
 
         protected override void OnModelCreating(ModelBuilder builder)
         {
@@ -64,7 +67,6 @@ namespace Wiki_Blaze.Data
                 .Property(page => page.Visibility)
                 .HasDefaultValue(WikiPageVisibility.Public)
                 .HasSentinel((WikiPageVisibility)(-1));
-
 
             builder.Entity<WikiPage>()
                 .Property(page => page.EntryType)
@@ -163,12 +165,98 @@ namespace Wiki_Blaze.Data
                 .WithMany()
                 .HasForeignKey(changeLog => changeLog.AuthorId);
 
-            // Initiales Seeding fÃ¼r Kategorien (Beispiel-Daten)
+            builder.Entity<OnboardingProfile>()
+                .Property(profile => profile.Status)
+                .HasDefaultValue(OnboardingProfileStatus.InProgress)
+                .HasSentinel((OnboardingProfileStatus)(-1));
+
+            builder.Entity<OnboardingProfile>()
+                .HasIndex(profile => new { profile.FullName, profile.Department });
+
+            builder.Entity<OnboardingProfile>()
+                .HasIndex(profile => profile.LinkedUserId);
+
+            builder.Entity<OnboardingProfile>()
+                .HasOne(profile => profile.LinkedUser)
+                .WithMany()
+                .HasForeignKey(profile => profile.LinkedUserId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            builder.Entity<OnboardingMeasureCatalogItem>()
+                .HasIndex(item => item.Name)
+                .IsUnique();
+
+            builder.Entity<OnboardingMeasureCatalogItem>()
+                .Property(item => item.IsActive)
+                .HasDefaultValue(true);
+
+            builder.Entity<OnboardingChecklistCatalogItem>()
+                .HasIndex(item => item.Name)
+                .IsUnique();
+
+            builder.Entity<OnboardingChecklistCatalogItem>()
+                .Property(item => item.IsActive)
+                .HasDefaultValue(true);
+
+            builder.Entity<OnboardingMeasureEntry>()
+                .HasIndex(entry => new { entry.ProfileId, entry.CatalogItemId });
+
+            builder.Entity<OnboardingMeasureEntry>()
+                .HasOne(entry => entry.Profile)
+                .WithMany(profile => profile.MeasureEntries)
+                .HasForeignKey(entry => entry.ProfileId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            builder.Entity<OnboardingMeasureEntry>()
+                .HasOne(entry => entry.CatalogItem)
+                .WithMany(item => item.Entries)
+                .HasForeignKey(entry => entry.CatalogItemId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            builder.Entity<OnboardingChecklistEntry>()
+                .HasIndex(entry => new { entry.ProfileId, entry.CatalogItemId })
+                .IsUnique();
+
+            builder.Entity<OnboardingChecklistEntry>()
+                .Property(entry => entry.Result)
+                .HasDefaultValue(OnboardingChecklistResult.Pending)
+                .HasSentinel((OnboardingChecklistResult)(-1));
+
+            builder.Entity<OnboardingChecklistEntry>()
+                .HasOne(entry => entry.Profile)
+                .WithMany(profile => profile.ChecklistEntries)
+                .HasForeignKey(entry => entry.ProfileId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            builder.Entity<OnboardingChecklistEntry>()
+                .HasOne(entry => entry.CatalogItem)
+                .WithMany(item => item.Entries)
+                .HasForeignKey(entry => entry.CatalogItemId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            var onboardingSeedDate = new DateTime(2026, 3, 4, 0, 0, 0, DateTimeKind.Utc);
+
+            builder.Entity<OnboardingMeasureCatalogItem>().HasData(
+                new OnboardingMeasureCatalogItem { Id = 1, Name = "Shared-Drives", Description = "Freigaben und Laufwerkszuordnungen", IsActive = true, SortOrder = 1, CreatedAt = onboardingSeedDate },
+                new OnboardingMeasureCatalogItem { Id = 2, Name = "E-Mail Postfächer", Description = "Mailboxen und Berechtigungen", IsActive = true, SortOrder = 2, CreatedAt = onboardingSeedDate },
+                new OnboardingMeasureCatalogItem { Id = 3, Name = "Verteilerlisten", Description = "Mailverteiler und Teams-Gruppen", IsActive = true, SortOrder = 3, CreatedAt = onboardingSeedDate },
+                new OnboardingMeasureCatalogItem { Id = 4, Name = "Anwendungen", Description = "Fachapplikationen und Lizenzen", IsActive = true, SortOrder = 4, CreatedAt = onboardingSeedDate },
+                new OnboardingMeasureCatalogItem { Id = 5, Name = "Berechtigungen", Description = "Rollen und Rechte", IsActive = true, SortOrder = 5, CreatedAt = onboardingSeedDate },
+                new OnboardingMeasureCatalogItem { Id = 6, Name = "Sonstiges", Description = "Weitere individuelle Maßnahmen", IsActive = true, SortOrder = 6, CreatedAt = onboardingSeedDate }
+            );
+
+            builder.Entity<OnboardingChecklistCatalogItem>().HasData(
+                new OnboardingChecklistCatalogItem { Id = 1, Name = "Outlook", Description = "Outlook Anmeldung und Mailversand testen", IsActive = true, SortOrder = 1, CreatedAt = onboardingSeedDate },
+                new OnboardingChecklistCatalogItem { Id = 2, Name = "Teams", Description = "Teams Login und Telefonie testen", IsActive = true, SortOrder = 2, CreatedAt = onboardingSeedDate },
+                new OnboardingChecklistCatalogItem { Id = 3, Name = "Druckerkarte", Description = "Druckerkarte/FollowMe am Gerät testen", IsActive = true, SortOrder = 3, CreatedAt = onboardingSeedDate }
+            );
+
+            // Initiales Seeding für Kategorien (Beispiel-Daten)
             builder.Entity<WikiCategory>().HasData(
                 new WikiCategory { Id = 1, Name = "Allgemein", Description = "Generelle Informationen", ParentId = null },
                 new WikiCategory { Id = 2, Name = "IT & Entwicklung", Description = "Softwareentwicklung und Infrastruktur", ParentId = null },
-                new WikiCategory { Id = 3, Name = "Web Entwicklung", Description = "Blazor, ASP.NET Core, JavaScript", ParentId = 2 }, // Kind von ID 2
-                new WikiCategory { Id = 4, Name = "Datenbanken", Description = "SQL Server, PostgreSQL", ParentId = 2 }, // Kind von ID 2
+                new WikiCategory { Id = 3, Name = "Web Entwicklung", Description = "Blazor, ASP.NET Core, JavaScript", ParentId = 2 },
+                new WikiCategory { Id = 4, Name = "Datenbanken", Description = "SQL Server, PostgreSQL", ParentId = 2 },
                 new WikiCategory { Id = 5, Name = "Wiki.Forms", Description = "Interaktive PDF-Formulare", ParentId = null, IsFormCategory = true }
             );
 
@@ -186,7 +274,7 @@ namespace Wiki_Blaze.Data
                 {
                     Id = 2,
                     Name = "ReviewDate",
-                    Description = "NÃ¤chstes Review-Datum",
+                    Description = "Nächstes Review-Datum",
                     ValueType = "date",
                     IsRequired = false,
                     IsAutoGenerated = false
@@ -195,7 +283,7 @@ namespace Wiki_Blaze.Data
                 {
                     Id = 3,
                     Name = "Keywords",
-                    Description = "Such-SchlagwÃ¶rter",
+                    Description = "Such-Schlagwörter",
                     ValueType = "text",
                     IsRequired = false,
                     IsAutoGenerated = false
@@ -207,7 +295,7 @@ namespace Wiki_Blaze.Data
                 {
                     Id = 1,
                     Name = "Standard",
-                    Description = "Standardvorlage fÃ¼r neue Wiki-Seiten"
+                    Description = "Standardvorlage für neue Wiki-Seiten"
                 }
             );
 
@@ -239,6 +327,4 @@ namespace Wiki_Blaze.Data
             );
         }
     }
-
-
 }

@@ -1,14 +1,564 @@
-Ôªø@page "/reportdesigner"
+@page "/reportdesigner"
+@using Microsoft.AspNetCore.Authorization
 @rendermode InteractiveServer
+@attribute [Authorize]
+@using Wiki_Blaze.Data.Entities
+@using Wiki_Blaze.Services
+@inject IOnboardingService OnboardingService
+@inject NavigationManager NavigationManager
+@inject AuthenticationStateProvider AuthenticationStateProvider
 
-<PageTitle>Report Designer</PageTitle>
+<PageTitle>Onboarding Management</PageTitle>
 
-<h1>Report Designer</h1>
+<div class="onboarding-root">
+    <div class="card onboarding-toolbar-card mb-3">
+        <DxToolbar CssClass="onboarding-toolbar" ItemRenderStyleMode="ToolbarRenderStyleMode.Plain">
+            <Items>
+                <DxToolbarItem>
+                    <Template>
+                        <div class="onboarding-title-wrap">
+                            <h3 class="mb-0">Onboarding Management</h3>
+                            <small class="text-muted">Grid-Ansicht mit Profil-Detailpanel und vollst‰ndiger Detailseite</small>
+                        </div>
+                    </Template>
+                </DxToolbarItem>
+                <DxToolbarItem Alignment="ToolbarItemAlignment.Right">
+                    <Template>
+                        <DxButton Text="Einstellungen" NavigateUrl="/reportdesigner/settings" RenderStyle="ButtonRenderStyle.Secondary" />
+                    </Template>
+                </DxToolbarItem>
+                @if (CanEdit)
+                {
+                    <DxToolbarItem Alignment="ToolbarItemAlignment.Right">
+                        <Template>
+                            <DxButton Text="Neues Profil" RenderStyle="ButtonRenderStyle.Primary" Click="OpenCreateProfilePopup" />
+                        </Template>
+                    </DxToolbarItem>
+                }
+                <DxToolbarItem Alignment="ToolbarItemAlignment.Right">
+                    <Template>
+                        <DxButton Text="Aktualisieren" RenderStyle="ButtonRenderStyle.Secondary" Click="@(async () => await LoadProfilesAsync())" />
+                    </Template>
+                </DxToolbarItem>
+            </Items>
+        </DxToolbar>
 
-<DxReportDesigner ReportName="Report" AllowMDI="true" DataSources="DataSources" Height="100%">
-    <DxReportDesignerWizardSettings UseFullscreenWizard="true" />
-</DxReportDesigner>
+        <div class="row g-2 mt-2 onboarding-filters">
+            <div class="col-xl-4 col-md-6">
+                <DxTextBox NullText="Suche nach Name, E-Mail, Abteilung, Vorgesetzter"
+                           BindValueMode="BindValueMode.OnInput"
+                           @bind-Text="SearchText" />
+            </div>
+            <div class="col-xl-3 col-md-6">
+                <DxComboBox Data="StatusFilterItems"
+                            TData="StatusFilterItem"
+                            TValue="string"
+                            TextFieldName="Text"
+                            ValueFieldName="Value"
+                            @bind-Value="SelectedStatusFilterValue" />
+            </div>
+            <div class="col-xl-3 col-md-6 d-flex align-items-center">
+                <DxCheckBox @bind-Checked="OnlyOpenProfiles"
+                            LabelText="Nur offene Profile" />
+            </div>
+            <div class="col-xl-2 col-md-6 d-flex justify-content-end">
+                <DxButton Text="Filter anwenden" RenderStyle="ButtonRenderStyle.Secondary" Click="@(async () => await LoadProfilesAsync())" />
+            </div>
+        </div>
+    </div>
+
+    <DxDrawer CssClass="onboarding-drawer"
+              @bind-IsOpen="IsDrawerOpen"
+              Position="DrawerPosition.Right"
+              Mode="DrawerMode.Shrink"
+              ApplyBackgroundShading="false"
+              PanelWidth="34rem">
+        <BodyTemplate>
+            <div class="onboarding-panel p-3">
+                @if (ActiveProfileDraft is null)
+                {
+                    <div class="text-muted">W‰hlen Sie links ein Profil aus.</div>
+                }
+                else
+                {
+                    <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+                        <div>
+                            <h4 class="mb-1">@ActiveProfileDraft.FullName</h4>
+                            <span class="badge @GetStatusBadgeCss(ActiveProfileDraft.Status)">@GetStatusLabel(ActiveProfileDraft.Status)</span>
+                        </div>
+                        <DxButton Text="Detailseite"
+                                  RenderStyle="ButtonRenderStyle.Secondary"
+                                  NavigateUrl="@($"/reportdesigner/details/{ActiveProfileDraft.Id}")" />
+                    </div>
+
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between mb-1">
+                            <small class="text-muted">Fortschritt</small>
+                            <small class="text-muted">@GetProgressPercent(ActiveProfileDraft)%</small>
+                        </div>
+                        <div class="progress">
+                            <div class="progress-bar" role="progressbar" style="@($"width: {GetProgressPercent(ActiveProfileDraft)}%")"></div>
+                        </div>
+                        <small class="text-muted">@GetProgressText(ActiveProfileDraft)</small>
+                    </div>
+
+                    @if (CanEdit)
+                    {
+                        <div class="d-flex gap-2 flex-wrap mb-3">
+                            <DxButton Text="Speichern" RenderStyle="ButtonRenderStyle.Primary" Click="SaveActiveProfileAsync" />
+                            <DxButton Text="Duplizieren" RenderStyle="ButtonRenderStyle.Secondary" Click="DuplicateActiveProfileAsync" />
+                            <DxButton Text="Offene To-Dos" RenderStyle="ButtonRenderStyle.Secondary" Click="ToggleOpenTodoFilter" />
+                        </div>
+                    }
+
+                    <div class="onboarding-edit-grid">
+                        <div class="row g-2">
+                            <div class="col-md-6">
+                                <label class="form-label">Name</label>
+                                <input class="form-control" @bind="ActiveProfileDraft.FullName" readonly="@(!CanEdit)" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Abteilung</label>
+                                <input class="form-control" @bind="ActiveProfileDraft.Department" readonly="@(!CanEdit)" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Vorgesetzter</label>
+                                <input class="form-control" @bind="ActiveProfileDraft.Supervisor" readonly="@(!CanEdit)" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">E-Mail</label>
+                                <input class="form-control" @bind="ActiveProfileDraft.Email" readonly="@(!CanEdit)" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Telefon</label>
+                                <input class="form-control" @bind="ActiveProfileDraft.PhoneNumber" readonly="@(!CanEdit)" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Druckerkartennummer</label>
+                                <input class="form-control" @bind="ActiveProfileDraft.PrinterCardNumber" readonly="@(!CanEdit)" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Status</label>
+                                <select class="form-select" @bind="ActiveProfileDraft.Status" disabled="@(!CanEdit)">
+                                    @foreach (var status in ProfileStatuses)
+                                    {
+                                        <option value="@status">@GetStatusLabel(status)</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Verkn¸pfter Benutzer (Id)</label>
+                                <input class="form-control" @bind="ActiveProfileDraft.LinkedUserId" readonly="@(!CanEdit)" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mt-3">
+                        <h6>Onboarding-Maﬂnahmen</h6>
+                        @if (GetFilteredMeasureEntries(ActiveProfileDraft).Count == 0)
+                        {
+                            <div class="small text-muted">Keine Maﬂnahmeneintr‰ge vorhanden.</div>
+                        }
+                        else
+                        {
+                            <ul class="list-group">
+                                @foreach (var entry in GetFilteredMeasureEntries(ActiveProfileDraft).Take(8))
+                                {
+                                    <li class="list-group-item d-flex justify-content-between align-items-start gap-2">
+                                        <div>
+                                            <div class="fw-semibold">@entry.CatalogItem?.Name</div>
+                                            <div class="small">@entry.Value</div>
+                                        </div>
+                                        @if (CanEdit)
+                                        {
+                                            <DxCheckBox Checked="entry.IsCompleted" CheckedChanged="@(async (bool value) => await ToggleMeasureCompletedAsync(entry, value))" />
+                                        }
+                                        else
+                                        {
+                                            <span class="badge @(entry.IsCompleted ? "bg-success" : "bg-secondary")">@(entry.IsCompleted ? "Erledigt" : "Offen")</span>
+                                        }
+                                    </li>
+                                }
+                            </ul>
+                        }
+                    </div>
+
+                    <div class="mt-3">
+                        <h6>Test-Checkliste</h6>
+                        @if (GetFilteredChecklistEntries(ActiveProfileDraft).Count == 0)
+                        {
+                            <div class="small text-muted">Keine Checklistenpunkte vorhanden.</div>
+                        }
+                        else
+                        {
+                            <ul class="list-group">
+                                @foreach (var entry in GetFilteredChecklistEntries(ActiveProfileDraft).Take(8))
+                                {
+                                    <li class="list-group-item d-flex justify-content-between align-items-start gap-2">
+                                        <div>
+                                            <div class="fw-semibold">@entry.CatalogItem?.Name</div>
+                                            <div class="small text-muted">@entry.Result</div>
+                                        </div>
+                                        @if (CanEdit)
+                                        {
+                                            <DxCheckBox Checked="entry.IsCompleted" CheckedChanged="@(async (bool value) => await ToggleChecklistCompletedAsync(entry, value))" />
+                                        }
+                                        else
+                                        {
+                                            <span class="badge @(entry.IsCompleted ? "bg-success" : "bg-secondary")">@(entry.IsCompleted ? "Erledigt" : "Offen")</span>
+                                        }
+                                    </li>
+                                }
+                            </ul>
+                        }
+                    </div>
+                }
+            </div>
+        </BodyTemplate>
+
+        <TargetContent>
+            <DxGrid @ref="Grid"
+                    Data="Profiles"
+                    KeyFieldName="Id"
+                    FocusedRowEnabled="true"
+                    HighlightRowOnHover="true"
+                    ShowFilterRow="false"
+                    ShowGroupPanel="false"
+                    ShowSearchBox="false"
+                    VirtualScrollingEnabled="true"
+                    RowClick="OnRowClick"
+                    TextWrapEnabled="false"
+                    CssClass="onboarding-grid">
+                <Columns>
+                    <DxGridDataColumn FieldName="FullName" Caption="Mitarbeiter" MinWidth="220" />
+                    <DxGridDataColumn FieldName="Department" Caption="Abteilung" MinWidth="140" />
+                    <DxGridDataColumn FieldName="Supervisor" Caption="Vorgesetzter" MinWidth="160" />
+                    <DxGridDataColumn FieldName="Email" Caption="E-Mail" MinWidth="200" />
+                    <DxGridDataColumn FieldName="Status" Caption="Status" MinWidth="110">
+                        <CellDisplayTemplate>
+                            @{ var item = (OnboardingProfileListItem)context.DataItem; }
+                            <span class="badge @GetStatusBadgeCss(item.Status)">@GetStatusLabel(item.Status)</span>
+                        </CellDisplayTemplate>
+                    </DxGridDataColumn>
+                    <DxGridDataColumn Caption="Fortschritt" MinWidth="180">
+                        <CellDisplayTemplate>
+                            @{ var item = (OnboardingProfileListItem)context.DataItem; }
+                            <div>
+                                <div class="progress">
+                                    <div class="progress-bar" role="progressbar" style="@($"width: {item.ProgressPercent}%")"></div>
+                                </div>
+                                <small class="text-muted">@item.ProgressPercent% ∑ @item.OpenTodoCount offene Punkte</small>
+                            </div>
+                        </CellDisplayTemplate>
+                    </DxGridDataColumn>
+                    <DxGridDataColumn FieldName="LastModifiedAt" Caption="Letzte ƒnderung" DisplayFormat="dd.MM.yyyy HH:mm" MinWidth="150" />
+                </Columns>
+            </DxGrid>
+        </TargetContent>
+    </DxDrawer>
+</div>
+
+<DxPopup @bind-Visible="CreatePopupVisible"
+         HeaderText="Neues Onboarding-Profil"
+         Width="35rem"
+         ShowCloseButton="true"
+         CloseOnOutsideClick="false">
+    <BodyContentTemplate>
+        <div class="p-2">
+            <div class="row g-2">
+                <div class="col-12">
+                    <label class="form-label">Name</label>
+                    <input class="form-control" @bind="CreateProfileModel.FullName" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Abteilung</label>
+                    <input class="form-control" @bind="CreateProfileModel.Department" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Vorgesetzter</label>
+                    <input class="form-control" @bind="CreateProfileModel.Supervisor" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">E-Mail</label>
+                    <input class="form-control" @bind="CreateProfileModel.Email" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Telefon</label>
+                    <input class="form-control" @bind="CreateProfileModel.PhoneNumber" />
+                </div>
+            </div>
+            <div class="d-flex justify-content-end gap-2 mt-3">
+                <DxButton Text="Abbrechen" RenderStyle="ButtonRenderStyle.Secondary" Click="CloseCreateProfilePopup" />
+                <DxButton Text="Anlegen" RenderStyle="ButtonRenderStyle.Primary" Click="CreateProfileAsync" Enabled="@(!string.IsNullOrWhiteSpace(CreateProfileModel.FullName))" />
+            </div>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
 
 @code {
-    Dictionary<string, object> DataSources { get; } = new();
+    private IGrid? Grid { get; set; }
+
+    private List<OnboardingProfileListItem> Profiles { get; set; } = new();
+    private OnboardingProfile? ActiveProfileDraft { get; set; }
+
+    private string? SearchText { get; set; }
+    private string SelectedStatusFilterValue { get; set; } = "all";
+    private bool OnlyOpenProfiles { get; set; }
+    private bool IsDrawerOpen { get; set; }
+    private bool ShowOnlyOpenTodos { get; set; }
+    private bool CanEdit { get; set; }
+
+    private bool CreatePopupVisible { get; set; }
+    private OnboardingProfile CreateProfileModel { get; set; } = CreateNewProfileTemplate();
+
+    private IReadOnlyList<OnboardingProfileStatus> ProfileStatuses { get; } =
+    [
+        OnboardingProfileStatus.Draft,
+        OnboardingProfileStatus.InProgress,
+        OnboardingProfileStatus.Completed,
+        OnboardingProfileStatus.Archived
+    ];
+
+    private IReadOnlyList<StatusFilterItem> StatusFilterItems { get; } =
+    [
+        new StatusFilterItem("Alle Stati", "all"),
+        new StatusFilterItem("Entwurf", nameof(OnboardingProfileStatus.Draft)),
+        new StatusFilterItem("In Bearbeitung", nameof(OnboardingProfileStatus.InProgress)),
+        new StatusFilterItem("Abgeschlossen", nameof(OnboardingProfileStatus.Completed)),
+        new StatusFilterItem("Archiviert", nameof(OnboardingProfileStatus.Archived))
+    ];
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        CanEdit = user.IsInRole("Admin") || user.IsInRole("OnboardingManager");
+
+        await LoadProfilesAsync();
+    }
+
+    private async Task LoadProfilesAsync()
+    {
+        var selectedStatus = ParseStatusFilter(SelectedStatusFilterValue);
+        Profiles = await OnboardingService.GetProfilesAsync(SearchText, selectedStatus, OnlyOpenProfiles);
+
+        if (ActiveProfileDraft is not null)
+        {
+            var refreshed = await OnboardingService.GetProfileAsync(ActiveProfileDraft.Id);
+            ActiveProfileDraft = refreshed;
+            IsDrawerOpen = refreshed is not null;
+        }
+
+        StateHasChanged();
+    }
+
+    private async Task OnRowClick(GridRowClickEventArgs args)
+    {
+        if (Grid is null)
+        {
+            return;
+        }
+
+        var item = (OnboardingProfileListItem)Grid.GetDataItem(args.VisibleIndex);
+        var profile = await OnboardingService.GetProfileAsync(item.Id);
+
+        if (profile is null)
+        {
+            return;
+        }
+
+        ActiveProfileDraft = profile;
+        IsDrawerOpen = true;
+        StateHasChanged();
+    }
+
+    private async Task SaveActiveProfileAsync()
+    {
+        if (!CanEdit || ActiveProfileDraft is null)
+        {
+            return;
+        }
+
+        ActiveProfileDraft = await OnboardingService.UpdateProfileAsync(ActiveProfileDraft);
+        await LoadProfilesAsync();
+    }
+
+    private async Task DuplicateActiveProfileAsync()
+    {
+        if (!CanEdit || ActiveProfileDraft is null)
+        {
+            return;
+        }
+
+        var duplicate = await OnboardingService.DuplicateProfileAsync(ActiveProfileDraft.Id);
+        await LoadProfilesAsync();
+
+        if (duplicate is not null)
+        {
+            ActiveProfileDraft = duplicate;
+            IsDrawerOpen = true;
+        }
+    }
+
+    private async Task ToggleMeasureCompletedAsync(OnboardingMeasureEntry entry, bool isCompleted)
+    {
+        if (!CanEdit)
+        {
+            return;
+        }
+
+        await OnboardingService.SetMeasureEntryCompletedAsync(entry.Id, isCompleted);
+        if (ActiveProfileDraft is not null)
+        {
+            ActiveProfileDraft = await OnboardingService.GetProfileAsync(ActiveProfileDraft.Id);
+        }
+
+        await LoadProfilesAsync();
+    }
+
+    private async Task ToggleChecklistCompletedAsync(OnboardingChecklistEntry entry, bool isCompleted)
+    {
+        if (!CanEdit)
+        {
+            return;
+        }
+
+        await OnboardingService.SetChecklistEntryCompletedAsync(entry.Id, isCompleted);
+        if (ActiveProfileDraft is not null)
+        {
+            ActiveProfileDraft = await OnboardingService.GetProfileAsync(ActiveProfileDraft.Id);
+        }
+
+        await LoadProfilesAsync();
+    }
+
+    private void ToggleOpenTodoFilter()
+    {
+        ShowOnlyOpenTodos = !ShowOnlyOpenTodos;
+    }
+
+    private void OpenCreateProfilePopup()
+    {
+        CreateProfileModel = CreateNewProfileTemplate();
+        CreatePopupVisible = true;
+    }
+
+    private void CloseCreateProfilePopup()
+    {
+        CreatePopupVisible = false;
+    }
+
+    private async Task CreateProfileAsync()
+    {
+        if (!CanEdit || string.IsNullOrWhiteSpace(CreateProfileModel.FullName))
+        {
+            return;
+        }
+
+        var created = await OnboardingService.CreateProfileAsync(CreateProfileModel);
+        CreatePopupVisible = false;
+
+        await LoadProfilesAsync();
+
+        ActiveProfileDraft = created;
+        IsDrawerOpen = true;
+    }
+
+    private List<OnboardingMeasureEntry> GetFilteredMeasureEntries(OnboardingProfile profile)
+    {
+        IEnumerable<OnboardingMeasureEntry> entries = profile.MeasureEntries.OrderBy(item => item.CatalogItem?.SortOrder ?? int.MaxValue).ThenBy(item => item.CreatedAt);
+        if (ShowOnlyOpenTodos)
+        {
+            entries = entries.Where(item => !item.IsCompleted);
+        }
+
+        return entries.ToList();
+    }
+
+    private List<OnboardingChecklistEntry> GetFilteredChecklistEntries(OnboardingProfile profile)
+    {
+        IEnumerable<OnboardingChecklistEntry> entries = profile.ChecklistEntries.OrderBy(item => item.CatalogItem?.SortOrder ?? int.MaxValue).ThenBy(item => item.CreatedAt);
+        if (ShowOnlyOpenTodos)
+        {
+            entries = entries.Where(item => !item.IsCompleted);
+        }
+
+        return entries.ToList();
+    }
+
+    private static OnboardingProfileStatus? ParseStatusFilter(string value)
+    {
+        if (string.Equals(value, "all", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return Enum.TryParse<OnboardingProfileStatus>(value, out var status) ? status : null;
+    }
+
+    private static string GetStatusLabel(OnboardingProfileStatus status)
+    {
+        return status switch
+        {
+            OnboardingProfileStatus.Draft => "Entwurf",
+            OnboardingProfileStatus.InProgress => "In Bearbeitung",
+            OnboardingProfileStatus.Completed => "Abgeschlossen",
+            OnboardingProfileStatus.Archived => "Archiviert",
+            _ => status.ToString()
+        };
+    }
+
+    private static string GetStatusBadgeCss(OnboardingProfileStatus status)
+    {
+        return status switch
+        {
+            OnboardingProfileStatus.Draft => "bg-secondary",
+            OnboardingProfileStatus.InProgress => "bg-primary",
+            OnboardingProfileStatus.Completed => "bg-success",
+            OnboardingProfileStatus.Archived => "bg-dark",
+            _ => "bg-secondary"
+        };
+    }
+
+    private static int GetProgressPercent(OnboardingProfile profile)
+    {
+        var measureDone = profile.MeasureEntries.Count(item => item.IsCompleted);
+        var checklistDone = profile.ChecklistEntries.Count(item => item.IsCompleted);
+        var total = profile.MeasureEntries.Count + profile.ChecklistEntries.Count;
+
+        if (total == 0)
+        {
+            return 0;
+        }
+
+        return (int)Math.Round((measureDone + checklistDone) * 100d / total, MidpointRounding.AwayFromZero);
+    }
+
+    private static string GetProgressText(OnboardingProfile profile)
+    {
+        var measureDone = profile.MeasureEntries.Count(item => item.IsCompleted);
+        var checklistDone = profile.ChecklistEntries.Count(item => item.IsCompleted);
+        var totalMeasures = profile.MeasureEntries.Count;
+        var totalChecklist = profile.ChecklistEntries.Count;
+
+        return $"Maﬂnahmen: {measureDone}/{totalMeasures} ∑ Tests: {checklistDone}/{totalChecklist}";
+    }
+
+    private static OnboardingProfile CreateNewProfileTemplate()
+    {
+        return new OnboardingProfile
+        {
+            Status = OnboardingProfileStatus.InProgress,
+            StartDate = DateTime.UtcNow.Date,
+            TargetDate = DateTime.UtcNow.Date.AddDays(7)
+        };
+    }
+
+    private sealed record StatusFilterItem(string Text, string Value);
 }
+
+
+
+
+
+

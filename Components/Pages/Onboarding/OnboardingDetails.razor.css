@@ -1,0 +1,16 @@
+.onboarding-details-root {
+    height: 100%;
+}
+
+.onboarding-tabs {
+    min-height: 60vh;
+}
+
+.onboarding-tabs .form-label {
+    margin-bottom: 0.25rem;
+    font-size: 0.85rem;
+}
+
+.progress {
+    height: 0.65rem;
+}
