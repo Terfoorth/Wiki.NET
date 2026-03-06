@@ -168,7 +168,7 @@
                 {
                     if (existing.IsEditLocked)
                     {
-                        NavManager.NavigateTo($"/wiki/view/{existing.Id}");
+                        NavManager.NavigateTo(GetViewEntryUrl(existing.Id));
                         return;
                     }
                     // Wir klonen das Objekt flach, um nicht direkt am EF-getrackten Objekt zu arbeiten
@@ -421,6 +421,12 @@
         return TemplateGroups
             .FirstOrDefault(group => string.Equals(group.Name, WikiTemplateGroup.DefaultGroupName, StringComparison.Ordinal))?.Id
             ?? TemplateGroups.FirstOrDefault()?.Id;
+    }
+
+    private string GetViewEntryUrl(int pageId)
+    {
+        var returnUrl = ResolveReturnUrl();
+        return $"/wiki/view/{pageId}?returnUrl={Uri.EscapeDataString(returnUrl)}";
     }
 
     private string GetDefaultReturnUrl()
