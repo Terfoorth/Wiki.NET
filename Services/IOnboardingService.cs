@@ -20,6 +20,22 @@ public interface IOnboardingService
 
     Task<OnboardingProfile?> DuplicateProfileAsync(int sourceProfileId, CancellationToken cancellationToken = default);
 
+    Task<List<OnboardingAssigneeLookupItem>> GetAssigneeLookupAsync(CancellationToken cancellationToken = default);
+
+    Task<OnboardingProfileAttachmentInfo?> GetAttachmentInfoAsync(int profileId, CancellationToken cancellationToken = default);
+
+    Task<OnboardingProfileAttachmentData?> GetAttachmentContentAsync(int profileId, CancellationToken cancellationToken = default);
+
+    Task<OnboardingProfileAttachmentInfo> UploadOrReplaceAttachmentAsync(
+        int profileId,
+        string originalFileName,
+        string contentType,
+        byte[] content,
+        string? uploadedByUserId,
+        CancellationToken cancellationToken = default);
+
+    Task<bool> DeleteAttachmentAsync(int profileId, CancellationToken cancellationToken = default);
+
     Task<List<OnboardingMeasureCatalogItem>> GetMeasureCatalogAsync(bool includeInactive = true, CancellationToken cancellationToken = default);
 
     Task<OnboardingMeasureCatalogItem> SaveMeasureCatalogItemAsync(OnboardingMeasureCatalogItem item, CancellationToken cancellationToken = default);
@@ -50,10 +66,15 @@ public interface IOnboardingService
 public sealed class OnboardingProfileListItem
 {
     public int Id { get; set; }
+    public string DisplayName { get; set; } = string.Empty;
     public string FullName { get; set; } = string.Empty;
+    public string? Username { get; set; }
     public string? Department { get; set; }
+    public string? JobTitle { get; set; }
     public string? Supervisor { get; set; }
     public string? Email { get; set; }
+    public DateTime EntryDate { get; set; }
+    public string? AssignedAgentDisplayName { get; set; }
     public OnboardingProfileStatus Status { get; set; }
     public int MeasureCompleted { get; set; }
     public int MeasureTotal { get; set; }
@@ -63,4 +84,30 @@ public sealed class OnboardingProfileListItem
     public DateTime LastModifiedAt { get; set; }
 
     public int OpenTodoCount => (MeasureTotal - MeasureCompleted) + (ChecklistTotal - ChecklistCompleted);
+}
+
+public sealed class OnboardingAssigneeLookupItem
+{
+    public string UserId { get; set; } = string.Empty;
+    public string DisplayName { get; set; } = string.Empty;
+    public string? UserName { get; set; }
+    public string? Email { get; set; }
+}
+
+public sealed class OnboardingProfileAttachmentInfo
+{
+    public int ProfileId { get; set; }
+    public string OriginalFileName { get; set; } = string.Empty;
+    public string ContentType { get; set; } = string.Empty;
+    public long Size { get; set; }
+    public DateTime UploadedAt { get; set; }
+    public string? UploadedByUserId { get; set; }
+    public string? UploadedByDisplayName { get; set; }
+}
+
+public sealed class OnboardingProfileAttachmentData
+{
+    public string OriginalFileName { get; set; } = string.Empty;
+    public string ContentType { get; set; } = string.Empty;
+    public byte[] Content { get; set; } = Array.Empty<byte>();
 }

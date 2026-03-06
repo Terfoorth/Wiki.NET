@@ -13,6 +13,24 @@ public class OnboardingProfile
     [MaxLength(200)]
     public string FullName { get; set; } = string.Empty;
 
+    public OnboardingSalutation Salutation { get; set; } = OnboardingSalutation.Unspecified;
+
+    [MaxLength(100)]
+    public string FirstName { get; set; } = string.Empty;
+
+    [MaxLength(100)]
+    public string LastName { get; set; } = string.Empty;
+
+    [MaxLength(100)]
+    public string? Username { get; set; }
+
+    [MaxLength(120)]
+    public string? TicketNumber { get; set; }
+
+    public DateTime EntryDate { get; set; } = DateTime.UtcNow.Date;
+
+    public DateTime? ExitDate { get; set; }
+
     [MaxLength(150)]
     public string? Department { get; set; }
 
@@ -25,11 +43,32 @@ public class OnboardingProfile
     [MaxLength(50)]
     public string? PhoneNumber { get; set; }
 
+    [MaxLength(50)]
+    public string? Phone { get; set; }
+
+    [MaxLength(50)]
+    public string? Mobile { get; set; }
+
+    [MaxLength(150)]
+    public string? Location { get; set; }
+
+    [MaxLength(150)]
+    public string? JobTitle { get; set; }
+
+    [MaxLength(120)]
+    public string? Hostname { get; set; }
+
+    [MaxLength(120)]
+    public string? DeviceNumber { get; set; }
+
     [MaxLength(120)]
     public string? PrinterCardNumber { get; set; }
 
     [MaxLength(450)]
     public string? LinkedUserId { get; set; }
+
+    [MaxLength(450)]
+    public string? AssignedAgentUserId { get; set; }
 
     public OnboardingProfileStatus Status { get; set; } = OnboardingProfileStatus.InProgress;
 
@@ -49,9 +88,22 @@ public class OnboardingProfile
     [ForeignKey(nameof(LinkedUserId))]
     public ApplicationUser? LinkedUser { get; set; }
 
+    [ForeignKey(nameof(AssignedAgentUserId))]
+    public ApplicationUser? AssignedAgentUser { get; set; }
+
+    public OnboardingProfileAttachment? Attachment { get; set; }
+
     public ICollection<OnboardingMeasureEntry> MeasureEntries { get; set; } = new List<OnboardingMeasureEntry>();
 
     public ICollection<OnboardingChecklistEntry> ChecklistEntries { get; set; } = new List<OnboardingChecklistEntry>();
+}
+
+public enum OnboardingSalutation
+{
+    Unspecified = 0,
+    Mr = 1,
+    Mrs = 2,
+    Diverse = 3
 }
 
 public enum OnboardingProfileStatus

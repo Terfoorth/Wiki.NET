@@ -11,11 +11,15 @@
 
   <ItemGroup>
     <Compile Remove="Components\Pages\Index\Class.cs" />
+    <Compile Remove="contract-management\**" />
     <Compile Remove="Onboarding_modul\**\*.cs" />
     <RazorComponent Remove="Onboarding_modul\**\*.razor" />
     <ScopedCssInput Remove="Onboarding_modul\**\*.razor.css" />
+    <Content Remove="contract-management\**" />
     <Content Remove="Onboarding_modul\**\*" />
+    <EmbeddedResource Remove="contract-management\**" />
     <EmbeddedResource Remove="Onboarding_modul\**\*" />
+    <None Remove="contract-management\**" />
 
   </ItemGroup>
 
@@ -52,6 +56,5 @@
   <ItemGroup>
     <Folder Include="Data\Migrations\" />
     <Folder Include="Migrations\" />
-    <Folder Include="contract-management\" />
   </ItemGroup>
 </Project>

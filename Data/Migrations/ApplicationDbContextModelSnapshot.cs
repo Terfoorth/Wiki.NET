@@ -536,6 +536,10 @@ namespace Wiki_Blaze.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("AssignedAgentUserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
                     b.Property<DateTime?>("CompletedAt")
                         .HasColumnType("datetime2");
 
@@ -546,25 +550,65 @@ namespace Wiki_Blaze.Migrations
                         .HasMaxLength(150)
                         .HasColumnType("nvarchar(150)");
 
+                    b.Property<string>("DeviceNumber")
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
                     b.Property<string>("Email")
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTime>("EntryDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("ExitDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("FirstName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<string>("FullName")
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<string>("Hostname")
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<string>("JobTitle")
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
                     b.Property<DateTime>("LastModifiedAt")
                         .HasColumnType("datetime2");
+
+                    b.Property<string>("LastName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<string>("LinkedUserId")
                         .HasMaxLength(450)
                         .HasColumnType("nvarchar(450)");
 
+                    b.Property<string>("Location")
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<string>("Mobile")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
                     b.Property<string>("Notes")
                         .HasMaxLength(2000)
                         .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("Phone")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
 
                     b.Property<string>("PhoneNumber")
                         .HasMaxLength(50)
@@ -573,6 +617,11 @@ namespace Wiki_Blaze.Migrations
                     b.Property<string>("PrinterCardNumber")
                         .HasMaxLength(120)
                         .HasColumnType("nvarchar(120)");
+
+                    b.Property<int>("Salutation")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
 
                     b.Property<DateTime?>("StartDate")
                         .HasColumnType("datetime2");
@@ -589,13 +638,70 @@ namespace Wiki_Blaze.Migrations
                     b.Property<DateTime?>("TargetDate")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("TicketNumber")
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<string>("Username")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("AssignedAgentUserId");
 
                     b.HasIndex("LinkedUserId");
 
                     b.HasIndex("FullName", "Department");
 
+                    b.HasIndex("LastName", "FirstName");
+
                     b.ToTable("OnboardingProfiles");
+                });
+
+            modelBuilder.Entity("Wiki_Blaze.Data.Entities.OnboardingProfileAttachment", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<byte[]>("Content")
+                        .IsRequired()
+                        .HasColumnType("varbinary(max)");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<string>("OriginalFileName")
+                        .IsRequired()
+                        .HasMaxLength(260)
+                        .HasColumnType("nvarchar(260)");
+
+                    b.Property<int>("ProfileId")
+                        .HasColumnType("int");
+
+                    b.Property<long>("Size")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("UploadedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("UploadedByUserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProfileId")
+                        .IsUnique();
+
+                    b.HasIndex("UploadedByUserId");
+
+                    b.ToTable("OnboardingProfileAttachments");
                 });
 
             modelBuilder.Entity("Wiki_Blaze.Data.Entities.WikiAssignment", b =>
@@ -1211,12 +1317,37 @@ namespace Wiki_Blaze.Migrations
 
             modelBuilder.Entity("Wiki_Blaze.Data.Entities.OnboardingProfile", b =>
                 {
+                    b.HasOne("Wiki_Blaze.Data.ApplicationUser", "AssignedAgentUser")
+                        .WithMany()
+                        .HasForeignKey("AssignedAgentUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("Wiki_Blaze.Data.ApplicationUser", "LinkedUser")
                         .WithMany()
                         .HasForeignKey("LinkedUserId")
-                        .OnDelete(DeleteBehavior.SetNull);
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.Navigation("AssignedAgentUser");
 
                     b.Navigation("LinkedUser");
+                });
+
+            modelBuilder.Entity("Wiki_Blaze.Data.Entities.OnboardingProfileAttachment", b =>
+                {
+                    b.HasOne("Wiki_Blaze.Data.Entities.OnboardingProfile", "Profile")
+                        .WithOne("Attachment")
+                        .HasForeignKey("Wiki_Blaze.Data.Entities.OnboardingProfileAttachment", "ProfileId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Wiki_Blaze.Data.ApplicationUser", "UploadedByUser")
+                        .WithMany()
+                        .HasForeignKey("UploadedByUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Profile");
+
+                    b.Navigation("UploadedByUser");
                 });
 
             modelBuilder.Entity("Wiki_Blaze.Data.Entities.WikiAssignment", b =>
@@ -1407,6 +1538,8 @@ namespace Wiki_Blaze.Migrations
 
             modelBuilder.Entity("Wiki_Blaze.Data.Entities.OnboardingProfile", b =>
                 {
+                    b.Navigation("Attachment");
+
                     b.Navigation("ChecklistEntries");
 
                     b.Navigation("MeasureEntries");

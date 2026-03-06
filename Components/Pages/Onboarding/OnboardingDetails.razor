@@ -1,5 +1,6 @@
 @page "/reportdesigner/details/{ProfileId:int}"
 @using Microsoft.AspNetCore.Authorization
+@using System.Security.Claims
 @rendermode InteractiveServer
 @attribute [Authorize]
 @using Wiki_Blaze.Data.Entities
@@ -7,6 +8,7 @@
 @inject IOnboardingService OnboardingService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject NavigationManager NavigationManager
+@inject IJSRuntime JsRuntime
 
 <PageTitle>Onboarding Profil Details</PageTitle>
 
@@ -15,10 +17,10 @@
         <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
             <div>
                 <h3 class="mb-0">Onboarding Profil</h3>
-                <small class="text-muted">Vollansicht mit Stammdaten, Maﬂnahmen, Test-Checkliste und Verlauf</small>
+                <small class="text-muted">Vollansicht mit Stammdaten, Ma√ünahmen, Test-Checkliste und Verlauf</small>
             </div>
             <div class="d-flex gap-2">
-                <DxButton Text="Zur ‹bersicht" RenderStyle="ButtonRenderStyle.Secondary" Click="NavigateBack" />
+                <DxButton Text="Zur √úbersicht" RenderStyle="ButtonRenderStyle.Secondary" Click="NavigateBack" />
                 <DxButton Text="Settings" RenderStyle="ButtonRenderStyle.Secondary" NavigateUrl="/reportdesigner/settings" />
             </div>
         </div>
@@ -33,7 +35,7 @@
         <div class="card p-3 mb-3">
             <div class="d-flex justify-content-between align-items-start gap-2">
                 <div>
-                    <h4 class="mb-1">@Profile.FullName</h4>
+                    <h4 class="mb-1">@GetProfileDisplayName(Profile)</h4>
                     <span class="badge @GetStatusBadgeCss(Profile.Status)">@GetStatusLabel(Profile.Status)</span>
                 </div>
                 <div class="text-end">
@@ -49,14 +51,60 @@
         <DxTabs CssClass="card p-2 onboarding-tabs">
             <DxTabPage Text="Stammdaten">
                 <div class="p-2">
+                    @if (!string.IsNullOrWhiteSpace(AttachmentMessage))
+                    {
+                        <div class="alert alert-info">@AttachmentMessage</div>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(AttachmentErrorMessage))
+                    {
+                        <div class="alert alert-danger">@AttachmentErrorMessage</div>
+                    }
+
                     <div class="row g-2">
+                        <div class="col-md-3">
+                            <label class="form-label">Anrede</label>
+                            <select class="form-select" @bind="Profile.Salutation" disabled="@(!CanEdit)">
+                                @foreach (var salutation in SalutationOptions)
+                                {
+                                    <option value="@salutation">@GetSalutationLabel(salutation)</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Vorname</label>
+                            <input class="form-control" @bind="Profile.FirstName" readonly="@(!CanEdit)" />
+                        </div>
+                        <div class="col-md-5">
+                            <label class="form-label">Nachname</label>
+                            <input class="form-control" @bind="Profile.LastName" readonly="@(!CanEdit)" />
+                        </div>
                         <div class="col-md-6">
-                            <label class="form-label">Name</label>
-                            <input class="form-control" @bind="Profile.FullName" readonly="@(!CanEdit)" />
+                            <label class="form-label">Benutzername</label>
+                            <input class="form-control" @bind="Profile.Username" readonly="@(!CanEdit)" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Ticketnummer</label>
+                            <input class="form-control" @bind="Profile.TicketNumber" readonly="@(!CanEdit)" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Eintrittsdatum</label>
+                            <input type="date" class="form-control" @bind="Profile.EntryDate" readonly="@(!CanEdit)" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Austrittsdatum</label>
+                            <input type="date" class="form-control" @bind="Profile.ExitDate" readonly="@(!CanEdit)" />
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Abteilung</label>
                             <input class="form-control" @bind="Profile.Department" readonly="@(!CanEdit)" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Stellenbezeichnung</label>
+                            <input class="form-control" @bind="Profile.JobTitle" readonly="@(!CanEdit)" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Standort</label>
+                            <input class="form-control" @bind="Profile.Location" readonly="@(!CanEdit)" />
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Vorgesetzter</label>
@@ -66,13 +114,35 @@
                             <label class="form-label">E-Mail</label>
                             <input class="form-control" @bind="Profile.Email" readonly="@(!CanEdit)" />
                         </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Phone</label>
+                            <input class="form-control" @bind="Profile.Phone" readonly="@(!CanEdit)" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Mobile</label>
+                            <input class="form-control" @bind="Profile.Mobile" readonly="@(!CanEdit)" />
+                        </div>
                         <div class="col-md-6">
-                            <label class="form-label">Telefonnummer</label>
-                            <input class="form-control" @bind="Profile.PhoneNumber" readonly="@(!CanEdit)" />
+                            <label class="form-label">Hostname</label>
+                            <input class="form-control" @bind="Profile.Hostname" readonly="@(!CanEdit)" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Ger√§tenummer</label>
+                            <input class="form-control" @bind="Profile.DeviceNumber" readonly="@(!CanEdit)" />
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Druckerkartennummer</label>
                             <input class="form-control" @bind="Profile.PrinterCardNumber" readonly="@(!CanEdit)" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Bearbeiter</label>
+                            <select class="form-select" @bind="Profile.AssignedAgentUserId" disabled="@(!CanEdit)">
+                                <option value="">-- Kein Bearbeiter --</option>
+                                @foreach (var assignee in AssigneeLookup)
+                                {
+                                    <option value="@assignee.UserId">@assignee.DisplayName</option>
+                                }
+                            </select>
                         </div>
                         <div class="col-md-4">
                             <label class="form-label">Startdatum</label>
@@ -92,9 +162,47 @@
                             </select>
                         </div>
                         <div class="col-md-12">
-                            <label class="form-label">Verkn¸pfter Benutzer (Identity Id)</label>
+                            <label class="form-label">Verkn√ºpfter Benutzer (Identity Id)</label>
                             <input class="form-control" @bind="Profile.LinkedUserId" readonly="@(!CanEdit)" />
                         </div>
+                    </div>
+
+                    <div class="attachment-panel border rounded p-3 mt-3 bg-light-subtle">
+                        <h6 class="mb-2">Anhang (PDF/DOC/DOCX, max. 15 MB)</h6>
+                        @if (AttachmentInfo is null)
+                        {
+                            <div class="small text-muted mb-2">Kein Anhang vorhanden.</div>
+                        }
+                        else
+                        {
+                            <div class="small mb-2">
+                                <div><strong>Datei:</strong> @AttachmentInfo.OriginalFileName (@FormatBytes(AttachmentInfo.Size))</div>
+                                <div><strong>Hochgeladen:</strong> @AttachmentInfo.UploadedAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</div>
+                                @if (!string.IsNullOrWhiteSpace(AttachmentInfo.UploadedByDisplayName))
+                                {
+                                    <div><strong>Von:</strong> @AttachmentInfo.UploadedByDisplayName</div>
+                                }
+                            </div>
+                            <div class="d-flex gap-2 flex-wrap">
+                                <DxButton Text="Download" RenderStyle="ButtonRenderStyle.Secondary" Click="DownloadAttachmentAsync" />
+                                @if (CanEdit)
+                                {
+                                    <DxButton Text="Entfernen" RenderStyle="ButtonRenderStyle.Danger" Click="DeleteAttachmentAsync" />
+                                }
+                            </div>
+                        }
+
+                        @if (CanEdit)
+                        {
+                            <div class="d-flex gap-2 flex-wrap align-items-center mt-3">
+                                <InputFile OnChange="OnAttachmentSelected" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
+                                <DxButton Text="Upload / Ersetzen" RenderStyle="ButtonRenderStyle.Primary" Click="UploadAttachmentAsync" Enabled="@HasPendingAttachmentUpload" />
+                                @if (!string.IsNullOrWhiteSpace(PendingAttachmentFileName))
+                                {
+                                    <small class="text-muted">@PendingAttachmentFileName</small>
+                                }
+                            </div>
+                        }
                     </div>
 
                     @if (CanEdit)
@@ -107,12 +215,12 @@
                 </div>
             </DxTabPage>
 
-            <DxTabPage Text="Onboarding-Maﬂnahmen">
+            <DxTabPage Text="Onboarding-Ma√ünahmen">
                 <div class="p-2">
                     <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
-                        <h5 class="mb-0">Maﬂnahmen</h5>
+                        <h5 class="mb-0">Ma√ünahmen</h5>
                         <DxCheckBox @bind-Checked="ShowOnlyOpenMeasures"
-                                    LabelText="Nur offene Eintr‰ge" />
+                                    LabelText="Nur offene Eintr√§ge" />
                     </div>
 
                     @if (CanEdit)
@@ -143,7 +251,7 @@
 
                     @if (FilteredMeasureEntries.Count == 0)
                     {
-                        <div class="small text-muted">Keine Maﬂnahmen vorhanden.</div>
+                        <div class="small text-muted">Keine Ma√ünahmen vorhanden.</div>
                     }
                     else
                     {
@@ -201,7 +309,7 @@
                                             {
                                                 <td class="text-end">
                                                     <DxButton Text="Speichern" RenderStyle="ButtonRenderStyle.Secondary" Click="@(async () => await SaveMeasureEntryAsync(entry))" />
-                                                    <DxButton Text="Lˆschen" RenderStyle="ButtonRenderStyle.Danger" Click="@(async () => await DeleteMeasureEntryAsync(entry.Id))" />
+                                                    <DxButton Text="L√∂schen" RenderStyle="ButtonRenderStyle.Danger" Click="@(async () => await DeleteMeasureEntryAsync(entry.Id))" />
                                                 </td>
                                             }
                                         </tr>
@@ -350,8 +458,17 @@
     private bool CanEdit { get; set; }
     private bool ShowOnlyOpenMeasures { get; set; }
     private bool ShowOnlyOpenChecklist { get; set; }
+    private string? CurrentUserId { get; set; }
+    private string? AttachmentMessage { get; set; }
+    private string? AttachmentErrorMessage { get; set; }
 
     private List<OnboardingMeasureCatalogItem> MeasureCatalog { get; set; } = new();
+    private List<OnboardingAssigneeLookupItem> AssigneeLookup { get; set; } = new();
+    private OnboardingProfileAttachmentInfo? AttachmentInfo { get; set; }
+
+    private string? PendingAttachmentFileName { get; set; }
+    private string? PendingAttachmentContentType { get; set; }
+    private byte[]? PendingAttachmentContent { get; set; }
 
     private int NewMeasureCatalogItemId { get; set; }
     private string NewMeasureValue { get; set; } = string.Empty;
@@ -374,6 +491,15 @@
     ];
 
     private bool CanAddMeasureEntry => CanEdit && NewMeasureCatalogItemId > 0 && !string.IsNullOrWhiteSpace(NewMeasureValue);
+    private bool HasPendingAttachmentUpload => PendingAttachmentContent is { Length: > 0 } && !string.IsNullOrWhiteSpace(PendingAttachmentFileName);
+
+    private IReadOnlyList<OnboardingSalutation> SalutationOptions { get; } =
+    [
+        OnboardingSalutation.Unspecified,
+        OnboardingSalutation.Mr,
+        OnboardingSalutation.Mrs,
+        OnboardingSalutation.Diverse
+    ];
 
     private DateTime? StartDateInput
     {
@@ -426,9 +552,11 @@
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         var user = authState.User;
         CanEdit = user.IsInRole("Admin") || user.IsInRole("OnboardingManager");
+        CurrentUserId = user.FindFirstValue(ClaimTypes.NameIdentifier);
 
         MeasureCatalog = await OnboardingService.GetMeasureCatalogAsync(includeInactive: false);
         NewMeasureCatalogItemId = MeasureCatalog.FirstOrDefault()?.Id ?? 0;
+        AssigneeLookup = await OnboardingService.GetAssigneeLookupAsync();
 
         await LoadProfileAsync();
     }
@@ -436,6 +564,9 @@
     private async Task LoadProfileAsync()
     {
         Profile = await OnboardingService.GetProfileAsync(ProfileId);
+        AttachmentInfo = Profile is null
+            ? null
+            : await OnboardingService.GetAttachmentInfoAsync(Profile.Id);
     }
 
     private void NavigateBack()
@@ -465,6 +596,115 @@
         {
             NavigationManager.NavigateTo($"/reportdesigner/details/{duplicate.Id}");
         }
+    }
+
+    private async Task OnAttachmentSelected(InputFileChangeEventArgs args)
+    {
+        AttachmentMessage = null;
+        AttachmentErrorMessage = null;
+
+        var file = args.File;
+        if (file is null)
+        {
+            ClearPendingAttachment();
+            return;
+        }
+
+        const long maxFileSize = 15L * 1024 * 1024;
+        if (file.Size <= 0)
+        {
+            ClearPendingAttachment();
+            AttachmentErrorMessage = "Die ausgew√§hlte Datei ist leer.";
+            return;
+        }
+
+        if (file.Size > maxFileSize)
+        {
+            ClearPendingAttachment();
+            AttachmentErrorMessage = "Die Datei ist zu gro√ü. Erlaubt sind maximal 15 MB.";
+            return;
+        }
+
+        await using var stream = file.OpenReadStream(maxFileSize);
+        using var memoryStream = new MemoryStream();
+        await stream.CopyToAsync(memoryStream);
+
+        PendingAttachmentContent = memoryStream.ToArray();
+        PendingAttachmentFileName = file.Name;
+        PendingAttachmentContentType = file.ContentType;
+    }
+
+    private async Task UploadAttachmentAsync()
+    {
+        if (!CanEdit || Profile is null || !HasPendingAttachmentUpload)
+        {
+            return;
+        }
+
+        try
+        {
+            AttachmentErrorMessage = null;
+            AttachmentInfo = await OnboardingService.UploadOrReplaceAttachmentAsync(
+                Profile.Id,
+                PendingAttachmentFileName!,
+                PendingAttachmentContentType ?? "application/octet-stream",
+                PendingAttachmentContent!,
+                CurrentUserId);
+
+            AttachmentMessage = "Anhang wurde gespeichert.";
+            ClearPendingAttachment();
+            await LoadProfileAsync();
+        }
+        catch (Exception ex)
+        {
+            AttachmentErrorMessage = ex.Message;
+        }
+    }
+
+    private async Task DownloadAttachmentAsync()
+    {
+        if (Profile is null)
+        {
+            return;
+        }
+
+        var attachmentData = await OnboardingService.GetAttachmentContentAsync(Profile.Id);
+        if (attachmentData is null)
+        {
+            AttachmentErrorMessage = "Kein Anhang vorhanden.";
+            return;
+        }
+
+        var base64 = Convert.ToBase64String(attachmentData.Content);
+        await JsRuntime.InvokeVoidAsync("wikiBlaze.downloadFileFromBytes", attachmentData.OriginalFileName, base64, attachmentData.ContentType);
+    }
+
+    private async Task DeleteAttachmentAsync()
+    {
+        if (!CanEdit || Profile is null)
+        {
+            return;
+        }
+
+        var removed = await OnboardingService.DeleteAttachmentAsync(Profile.Id);
+        if (!removed)
+        {
+            AttachmentErrorMessage = "Kein Anhang zum Entfernen vorhanden.";
+            return;
+        }
+
+        AttachmentErrorMessage = null;
+        AttachmentMessage = "Anhang wurde entfernt.";
+        AttachmentInfo = null;
+        ClearPendingAttachment();
+        await LoadProfileAsync();
+    }
+
+    private void ClearPendingAttachment()
+    {
+        PendingAttachmentFileName = null;
+        PendingAttachmentContentType = null;
+        PendingAttachmentContent = null;
     }
 
     private async Task AddMeasureEntryAsync()
@@ -555,6 +795,51 @@
         }
     }
 
+    private static string GetProfileDisplayName(OnboardingProfile profile)
+    {
+        var firstName = profile.FirstName?.Trim();
+        var lastName = profile.LastName?.Trim();
+        var fullName = $"{firstName} {lastName}".Trim();
+
+        if (!string.IsNullOrWhiteSpace(fullName))
+        {
+            return fullName;
+        }
+
+        return profile.FullName;
+    }
+
+    private static string GetSalutationLabel(OnboardingSalutation salutation)
+    {
+        return salutation switch
+        {
+            OnboardingSalutation.Mr => "Herr",
+            OnboardingSalutation.Mrs => "Frau",
+            OnboardingSalutation.Diverse => "Divers",
+            _ => "Keine Angabe"
+        };
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        if (bytes <= 0)
+        {
+            return "0 B";
+        }
+
+        var units = new[] { "B", "KB", "MB", "GB" };
+        var size = (double)bytes;
+        var unitIndex = 0;
+
+        while (size >= 1024 && unitIndex < units.Length - 1)
+        {
+            size /= 1024;
+            unitIndex++;
+        }
+
+        return $"{size:0.##} {units[unitIndex]}";
+    }
+
     private static string GetStatusLabel(OnboardingProfileStatus status)
     {
         return status switch
@@ -597,7 +882,7 @@
     {
         var measureDone = profile.MeasureEntries.Count(item => item.IsCompleted);
         var checklistDone = profile.ChecklistEntries.Count(item => item.IsCompleted);
-        return $"Maﬂnahmen {measureDone}/{profile.MeasureEntries.Count} ∑ Tests {checklistDone}/{profile.ChecklistEntries.Count}";
+        return $"Ma√ünahmen {measureDone}/{profile.MeasureEntries.Count} ¬∑ Tests {checklistDone}/{profile.ChecklistEntries.Count}";
     }
 
     private static List<TimelineEntry> BuildTimeline(OnboardingProfile? profile)
@@ -609,12 +894,12 @@
 
         var entries = new List<TimelineEntry>
         {
-            new TimelineEntry(profile.LastModifiedAt, "Profil aktualisiert", "Stammdaten oder Einstellungen ge‰ndert")
+            new TimelineEntry(profile.LastModifiedAt, "Profil aktualisiert", "Stammdaten oder Einstellungen ge√§ndert")
         };
 
         entries.AddRange(profile.MeasureEntries
             .Where(item => item.CompletedAt.HasValue)
-            .Select(item => new TimelineEntry(item.CompletedAt!.Value, "Maﬂnahme abgeschlossen", $"{item.CatalogItem?.Name}: {item.Value}")));
+            .Select(item => new TimelineEntry(item.CompletedAt!.Value, "Ma√ünahme abgeschlossen", $"{item.CatalogItem?.Name}: {item.Value}")));
 
         entries.AddRange(profile.ChecklistEntries
             .Where(item => item.CompletedAt.HasValue)

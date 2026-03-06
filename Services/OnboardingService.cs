@@ -1,3 +1,4 @@
+using System.IO;
 using Microsoft.EntityFrameworkCore;
 using Wiki_Blaze.Data;
 using Wiki_Blaze.Data.Entities;
@@ -6,6 +7,24 @@ namespace Wiki_Blaze.Services;
 
 public class OnboardingService(IDbContextFactory<ApplicationDbContext> dbFactory) : IOnboardingService
 {
+    private const int MaxAttachmentSizeBytes = 15 * 1024 * 1024;
+
+    private static readonly Dictionary<string, string> AttachmentContentTypeByExtension = new(StringComparer.OrdinalIgnoreCase)
+    {
+        [".pdf"] = "application/pdf",
+        [".doc"] = "application/msword",
+        [".docx"] = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    };
+
+    private static readonly HashSet<string> AllowedAttachmentContentTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "application/pdf",
+        "application/msword",
+        "application/vnd.ms-word",
+        "application/x-msword",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    };
+
     public async Task<List<OnboardingProfileListItem>> GetProfilesAsync(
         string? searchText = null,
         OnboardingProfileStatus? status = null,
@@ -21,9 +40,17 @@ public class OnboardingService(IDbContextFactory<ApplicationDbContext> dbFactory
             var term = searchText.Trim();
             query = query.Where(profile =>
                 profile.FullName.Contains(term)
+                || profile.FirstName.Contains(term)
+                || profile.LastName.Contains(term)
+                || (profile.Username != null && profile.Username.Contains(term))
+                || (profile.TicketNumber != null && profile.TicketNumber.Contains(term))
                 || (profile.Department != null && profile.Department.Contains(term))
+                || (profile.JobTitle != null && profile.JobTitle.Contains(term))
+                || (profile.Location != null && profile.Location.Contains(term))
                 || (profile.Supervisor != null && profile.Supervisor.Contains(term))
-                || (profile.Email != null && profile.Email.Contains(term)));
+                || (profile.Email != null && profile.Email.Contains(term))
+                || (profile.Hostname != null && profile.Hostname.Contains(term))
+                || (profile.DeviceNumber != null && profile.DeviceNumber.Contains(term)));
         }
 
         if (status.HasValue)
@@ -36,15 +63,25 @@ public class OnboardingService(IDbContextFactory<ApplicationDbContext> dbFactory
             query = query.Where(profile => profile.Status != OnboardingProfileStatus.Completed && profile.Status != OnboardingProfileStatus.Archived);
         }
 
-        var items = await query
+        var rawItems = await query
             .OrderByDescending(profile => profile.LastModifiedAt)
-            .Select(profile => new OnboardingProfileListItem
+            .Select(profile => new
             {
                 Id = profile.Id,
+                FirstName = profile.FirstName,
+                LastName = profile.LastName,
                 FullName = profile.FullName,
+                Username = profile.Username,
                 Department = profile.Department,
+                JobTitle = profile.JobTitle,
                 Supervisor = profile.Supervisor,
                 Email = profile.Email,
+                EntryDate = profile.EntryDate,
+                AssignedDisplayName = profile.AssignedAgentUser != null ? profile.AssignedAgentUser.DisplayName : null,
+                AssignedFirstName = profile.AssignedAgentUser != null ? profile.AssignedAgentUser.FirstName : null,
+                AssignedLastName = profile.AssignedAgentUser != null ? profile.AssignedAgentUser.LastName : null,
+                AssignedUserName = profile.AssignedAgentUser != null ? profile.AssignedAgentUser.UserName : null,
+                AssignedEmail = profile.AssignedAgentUser != null ? profile.AssignedAgentUser.Email : null,
                 Status = profile.Status,
                 MeasureTotal = profile.MeasureEntries.Count,
                 MeasureCompleted = profile.MeasureEntries.Count(entry => entry.IsCompleted),
@@ -54,10 +91,33 @@ public class OnboardingService(IDbContextFactory<ApplicationDbContext> dbFactory
             })
             .ToListAsync(cancellationToken);
 
-        foreach (var item in items)
-        {
-            item.ProgressPercent = CalculateProgressPercent(item.MeasureCompleted, item.MeasureTotal, item.ChecklistCompleted, item.ChecklistTotal);
-        }
+        var items = rawItems
+            .Select(item =>
+            {
+                var model = new OnboardingProfileListItem
+                {
+                    Id = item.Id,
+                    DisplayName = BuildProfileDisplayName(item.FirstName, item.LastName, item.FullName),
+                    FullName = item.FullName,
+                    Username = item.Username,
+                    Department = item.Department,
+                    JobTitle = item.JobTitle,
+                    Supervisor = item.Supervisor,
+                    Email = item.Email,
+                    EntryDate = item.EntryDate,
+                    AssignedAgentDisplayName = ResolveUserDisplayName(item.AssignedDisplayName, item.AssignedFirstName, item.AssignedLastName, item.AssignedUserName, item.AssignedEmail),
+                    Status = item.Status,
+                    MeasureTotal = item.MeasureTotal,
+                    MeasureCompleted = item.MeasureCompleted,
+                    ChecklistTotal = item.ChecklistTotal,
+                    ChecklistCompleted = item.ChecklistCompleted,
+                    LastModifiedAt = item.LastModifiedAt
+                };
+
+                model.ProgressPercent = CalculateProgressPercent(model.MeasureCompleted, model.MeasureTotal, model.ChecklistCompleted, model.ChecklistTotal);
+                return model;
+            })
+            .ToList();
 
         return items;
     }
@@ -69,6 +129,9 @@ public class OnboardingService(IDbContextFactory<ApplicationDbContext> dbFactory
         var profile = await context.OnboardingProfiles
             .AsNoTracking()
             .Include(entry => entry.LinkedUser)
+            .Include(entry => entry.AssignedAgentUser)
+            .Include(entry => entry.Attachment)
+                .ThenInclude(attachment => attachment!.UploadedByUser)
             .Include(entry => entry.MeasureEntries)
                 .ThenInclude(entry => entry.CatalogItem)
             .Include(entry => entry.ChecklistEntries)
@@ -100,7 +163,7 @@ public class OnboardingService(IDbContextFactory<ApplicationDbContext> dbFactory
         var now = DateTime.UtcNow;
 
         profile.Id = 0;
-        profile.FullName = profile.FullName.Trim();
+        NormalizeAndSyncProfile(profile);
         profile.CreatedAt = now;
         profile.LastModifiedAt = now;
 
@@ -151,17 +214,8 @@ public class OnboardingService(IDbContextFactory<ApplicationDbContext> dbFactory
             .FirstOrDefaultAsync(entry => entry.Id == profile.Id, cancellationToken)
             ?? throw new InvalidOperationException($"Onboarding-Profil mit der ID {profile.Id} wurde nicht gefunden.");
 
-        existing.FullName = profile.FullName.Trim();
-        existing.Department = profile.Department?.Trim();
-        existing.Supervisor = profile.Supervisor?.Trim();
-        existing.Email = profile.Email?.Trim();
-        existing.PhoneNumber = profile.PhoneNumber?.Trim();
-        existing.PrinterCardNumber = profile.PrinterCardNumber?.Trim();
-        existing.LinkedUserId = string.IsNullOrWhiteSpace(profile.LinkedUserId) ? null : profile.LinkedUserId;
-        existing.StartDate = profile.StartDate;
-        existing.TargetDate = profile.TargetDate;
-        existing.Notes = profile.Notes;
-        existing.Status = profile.Status;
+        NormalizeAndSyncProfile(profile);
+        ApplyProfileValues(profile, existing);
 
         var now = DateTime.UtcNow;
         existing.LastModifiedAt = now;
@@ -213,13 +267,27 @@ public class OnboardingService(IDbContextFactory<ApplicationDbContext> dbFactory
 
         var clone = new OnboardingProfile
         {
-            FullName = $"{source.FullName} (Kopie)",
+            Salutation = source.Salutation,
+            FirstName = source.FirstName,
+            LastName = source.LastName,
+            FullName = source.FullName,
+            Username = source.Username,
+            TicketNumber = source.TicketNumber,
+            EntryDate = source.EntryDate,
+            ExitDate = source.ExitDate,
             Department = source.Department,
+            JobTitle = source.JobTitle,
+            Location = source.Location,
             Supervisor = source.Supervisor,
             Email = source.Email,
+            Phone = source.Phone,
             PhoneNumber = source.PhoneNumber,
+            Mobile = source.Mobile,
+            Hostname = source.Hostname,
+            DeviceNumber = source.DeviceNumber,
             PrinterCardNumber = source.PrinterCardNumber,
             LinkedUserId = null,
+            AssignedAgentUserId = source.AssignedAgentUserId,
             Status = OnboardingProfileStatus.Draft,
             StartDate = null,
             TargetDate = source.TargetDate,
@@ -228,6 +296,9 @@ public class OnboardingService(IDbContextFactory<ApplicationDbContext> dbFactory
             CreatedAt = now,
             LastModifiedAt = now
         };
+
+        ApplyCloneNameSuffix(clone);
+        NormalizeAndSyncProfile(clone);
 
         context.OnboardingProfiles.Add(clone);
         await context.SaveChangesAsync(cancellationToken);
@@ -271,6 +342,150 @@ public class OnboardingService(IDbContextFactory<ApplicationDbContext> dbFactory
         return await GetProfileAsync(clone.Id, cancellationToken);
     }
 
+    public async Task<List<OnboardingAssigneeLookupItem>> GetAssigneeLookupAsync(CancellationToken cancellationToken = default)
+    {
+        await using var context = await dbFactory.CreateDbContextAsync(cancellationToken);
+
+        var users = await context.Users
+            .AsNoTracking()
+            .Select(user => new
+            {
+                user.Id,
+                user.DisplayName,
+                user.FirstName,
+                user.LastName,
+                user.UserName,
+                user.Email
+            })
+            .ToListAsync(cancellationToken);
+
+        return users
+            .Select(user => new OnboardingAssigneeLookupItem
+            {
+                UserId = user.Id,
+                DisplayName = ResolveUserDisplayName(user.DisplayName, user.FirstName, user.LastName, user.UserName, user.Email),
+                UserName = user.UserName,
+                Email = user.Email
+            })
+            .OrderBy(user => user.DisplayName, StringComparer.CurrentCultureIgnoreCase)
+            .ThenBy(user => user.UserName, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
+    }
+
+    public async Task<OnboardingProfileAttachmentInfo?> GetAttachmentInfoAsync(int profileId, CancellationToken cancellationToken = default)
+    {
+        await using var context = await dbFactory.CreateDbContextAsync(cancellationToken);
+
+        var attachment = await context.OnboardingProfileAttachments
+            .AsNoTracking()
+            .Include(item => item.UploadedByUser)
+            .FirstOrDefaultAsync(item => item.ProfileId == profileId, cancellationToken);
+
+        return attachment is null ? null : MapAttachmentInfo(attachment);
+    }
+
+    public async Task<OnboardingProfileAttachmentData?> GetAttachmentContentAsync(int profileId, CancellationToken cancellationToken = default)
+    {
+        await using var context = await dbFactory.CreateDbContextAsync(cancellationToken);
+
+        var attachment = await context.OnboardingProfileAttachments
+            .AsNoTracking()
+            .FirstOrDefaultAsync(item => item.ProfileId == profileId, cancellationToken);
+
+        if (attachment is null)
+        {
+            return null;
+        }
+
+        return new OnboardingProfileAttachmentData
+        {
+            OriginalFileName = attachment.OriginalFileName,
+            ContentType = attachment.ContentType,
+            Content = attachment.Content
+        };
+    }
+
+    public async Task<OnboardingProfileAttachmentInfo> UploadOrReplaceAttachmentAsync(
+        int profileId,
+        string originalFileName,
+        string contentType,
+        byte[] content,
+        string? uploadedByUserId,
+        CancellationToken cancellationToken = default)
+    {
+        await using var context = await dbFactory.CreateDbContextAsync(cancellationToken);
+
+        if (!await context.OnboardingProfiles.AnyAsync(profile => profile.Id == profileId, cancellationToken))
+        {
+            throw new InvalidOperationException($"Onboarding-Profil mit ID {profileId} wurde nicht gefunden.");
+        }
+
+        var validatedFileName = NormalizeAndLimitFileName(originalFileName);
+        var normalizedContentType = ValidateAndResolveAttachmentContentType(validatedFileName, contentType);
+
+        if (content.Length == 0)
+        {
+            throw new InvalidOperationException("Die Datei ist leer.");
+        }
+
+        if (content.Length > MaxAttachmentSizeBytes)
+        {
+            throw new InvalidOperationException("Die Datei ist zu groß. Erlaubt sind maximal 15 MB.");
+        }
+
+        var now = DateTime.UtcNow;
+        var normalizedUploadedByUserId = NormalizeOptional(uploadedByUserId);
+
+        var attachment = await context.OnboardingProfileAttachments
+            .FirstOrDefaultAsync(item => item.ProfileId == profileId, cancellationToken);
+
+        if (attachment is null)
+        {
+            attachment = new OnboardingProfileAttachment
+            {
+                ProfileId = profileId
+            };
+
+            context.OnboardingProfileAttachments.Add(attachment);
+        }
+
+        attachment.OriginalFileName = validatedFileName;
+        attachment.ContentType = normalizedContentType;
+        attachment.Size = content.LongLength;
+        attachment.Content = [.. content];
+        attachment.UploadedAt = now;
+        attachment.UploadedByUserId = normalizedUploadedByUserId;
+
+        await TouchProfileAsync(context, profileId, cancellationToken);
+        await context.SaveChangesAsync(cancellationToken);
+
+        var savedAttachment = await context.OnboardingProfileAttachments
+            .AsNoTracking()
+            .Include(item => item.UploadedByUser)
+            .FirstAsync(item => item.ProfileId == profileId, cancellationToken);
+
+        return MapAttachmentInfo(savedAttachment);
+    }
+
+    public async Task<bool> DeleteAttachmentAsync(int profileId, CancellationToken cancellationToken = default)
+    {
+        await using var context = await dbFactory.CreateDbContextAsync(cancellationToken);
+
+        var attachment = await context.OnboardingProfileAttachments
+            .FirstOrDefaultAsync(item => item.ProfileId == profileId, cancellationToken);
+
+        if (attachment is null)
+        {
+            return false;
+        }
+
+        context.OnboardingProfileAttachments.Remove(attachment);
+        await TouchProfileAsync(context, profileId, cancellationToken);
+        await context.SaveChangesAsync(cancellationToken);
+
+        return true;
+    }
+
     public async Task<List<OnboardingMeasureCatalogItem>> GetMeasureCatalogAsync(bool includeInactive = true, CancellationToken cancellationToken = default)
     {
         await using var context = await dbFactory.CreateDbContextAsync(cancellationToken);
@@ -298,7 +513,7 @@ public class OnboardingService(IDbContextFactory<ApplicationDbContext> dbFactory
 
         if (duplicateExists)
         {
-            throw new InvalidOperationException("Ein Ma�nahmenfeld mit diesem Namen existiert bereits.");
+            throw new InvalidOperationException("Ein Maßnahmenfeld mit diesem Namen existiert bereits.");
         }
 
         if (item.Id == 0)
@@ -311,7 +526,7 @@ public class OnboardingService(IDbContextFactory<ApplicationDbContext> dbFactory
         {
             var existing = await context.OnboardingMeasureCatalogItems
                 .FirstOrDefaultAsync(entry => entry.Id == item.Id, cancellationToken)
-                ?? throw new InvalidOperationException($"Ma�nahmenfeld mit ID {item.Id} wurde nicht gefunden.");
+                ?? throw new InvalidOperationException($"Maßnahmenfeld mit ID {item.Id} wurde nicht gefunden.");
 
             existing.Name = normalizedName;
             existing.Description = item.Description?.Trim();
@@ -418,14 +633,20 @@ public class OnboardingService(IDbContextFactory<ApplicationDbContext> dbFactory
 
         if (!await context.OnboardingMeasureCatalogItems.AnyAsync(item => item.Id == catalogItemId, cancellationToken))
         {
-            throw new InvalidOperationException($"Ma�nahmenfeld mit ID {catalogItemId} wurde nicht gefunden.");
+            throw new InvalidOperationException($"Maßnahmenfeld mit ID {catalogItemId} wurde nicht gefunden.");
+        }
+
+        var normalizedValue = value.Trim();
+        if (string.IsNullOrWhiteSpace(normalizedValue))
+        {
+            throw new InvalidOperationException("Der Maßnahmeneintrag darf nicht leer sein.");
         }
 
         var entry = new OnboardingMeasureEntry
         {
             ProfileId = profileId,
             CatalogItemId = catalogItemId,
-            Value = value.Trim(),
+            Value = normalizedValue,
             Notes = notes?.Trim(),
             IsCompleted = false,
             CreatedAt = DateTime.UtcNow
@@ -578,6 +799,239 @@ public class OnboardingService(IDbContextFactory<ApplicationDbContext> dbFactory
         await context.SaveChangesAsync(cancellationToken);
 
         return true;
+    }
+
+    private static void NormalizeAndSyncProfile(OnboardingProfile profile)
+    {
+        var legacyFullName = NormalizeOptional(profile.FullName);
+
+        profile.Salutation = Enum.IsDefined(profile.Salutation)
+            ? profile.Salutation
+            : OnboardingSalutation.Unspecified;
+
+        profile.FirstName = NormalizeOptional(profile.FirstName) ?? string.Empty;
+        profile.LastName = NormalizeOptional(profile.LastName) ?? string.Empty;
+
+        if (string.IsNullOrWhiteSpace(profile.FirstName) && string.IsNullOrWhiteSpace(profile.LastName) && !string.IsNullOrWhiteSpace(legacyFullName))
+        {
+            SplitLegacyFullName(legacyFullName, out var firstName, out var lastName);
+            profile.FirstName = firstName;
+            profile.LastName = lastName;
+        }
+
+        profile.Username = NormalizeOptional(profile.Username);
+        profile.TicketNumber = NormalizeOptional(profile.TicketNumber);
+        profile.Department = NormalizeOptional(profile.Department);
+        profile.JobTitle = NormalizeOptional(profile.JobTitle);
+        profile.Location = NormalizeOptional(profile.Location);
+        profile.Supervisor = NormalizeOptional(profile.Supervisor);
+        profile.Email = NormalizeOptional(profile.Email);
+        profile.Phone = NormalizeOptional(profile.Phone);
+        profile.Mobile = NormalizeOptional(profile.Mobile);
+        profile.PhoneNumber = NormalizeOptional(profile.PhoneNumber);
+        profile.Hostname = NormalizeOptional(profile.Hostname);
+        profile.DeviceNumber = NormalizeOptional(profile.DeviceNumber);
+        profile.PrinterCardNumber = NormalizeOptional(profile.PrinterCardNumber);
+        profile.LinkedUserId = NormalizeOptional(profile.LinkedUserId);
+        profile.AssignedAgentUserId = NormalizeOptional(profile.AssignedAgentUserId);
+        profile.Notes = NormalizeOptional(profile.Notes);
+
+        if (string.IsNullOrWhiteSpace(profile.Phone))
+        {
+            profile.Phone = profile.PhoneNumber;
+        }
+
+        profile.PhoneNumber = profile.Phone;
+        profile.EntryDate = profile.EntryDate == default ? DateTime.UtcNow.Date : profile.EntryDate.Date;
+        profile.ExitDate = profile.ExitDate?.Date;
+        profile.StartDate = profile.StartDate?.Date;
+        profile.TargetDate = profile.TargetDate?.Date;
+        profile.FullName = BuildProfileDisplayName(profile.FirstName, profile.LastName, legacyFullName);
+    }
+
+    private static void ApplyProfileValues(OnboardingProfile source, OnboardingProfile target)
+    {
+        target.Salutation = source.Salutation;
+        target.FirstName = source.FirstName;
+        target.LastName = source.LastName;
+        target.FullName = source.FullName;
+        target.Username = source.Username;
+        target.TicketNumber = source.TicketNumber;
+        target.EntryDate = source.EntryDate;
+        target.ExitDate = source.ExitDate;
+        target.Department = source.Department;
+        target.JobTitle = source.JobTitle;
+        target.Location = source.Location;
+        target.Supervisor = source.Supervisor;
+        target.Email = source.Email;
+        target.Phone = source.Phone;
+        target.Mobile = source.Mobile;
+        target.PhoneNumber = source.PhoneNumber;
+        target.Hostname = source.Hostname;
+        target.DeviceNumber = source.DeviceNumber;
+        target.PrinterCardNumber = source.PrinterCardNumber;
+        target.LinkedUserId = source.LinkedUserId;
+        target.AssignedAgentUserId = source.AssignedAgentUserId;
+        target.StartDate = source.StartDate;
+        target.TargetDate = source.TargetDate;
+        target.Notes = source.Notes;
+        target.Status = source.Status;
+    }
+
+    private static void ApplyCloneNameSuffix(OnboardingProfile profile)
+    {
+        if (!string.IsNullOrWhiteSpace(profile.LastName))
+        {
+            profile.LastName = $"{profile.LastName} (Kopie)";
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(profile.FirstName))
+        {
+            profile.FirstName = $"{profile.FirstName} (Kopie)";
+            return;
+        }
+
+        profile.FullName = $"{profile.FullName} (Kopie)";
+    }
+
+    private static string BuildProfileDisplayName(string? firstName, string? lastName, string? legacyFullName)
+    {
+        var normalizedFirstName = NormalizeOptional(firstName);
+        var normalizedLastName = NormalizeOptional(lastName);
+
+        if (!string.IsNullOrWhiteSpace(normalizedFirstName) || !string.IsNullOrWhiteSpace(normalizedLastName))
+        {
+            return string.Join(" ", new[] { normalizedFirstName, normalizedLastName }.Where(value => !string.IsNullOrWhiteSpace(value)));
+        }
+
+        return NormalizeOptional(legacyFullName) ?? string.Empty;
+    }
+
+    private static void SplitLegacyFullName(string fullName, out string firstName, out string lastName)
+    {
+        var parts = fullName
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        if (parts.Length == 0)
+        {
+            firstName = string.Empty;
+            lastName = string.Empty;
+            return;
+        }
+
+        if (parts.Length == 1)
+        {
+            firstName = parts[0];
+            lastName = string.Empty;
+            return;
+        }
+
+        firstName = parts[0];
+        lastName = string.Join(" ", parts.Skip(1));
+    }
+
+    private static string ResolveUserDisplayName(string? displayName, string? firstName, string? lastName, string? userName, string? email)
+    {
+        var normalizedDisplayName = NormalizeOptional(displayName);
+        if (!string.IsNullOrWhiteSpace(normalizedDisplayName))
+        {
+            return normalizedDisplayName;
+        }
+
+        var combinedName = BuildProfileDisplayName(firstName, lastName, null);
+        if (!string.IsNullOrWhiteSpace(combinedName))
+        {
+            return combinedName;
+        }
+
+        return NormalizeOptional(userName)
+            ?? NormalizeOptional(email)
+            ?? "Unbekannt";
+    }
+
+    private static OnboardingProfileAttachmentInfo MapAttachmentInfo(OnboardingProfileAttachment attachment)
+    {
+        return new OnboardingProfileAttachmentInfo
+        {
+            ProfileId = attachment.ProfileId,
+            OriginalFileName = attachment.OriginalFileName,
+            ContentType = attachment.ContentType,
+            Size = attachment.Size,
+            UploadedAt = attachment.UploadedAt,
+            UploadedByUserId = attachment.UploadedByUserId,
+            UploadedByDisplayName = attachment.UploadedByUser is null
+                ? null
+                : ResolveUserDisplayName(
+                    attachment.UploadedByUser.DisplayName,
+                    attachment.UploadedByUser.FirstName,
+                    attachment.UploadedByUser.LastName,
+                    attachment.UploadedByUser.UserName,
+                    attachment.UploadedByUser.Email)
+        };
+    }
+
+    private static string NormalizeAndLimitFileName(string fileName)
+    {
+        var normalized = Path.GetFileName(fileName ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            throw new InvalidOperationException("Der Dateiname ist ungültig.");
+        }
+
+        const int maxLength = 260;
+        if (normalized.Length <= maxLength)
+        {
+            return normalized;
+        }
+
+        var extension = Path.GetExtension(normalized);
+        var baseName = Path.GetFileNameWithoutExtension(normalized);
+        var maxBaseNameLength = Math.Max(1, maxLength - extension.Length);
+
+        if (baseName.Length > maxBaseNameLength)
+        {
+            baseName = baseName[..maxBaseNameLength];
+        }
+
+        return $"{baseName}{extension}";
+    }
+
+    private static string ValidateAndResolveAttachmentContentType(string fileName, string? contentType)
+    {
+        var extension = Path.GetExtension(fileName);
+        if (string.IsNullOrWhiteSpace(extension) || !AttachmentContentTypeByExtension.TryGetValue(extension, out var resolvedContentType))
+        {
+            throw new InvalidOperationException("Nur PDF-, DOC- oder DOCX-Dateien sind erlaubt.");
+        }
+
+        var normalizedContentType = NormalizeOptional(contentType);
+        if (!string.IsNullOrWhiteSpace(normalizedContentType))
+        {
+            var separatorIndex = normalizedContentType.IndexOf(';');
+            if (separatorIndex >= 0)
+            {
+                normalizedContentType = normalizedContentType[..separatorIndex].Trim();
+            }
+
+            if (!string.Equals(normalizedContentType, "application/octet-stream", StringComparison.OrdinalIgnoreCase)
+                && !AllowedAttachmentContentTypes.Contains(normalizedContentType))
+            {
+                throw new InvalidOperationException("Der Dateityp wird nicht unterstützt. Erlaubt sind PDF, DOC und DOCX.");
+            }
+        }
+
+        return resolvedContentType;
+    }
+
+    private static string? NormalizeOptional(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        return value.Trim();
     }
 
     private static int CalculateProgressPercent(int measureCompleted, int measureTotal, int checklistCompleted, int checklistTotal)
