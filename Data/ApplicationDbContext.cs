@@ -18,6 +18,7 @@ namespace Wiki_Blaze.Data
         public DbSet<WikiComment> WikiComments { get; set; }
         public DbSet<WikiAssignment> WikiAssignments { get; set; }
         public DbSet<WikiChangeLog> WikiChangeLogs { get; set; }
+        public DbSet<UserNotification> UserNotifications { get; set; }
 
         public DbSet<OnboardingProfile> OnboardingProfiles { get; set; }
         public DbSet<OnboardingMeasureCatalogItem> OnboardingMeasureCatalogItems { get; set; }
@@ -57,6 +58,40 @@ namespace Wiki_Blaze.Data
 
                 user.Property(u => u.ReceiveWeeklyDigest)
                     .HasDefaultValue(false);
+            });
+
+            builder.Entity<UserNotification>(notification =>
+            {
+                notification.Property(item => item.UserId)
+                    .HasMaxLength(450)
+                    .IsRequired();
+
+                notification.Property(item => item.Title)
+                    .HasMaxLength(200)
+                    .IsRequired();
+
+                notification.Property(item => item.Message)
+                    .HasMaxLength(1000)
+                    .IsRequired();
+
+                notification.Property(item => item.TargetUrl)
+                    .HasMaxLength(300);
+
+                notification.HasIndex(item => new
+                {
+                    item.UserId,
+                    item.Type,
+                    item.SourceEntityId,
+                    item.StageDaysBefore,
+                    item.DueDate
+                }).IsUnique();
+
+                notification.HasIndex(item => new { item.UserId, item.IsArchived, item.IsRead });
+
+                notification.HasOne(item => item.User)
+                    .WithMany()
+                    .HasForeignKey(item => item.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
             });
 
             builder.Entity<WikiPage>()

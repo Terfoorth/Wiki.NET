@@ -186,7 +186,7 @@
         }
 
         Input.ThemePreference = user.ThemePreference ?? "system";
-        Input.DensityPreference = user.DensityPreference ??"compact";
+        Input.DensityPreference = user.DensityPreference ?? "comfortable";
         Input.PreferredLanguage = user.PreferredLanguage ?? "en";
         Input.TimeZone = user.TimeZone;
         Input.StartPage = string.IsNullOrWhiteSpace(user.StartPage) ? "/" : user.StartPage;

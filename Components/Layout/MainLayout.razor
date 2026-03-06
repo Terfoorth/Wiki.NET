@@ -4,6 +4,9 @@
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject UserManager<Wiki_Blaze.Data.ApplicationUser> UserManager
 @inject IJSRuntime JsRuntime
+@inject INotificationService NotificationService
+@using System.Security.Claims
+@using Wiki_Blaze.Data.Entities
 @using Wiki_Blaze.Services
 
 <div class="page">
@@ -46,14 +49,58 @@
                     }
                     <AuthorizeView>
                         <Authorized>
-                            <NavLink href="@AddDrawerStateToUrl("Account/Manage")" class="button-link menu-button-float-end display-desktop">
-                                <DxButton Text="@context.User.Identity?.Name" RenderStyle="ButtonRenderStyle.Secondary" RenderStyleMode="ButtonRenderStyleMode.Text" IconCssClass="icon icon-user"></DxButton>
-                            </NavLink>
-                            <form action="@AddDrawerStateToUrl("Account/Logout")" method="post" class="display-desktop">
-                                <AntiforgeryToken />
-                                <input type="hidden" name="ReturnUrl" value="@currentUrl" />
-                                <DxButton SubmitFormOnClick="true" Text="Log out" RenderStyle="ButtonRenderStyle.Secondary" RenderStyleMode="ButtonRenderStyleMode.Text" IconCssClass="icon icon-log-out"></DxButton>
-                            </form>
+                            <div class="menu-button-float-end display-desktop nav-user-actions">
+                                <div class="notification-menu">
+                                    <DxButton Text="Status Updates"
+                                              RenderStyle="ButtonRenderStyle.Secondary"
+                                              RenderStyleMode="ButtonRenderStyleMode.Text"
+                                              IconCssClass="oi oi-bell"
+                                              Click="ToggleNotificationsAsync" />
+                                    @if (UnreadNotificationCount > 0)
+                                    {
+                                        <span class="notification-badge">@GetNotificationBadgeText()</span>
+                                    }
+                                    @if (IsNotificationDropdownOpen)
+                                    {
+                                        <div class="notification-dropdown shadow-sm">
+                                            <div class="notification-dropdown-header">
+                                                <span class="fw-semibold">Benachrichtigungen</span>
+                                                <button type="button"
+                                                        class="btn btn-link btn-sm p-0"
+                                                        @onclick="MarkAllNotificationsAsReadAsync"
+                                                        disabled="@(UnreadNotificationCount == 0)">
+                                                    Alle als gelesen
+                                                </button>
+                                            </div>
+                                            @if (VisibleNotifications.Count == 0)
+                                            {
+                                                <div class="notification-empty text-muted">Keine offenen Benachrichtigungen.</div>
+                                            }
+                                            else
+                                            {
+                                                foreach (var notification in VisibleNotifications)
+                                                {
+                                                    <button type="button"
+                                                            class="notification-item @(notification.IsRead ? "notification-item-read" : "notification-item-unread")"
+                                                            @onclick="() => OpenNotificationAsync(notification)">
+                                                        <div class="notification-item-title">@notification.Title</div>
+                                                        <div class="notification-item-message">@notification.Message</div>
+                                                        <div class="notification-item-date">@notification.DueDate.ToString("dd.MM.yyyy")</div>
+                                                    </button>
+                                                }
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                                <NavLink href="@AddDrawerStateToUrl("Account/Manage")" class="button-link">
+                                    <DxButton Text="@context.User.Identity?.Name" RenderStyle="ButtonRenderStyle.Secondary" RenderStyleMode="ButtonRenderStyleMode.Text" IconCssClass="icon icon-user"></DxButton>
+                                </NavLink>
+                                <form action="@AddDrawerStateToUrl("Account/Logout")" method="post" class="logout-form">
+                                    <AntiforgeryToken />
+                                    <input type="hidden" name="ReturnUrl" value="@currentUrl" />
+                                    <DxButton SubmitFormOnClick="true" Text="Log out" RenderStyle="ButtonRenderStyle.Secondary" RenderStyleMode="ButtonRenderStyleMode.Text" IconCssClass="icon icon-log-out"></DxButton>
+                                </form>
+                            </div>
                         </Authorized>
                         <NotAuthorized>
                             <NavLink href="@AddDrawerStateToUrl("Account/Login")" class="button-link menu-button-float-end display-desktop">
@@ -76,6 +123,15 @@
 
     private string? currentUrl;
     private bool preferencesApplied;
+    private bool applyingPreferences;
+    private bool isDisposed;
+
+    private string? currentNotificationUserId;
+    private string? pollingNotificationUserId;
+    private List<UserNotification> notifications = [];
+    private bool IsNotificationDropdownOpen;
+    private PeriodicTimer? notificationPollTimer;
+    private CancellationTokenSource? notificationPollCts;
 
     private sealed record EffectivePreferences(string Theme, string Density, string StartPage);
 
@@ -92,7 +148,7 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender || preferencesApplied)
+        if (preferencesApplied || applyingPreferences)
         {
             return;
         }
@@ -102,10 +158,29 @@
 
     private async Task ApplyUserPreferencesAsync(AuthenticationState? authState = null)
     {
-        var effectivePreferences = await LoadEffectivePreferencesAsync(authState);
-        await ApplyPreferencesToUiAsync(effectivePreferences);
-        preferencesApplied = false;
-        StateHasChanged();
+        if (applyingPreferences)
+        {
+            return;
+        }
+
+        applyingPreferences = true;
+
+        try
+        {
+            var effectivePreferences = await LoadEffectivePreferencesAsync(authState);
+            await ApplyPreferencesToUiAsync(effectivePreferences);
+            preferencesApplied = true;
+            await RefreshNotificationsForCurrentUserAsync(authState);
+        }
+        finally
+        {
+            applyingPreferences = false;
+        }
+
+        if (!isDisposed)
+        {
+            StateHasChanged();
+        }
     }
 
     private async Task<EffectivePreferences> LoadEffectivePreferencesAsync(AuthenticationState? authState = null)
@@ -145,18 +220,179 @@
         _ = InvokeAsync(async () =>
         {
             var authState = await authenticationStateTask;
-            preferencesApplied = true;
+            preferencesApplied = false;
             await ApplyUserPreferencesAsync(authState);
         });
     }
 
     private void OnLocationChanged(object? sender, LocationChangedEventArgs e) {
         currentUrl = NavigationManager.ToBaseRelativePath(e.Location);
+        IsNotificationDropdownOpen = false;
+        preferencesApplied = false;
         StateHasChanged();
     }
 
     public void Dispose() {
+        isDisposed = true;
         NavigationManager.LocationChanged -= OnLocationChanged;
         AuthenticationStateProvider.AuthenticationStateChanged -= OnAuthenticationStateChanged;
+        StopNotificationPolling();
+    }
+
+    private int UnreadNotificationCount => notifications.Count(notification => !notification.IsRead);
+
+    private IReadOnlyList<UserNotification> VisibleNotifications =>
+        notifications.Take(20).ToList();
+
+    private async Task ToggleNotificationsAsync()
+    {
+        if (string.IsNullOrWhiteSpace(currentNotificationUserId))
+        {
+            return;
+        }
+
+        IsNotificationDropdownOpen = !IsNotificationDropdownOpen;
+        if (IsNotificationDropdownOpen)
+        {
+            await RefreshNotificationsForUserAsync(currentNotificationUserId);
+        }
+    }
+
+    private async Task OpenNotificationAsync(UserNotification notification)
+    {
+        if (string.IsNullOrWhiteSpace(currentNotificationUserId))
+        {
+            return;
+        }
+
+        await NotificationService.MarkAsReadAsync(currentNotificationUserId, notification.Id);
+        IsNotificationDropdownOpen = false;
+
+        await RefreshNotificationsForUserAsync(currentNotificationUserId);
+
+        if (!string.IsNullOrWhiteSpace(notification.TargetUrl))
+        {
+            NavigationManager.NavigateTo(AddDrawerStateToUrl(notification.TargetUrl));
+        }
+    }
+
+    private async Task MarkAllNotificationsAsReadAsync()
+    {
+        if (string.IsNullOrWhiteSpace(currentNotificationUserId))
+        {
+            return;
+        }
+
+        await NotificationService.MarkAllAsReadAsync(currentNotificationUserId);
+        await RefreshNotificationsForUserAsync(currentNotificationUserId);
+    }
+
+    private string GetNotificationBadgeText()
+    {
+        return UnreadNotificationCount > 99 ? "99+" : UnreadNotificationCount.ToString();
+    }
+
+    private async Task RefreshNotificationsForCurrentUserAsync(AuthenticationState? authState = null, CancellationToken cancellationToken = default)
+    {
+        var state = authState ?? await AuthenticationStateProvider.GetAuthenticationStateAsync();
+
+        if (state.User.Identity?.IsAuthenticated != true)
+        {
+            currentNotificationUserId = null;
+            notifications = [];
+            IsNotificationDropdownOpen = false;
+            StopNotificationPolling();
+            return;
+        }
+
+        var userId = state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            currentNotificationUserId = null;
+            notifications = [];
+            IsNotificationDropdownOpen = false;
+            StopNotificationPolling();
+            return;
+        }
+
+        currentNotificationUserId = userId;
+        await RefreshNotificationsForUserAsync(userId, cancellationToken);
+        EnsureNotificationPolling(userId);
+    }
+
+    private async Task RefreshNotificationsForUserAsync(string userId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var refreshedNotifications = await NotificationService.RefreshAndGetAsync(userId, cancellationToken);
+            notifications = refreshedNotifications.ToList();
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            notifications = [];
+        }
+
+        if (!isDisposed)
+        {
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void EnsureNotificationPolling(string userId)
+    {
+        if (notificationPollTimer is not null
+            && string.Equals(pollingNotificationUserId, userId, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        StopNotificationPolling();
+
+        pollingNotificationUserId = userId;
+        notificationPollCts = new CancellationTokenSource();
+        notificationPollTimer = new PeriodicTimer(TimeSpan.FromSeconds(60));
+        var pollCts = notificationPollCts;
+        var pollTimer = notificationPollTimer;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                while (await pollTimer.WaitForNextTickAsync(pollCts.Token))
+                {
+                    if (string.IsNullOrWhiteSpace(currentNotificationUserId)
+                        || !string.Equals(currentNotificationUserId, userId, StringComparison.Ordinal))
+                    {
+                        break;
+                    }
+
+                    await RefreshNotificationsForUserAsync(userId, pollCts.Token);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+        });
+    }
+
+    private void StopNotificationPolling()
+    {
+        if (notificationPollCts is not null)
+        {
+            notificationPollCts.Cancel();
+            notificationPollCts.Dispose();
+            notificationPollCts = null;
+        }
+
+        notificationPollTimer?.Dispose();
+        notificationPollTimer = null;
+        pollingNotificationUserId = null;
     }
 }
