@@ -431,7 +431,7 @@
     private string ResolveReturnUrl()
     {
         if (!string.IsNullOrWhiteSpace(ReturnUrl)
-            && ReturnUrl.StartsWith('/', StringComparison.Ordinal)
+            && ReturnUrl.StartsWith("/", StringComparison.Ordinal)
             && !ReturnUrl.StartsWith("//", StringComparison.Ordinal))
         {
             return ReturnUrl;
