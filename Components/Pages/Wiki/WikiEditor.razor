@@ -1,6 +1,8 @@
 ﻿@page "/wiki/create"
 @page "/wiki/templates/create"
 @page "/wiki/edit/{Id:int}"
+@page "/wiki/templates/edit/{Id:int}"
+@using Microsoft.AspNetCore.Components
 @using Microsoft.AspNetCore.Components.Authorization
 @using System.Text.Json
 @using Wiki_Blaze.Data
@@ -15,15 +17,13 @@
 @rendermode InteractiveServer
 @implements IAsyncDisposable
 
-<PageTitle>@(IsTemplateCreation ? "Neue Vorlage" : IsNew ? "Neuer Eintrag" : "Eintrag bearbeiten")</PageTitle>
+<PageTitle>@EditorPageTitle</PageTitle>
 
 <div class="container-fluid h-100 d-flex flex-column">
 
     <!-- Toolbar Header -->
     <div class="d-flex justify-content-between align-items-center mb-3">
-        <h3 class="mb-0">
-            @(IsTemplateCreation ? "Neue Vorlage" : IsNew ? "Neuer Wiki-Eintrag" : $"Bearbeite: {WikiPageModel.Title}")
-        </h3>
+        <h3 class="mb-0">@EditorHeading</h3>
         <div>
             <DxButton Text="Abbrechen"
                       RenderStyle="ButtonRenderStyle.Secondary"
@@ -54,7 +54,7 @@
                             <ValidationMessage For="@(() => WikiPageModel.Title)" />
                         </DxFormLayoutItem>
 
-                        @if (!IsTemplateCreation)
+                        @if (!IsTemplateMode)
                         {
                             <DxFormLayoutItem Caption="Kategorie" ColSpanMd="4">
                                 <DxComboBox Data="@Categories"
@@ -80,7 +80,7 @@
                             </DxFormLayoutItem>
                         }
 
-                        @if (!IsTemplateCreation)
+                        @if (!IsTemplateMode)
                         {
                             <DxFormLayoutItem Caption="Sichtbarkeit" ColSpanMd="4">
                                 <DxComboBox Data="@PublicationOptions"
@@ -104,7 +104,8 @@
                             DocumentFormat="DocumentFormat.OpenXml"
                             DocumentContent="@WikiPageModel.Content"
                             CssClass="w-100 h-100"
-                            BarMode="BarMode.Ribbon"/>
+                            BarMode="BarMode.Ribbon"
+                            ViewType="ViewType.Simple" />
             </div>
 
         </EditForm>
@@ -113,6 +114,7 @@
 
 @code {
     [Parameter] public int? Id { get; set; }
+    [Parameter, SupplyParameterFromQuery(Name = "returnUrl")] public string? ReturnUrl { get; set; }
 
     private WikiPage WikiPageModel { get; set; } = new();
     private List<WikiCategory> Categories { get; set; } = new();
@@ -133,14 +135,25 @@
     private PeriodicTimer? DraftAutosaveTimer;
     private CancellationTokenSource? DraftAutosaveCts;
     private string? CurrentUserId;
+    private bool IsTemplateMode;
     private bool IsNew => Id == null || Id == 0;
-    private bool IsTemplateCreation => IsNew && NavManager.Uri.EndsWith("/wiki/templates/create", StringComparison.OrdinalIgnoreCase);
+    private string CurrentAbsolutePath => NavManager.ToAbsoluteUri(NavManager.Uri).AbsolutePath;
+    private bool IsTemplateRoute =>
+        string.Equals(CurrentAbsolutePath, "/wiki/templates/create", StringComparison.OrdinalIgnoreCase)
+        || CurrentAbsolutePath.StartsWith("/wiki/templates/edit/", StringComparison.OrdinalIgnoreCase);
+    private string EditorPageTitle => IsTemplateMode
+        ? (IsNew ? "Neue Vorlage" : "Vorlage bearbeiten")
+        : (IsNew ? "Neuer Eintrag" : "Eintrag bearbeiten");
+    private string EditorHeading => IsTemplateMode
+        ? (IsNew ? "Neue Vorlage" : $"Vorlage bearbeiten: {WikiPageModel.Title}")
+        : (IsNew ? "Neuer Wiki-Eintrag" : $"Bearbeite: {WikiPageModel.Title}");
 
     protected override async Task OnInitializedAsync()
     {
         IsLoading = true;
         try
         {
+            IsTemplateMode = IsTemplateRoute;
             Categories = await WikiService.GetCategoriesAsync();
             CurrentUserId = await GetCurrentUserIdAsync();
             if (!string.IsNullOrWhiteSpace(CurrentUserId))
@@ -162,16 +175,19 @@
                     // bis gespeichert wird (optional, aber sauberer in Blazor).
                     // Hier vereinfacht: wir nutzen es direkt, aber detached durch Service.
                     WikiPageModel = existing;
-                    SelectedPublicationOption = ResolvePublicationMode(WikiPageModel);
-
-                    if (WikiPageModel.Status == WikiPageStatus.Template)
+                    IsTemplateMode = IsTemplateMode || WikiPageModel.Status == WikiPageStatus.Template;
+                    if (IsTemplateMode)
                     {
-                        SelectedTemplateGroupId = existing.TemplateGroupId;
+                        SelectedTemplateGroupId = existing.TemplateGroupId ?? GetDefaultTemplateGroupId();
+                    }
+                    else
+                    {
+                        SelectedPublicationOption = ResolvePublicationMode(WikiPageModel);
                     }
                 }
                 else
                 {
-                    NavManager.NavigateTo("/wiki");
+                    NavManager.NavigateTo(ResolveReturnUrl());
                 }
             }
             else
@@ -180,17 +196,15 @@
                 WikiPageModel = new WikiPage
                 {
                     CategoryId = Categories.FirstOrDefault()?.Id ?? 0,
-                    Status = IsTemplateCreation ? WikiPageStatus.Template : WikiPageStatus.Draft,
-                    Visibility = IsTemplateCreation ? WikiPageVisibility.Team : WikiPageVisibility.Private,
+                    Status = IsTemplateMode ? WikiPageStatus.Template : WikiPageStatus.Draft,
+                    Visibility = IsTemplateMode ? WikiPageVisibility.Team : WikiPageVisibility.Private,
                     EntryType = WikiEntryType.Standard
                 };
 
-                SelectedPublicationOption = IsTemplateCreation ? PublicationMode.Published : PublicationMode.Private;
-                if (IsTemplateCreation)
+                SelectedPublicationOption = IsTemplateMode ? PublicationMode.Published : PublicationMode.Private;
+                if (IsTemplateMode)
                 {
-                    SelectedTemplateGroupId = TemplateGroups
-                        .FirstOrDefault(group => string.Equals(group.Name, WikiTemplateGroup.DefaultGroupName, StringComparison.Ordinal))?.Id
-                        ?? TemplateGroups.FirstOrDefault()?.Id;
+                    SelectedTemplateGroupId = GetDefaultTemplateGroupId();
                 }
             }
         }
@@ -234,8 +248,9 @@
                 return;
             }
 
-            if (!IsTemplateCreation)
+            if (!IsTemplateMode)
             {
+                WikiPageModel.TemplateGroupId = null;
                 ApplyPublicationMode();
             }
             else
@@ -248,6 +263,8 @@
 
                 TemplateGroupValidationMessage = null;
                 WikiPageModel.TemplateGroupId = SelectedTemplateGroupId;
+                WikiPageModel.Status = WikiPageStatus.Template;
+                WikiPageModel.Visibility = WikiPageVisibility.Team;
             }
 
             if (IsNew)
@@ -276,7 +293,7 @@
 
             await RemoveDraftBufferAsync();
 
-            NavManager.NavigateTo(WikiPageModel.Status == WikiPageStatus.Template ? "/wiki/templates" : "/wiki");
+            NavManager.NavigateTo(ResolveReturnUrl());
         }
         catch (Exception ex)
         {
@@ -399,9 +416,33 @@
         return UserIdResolver.ResolveCurrentUserId(user);
     }
 
+    private int? GetDefaultTemplateGroupId()
+    {
+        return TemplateGroups
+            .FirstOrDefault(group => string.Equals(group.Name, WikiTemplateGroup.DefaultGroupName, StringComparison.Ordinal))?.Id
+            ?? TemplateGroups.FirstOrDefault()?.Id;
+    }
+
+    private string GetDefaultReturnUrl()
+    {
+        return IsTemplateMode ? "/wiki/templates" : "/wiki";
+    }
+
+    private string ResolveReturnUrl()
+    {
+        if (!string.IsNullOrWhiteSpace(ReturnUrl)
+            && ReturnUrl.StartsWith('/', StringComparison.Ordinal)
+            && !ReturnUrl.StartsWith("//", StringComparison.Ordinal))
+        {
+            return ReturnUrl;
+        }
+
+        return GetDefaultReturnUrl();
+    }
+
     private void NavigateBack()
     {
-        NavManager.NavigateTo(WikiPageModel.Status == WikiPageStatus.Template ? "/wiki/templates" : "/wiki");
+        NavManager.NavigateTo(ResolveReturnUrl());
     }
 
     private void ApplyPublicationMode()

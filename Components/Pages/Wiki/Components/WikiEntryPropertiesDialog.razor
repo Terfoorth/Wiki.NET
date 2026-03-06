@@ -154,7 +154,7 @@
             var valueByDefinitionId = values.ToDictionary(v => v.AttributeDefinitionId);
 
             AttributeEditors.Clear();
-            foreach (var definition in definitions)
+            foreach (var definition in definitions.Where(definition => !string.Equals(definition.Name, "Owner", StringComparison.OrdinalIgnoreCase)))
             {
                 valueByDefinitionId.TryGetValue(definition.Id, out var storedValue);
                 AttributeEditors.Add(new EditableAttributeValue

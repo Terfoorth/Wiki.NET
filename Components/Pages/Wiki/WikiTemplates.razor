@@ -22,7 +22,7 @@
             <DxButton RenderStyle="ButtonRenderStyle.Success"
                       Text="Neue Vorlage"
                       IconCssClass="oi oi-plus"
-                      NavigateUrl="wiki/templates/create" />
+                      NavigateUrl="@GetCreateTemplateUrl()" />
         </div>
     </div>
 
@@ -609,7 +609,24 @@
 
     private void EditEntry(WikiPage page)
     {
-        NavManager.NavigateTo($"/wiki/edit/{page.Id}");
+        NavManager.NavigateTo(GetEditTemplateUrl(page.Id));
+    }
+
+    private string GetCreateTemplateUrl()
+    {
+        return BuildEditorUrl("/wiki/templates/create");
+    }
+
+    private string GetEditTemplateUrl(int pageId)
+    {
+        return BuildEditorUrl($"/wiki/templates/edit/{pageId}");
+    }
+
+    private string BuildEditorUrl(string editorPath)
+    {
+        var relativePath = NavManager.ToBaseRelativePath(NavManager.Uri);
+        var returnUrl = string.IsNullOrWhiteSpace(relativePath) ? "/" : $"/{relativePath}";
+        return $"{editorPath}?returnUrl={Uri.EscapeDataString(returnUrl)}";
     }
 
     private async Task DeleteEntryAsync(WikiPage page)
@@ -630,6 +647,8 @@
 
     private void OpenProperties(WikiPage page)
     {
+        SelectedPropertiesPage = null;
+        IsPropertiesDialogOpen = false;
         SelectedPropertiesPage = page;
         IsPropertiesDialogOpen = true;
     }
@@ -745,7 +764,21 @@
             return;
         }
 
-        if (TryGetGroupIdFromMenuItem(args.ItemInfo.Name, out var groupId) && CanShowTemplateGroupContextItems)
+        var menuItemName = args.ItemInfo.Name?.Trim();
+        if (string.IsNullOrWhiteSpace(menuItemName))
+        {
+            return;
+        }
+
+        menuItemName = menuItemName.ToLowerInvariant();
+
+        if (menuItemName == "properties")
+        {
+            OpenProperties(ContextMenuPage);
+            return;
+        }
+
+        if (CanShowTemplateGroupContextItems && TryGetGroupIdFromMenuItem(menuItemName, out var groupId))
         {
             var groupExists = TemplateGroups!.Any(group => group.Id == groupId);
             if (groupExists)
@@ -756,16 +789,13 @@
             return;
         }
 
-        switch (args.ItemInfo.Name)
+        switch (menuItemName)
         {
             case "open":
                 OpenEntry(ContextMenuPage);
                 break;
             case "edit":
                 EditEntry(ContextMenuPage);
-                break;
-            case "properties":
-                OpenProperties(ContextMenuPage);
                 break;
             case "create-from-template-dashboard":
                 await CreateEntryFromTemplateAsync(ContextMenuPage, WikiPageStatus.Published, "/wiki");

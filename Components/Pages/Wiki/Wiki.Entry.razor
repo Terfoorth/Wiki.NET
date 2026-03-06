@@ -33,7 +33,7 @@ else
             </div>
             <div>
                 <DxButton Text="Zurück" RenderStyle="ButtonRenderStyle.Secondary" Outline="true" NavigateUrl="wiki" CssClass="me-2" />
-                <DxButton Text="Bearbeiten" RenderStyle="ButtonRenderStyle.Primary" IconCssClass="oi oi-pencil" NavigateUrl="@($"wiki/edit/{Page.Id}")" />
+                <DxButton Text="Bearbeiten" RenderStyle="ButtonRenderStyle.Primary" IconCssClass="oi oi-pencil" NavigateUrl="@GetEditEntryUrl(Page.Id)" />
             </div>
         </div>
 
@@ -94,5 +94,12 @@ else
         userId = user.FindFirstValue("sub");
 
         return string.IsNullOrWhiteSpace(userId) ? null : userId;
+    }
+
+    private string GetEditEntryUrl(int pageId)
+    {
+        var relativePath = NavManager.ToBaseRelativePath(NavManager.Uri);
+        var returnUrl = string.IsNullOrWhiteSpace(relativePath) ? "/" : $"/{relativePath}";
+        return $"/wiki/edit/{pageId}?returnUrl={Uri.EscapeDataString(returnUrl)}";
     }
 }

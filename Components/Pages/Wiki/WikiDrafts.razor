@@ -27,7 +27,7 @@
             <DxButton RenderStyle="ButtonRenderStyle.Success"
                       Text="Neuer Eintrag"
                       IconCssClass="oi oi-plus"
-                      NavigateUrl="wiki/create" />
+                      NavigateUrl="@GetCreateEntryUrl()" />
         </div>
     </div>
 
@@ -647,7 +647,24 @@
 
     private void EditEntry(WikiPage page)
     {
-        NavManager.NavigateTo($"/wiki/edit/{page.Id}");
+        NavManager.NavigateTo(GetEditEntryUrl(page.Id));
+    }
+
+    private string GetCreateEntryUrl()
+    {
+        return BuildEditorUrl("/wiki/create");
+    }
+
+    private string GetEditEntryUrl(int pageId)
+    {
+        return BuildEditorUrl($"/wiki/edit/{pageId}");
+    }
+
+    private string BuildEditorUrl(string editorPath)
+    {
+        var relativePath = NavManager.ToBaseRelativePath(NavManager.Uri);
+        var returnUrl = string.IsNullOrWhiteSpace(relativePath) ? "/" : $"/{relativePath}";
+        return $"{editorPath}?returnUrl={Uri.EscapeDataString(returnUrl)}";
     }
 
     private void OpenProperties(WikiPage page)
