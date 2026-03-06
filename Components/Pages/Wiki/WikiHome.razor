@@ -20,9 +20,9 @@
     <div class="row mb-4 align-items-center">
         <div class="col">
             <h2 class="mb-0 fw-bold text-primary">
-                <span class="oi oi-book me-2"></span>Wissensdatenbank
+                <span class="oi oi-book me-2"></span>CALF Wissensdatenbank
             </h2>
-            <small class="text-muted">Alle Dokumentationen und Anleitungen an einem Ort</small>
+            <small class="text-muted">Alle Dokumentationen, Anleitungen und Onboarding Verwaltung an einem Ort</small>
         </div>
         <div class="col-auto">
             <DxButton RenderStyle="ButtonRenderStyle.Success" 
@@ -63,7 +63,7 @@
                                 @onclick="() => FilterCategory(0)">
                             <span class="d-flex justify-content-between align-items-center w-100">
                                 <span><span class="oi oi-grid-three-up me-2"></span> Alle Einträge</span>
-                                <span class="badge rounded-pill bg-light text-dark border">(@GetAllEntriesCount())</span>
+                                <span class="badge rounded-pill bg-light text-dark border">@GetAllEntriesCount()</span>
                             </span>
                         </button>
                         @if (CategoryNavigationItems.Count != 0)
@@ -101,12 +101,12 @@
                                             {
                                                 var count = GetCategoryCount(category.Id);
                                                 <span class="badge rounded-pill bg-light text-dark border" title="Direkt/inkl. Unterkategorien">
-                                                    D:@count.DirectCount · Σ:@count.TotalCount
+                                                    @count.DirectCount · Sum @count.TotalCount
                                                 </span>
                                             }
                                             else
                                             {
-                                                <span class="badge rounded-pill bg-light text-dark border">(@GetCategoryCount(category.Id).DirectCount)</span>
+                                                <span class="badge rounded-pill bg-light text-dark border">@GetCategoryCount(category.Id).DirectCount</span>
                                             }
                                         </span>
                                     </button>

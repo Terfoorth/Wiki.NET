@@ -84,7 +84,7 @@
                                 @onclick="() => FilterGroup(0)">
                             <span class="d-flex justify-content-between align-items-center w-100">
                                 <span><span class="oi oi-grid-three-up me-2"></span> Alle Einträge</span>
-                                <span class="badge rounded-pill bg-light text-dark border">(@GetAllEntriesCount())</span>
+                                <span class="badge rounded-pill bg-light text-dark border">@GetAllEntriesCount()</span>
                             </span>
                         </button>
                         @if (TemplateGroups != null)
@@ -113,7 +113,7 @@
                                                 <span><span class="oi oi-layers me-2 text-primary"></span> @group.Name</span>
                                             </button>
                                             <div class="d-flex align-items-center gap-1">
-                                                <span class="badge rounded-pill bg-light text-dark border">(@GetGroupCount(group.Id))</span>
+                                                <span class="badge rounded-pill bg-light text-dark border">@GetGroupCount(group.Id)</span>
                                                 @if (!IsDefaultTemplateGroup(group))
                                                 {
                                                     <button type="button" class="btn btn-sm btn-light border" title="Umbenennen" @onclick="() => StartRenameGroup(group)">
