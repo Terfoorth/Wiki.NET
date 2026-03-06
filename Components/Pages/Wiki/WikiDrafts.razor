@@ -174,7 +174,7 @@
                                     </div>
 
                                     <h5 class="card-title fw-bold">
-                                        <a href="@($"wiki/view/{page.Id}")" class="text-decoration-none text-dark">
+                                        <a href="@GetViewEntryUrl(page.Id)" class="text-decoration-none text-dark">
                                             @(page.Title)
                                         </a>
                                     </h5>
@@ -642,7 +642,7 @@
 
     private void OpenEntry(WikiPage page)
     {
-        NavManager.NavigateTo($"/wiki/view/{page.Id}");
+        NavManager.NavigateTo(GetViewEntryUrl(page.Id));
     }
 
     private void EditEntry(WikiPage page)
@@ -660,11 +660,21 @@
         return BuildEditorUrl($"/wiki/edit/{pageId}");
     }
 
+    private string GetViewEntryUrl(int pageId)
+    {
+        return BuildReturnAwareUrl($"/wiki/view/{pageId}");
+    }
+
     private string BuildEditorUrl(string editorPath)
+    {
+        return BuildReturnAwareUrl(editorPath);
+    }
+
+    private string BuildReturnAwareUrl(string targetPath)
     {
         var relativePath = NavManager.ToBaseRelativePath(NavManager.Uri);
         var returnUrl = string.IsNullOrWhiteSpace(relativePath) ? "/" : $"/{relativePath}";
-        return $"{editorPath}?returnUrl={Uri.EscapeDataString(returnUrl)}";
+        return $"{targetPath}?returnUrl={Uri.EscapeDataString(returnUrl)}";
     }
 
     private void OpenProperties(WikiPage page)
