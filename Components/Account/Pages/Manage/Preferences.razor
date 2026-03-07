@@ -1,10 +1,8 @@
 @page "/Account/Manage/Preferences"
 @rendermode InteractiveServer
 @using System.ComponentModel.DataAnnotations
-@using System.Linq
 @using Microsoft.AspNetCore.Identity
 @using Wiki_Blaze.Data
-@using Wiki_Blaze.Services
 @inject UserManager<ApplicationUser> UserManager
 @inject IJSRuntime JsRuntime
 
@@ -18,54 +16,59 @@
         <DxFormLayout CaptionPosition=@CaptionPosition.Vertical Context="formLayout">
             <DxFormLayoutGroup Caption="Appearance">
                 <DxFormLayoutItem Caption="Theme" ColSpanMd="6">
-                    <InteractiveServerComboBox Data="@(themeOptions.Cast<object>())"
-                                               Name="Input.ThemePreference"
-                                               TextFieldName="Text"
-                                               ValueFieldName="Value"
-                                               @bind-Value="Input.ThemePreference" />
+                    <DxComboBox Data="@themeOptions"
+                                TData="OptionItem"
+                                TValue="string"
+                                TextFieldName="Text"
+                                ValueFieldName="Value"
+                                @bind-Value="Input.ThemePreference" />
                 </DxFormLayoutItem>
                 <DxFormLayoutItem Caption="Density" ColSpanMd="6">
-                    <InteractiveServerComboBox Data="@(densityOptions.Cast<object>())"
-                                               Name="Input.DensityPreference"
-                                               TextFieldName="Text"
-                                               ValueFieldName="Value"
-                                               @bind-Value="Input.DensityPreference" />
+                    <DxComboBox Data="@densityOptions"
+                                TData="OptionItem"
+                                TValue="string"
+                                TextFieldName="Text"
+                                ValueFieldName="Value"
+                                @bind-Value="Input.DensityPreference" />
                 </DxFormLayoutItem>
             </DxFormLayoutGroup>
             <DxFormLayoutGroup Caption="Regional settings">
                 <DxFormLayoutItem Caption="Preferred language" ColSpanMd="6">
-                    <InteractiveServerComboBox Data="@(languageOptions.Cast<object>())"
-                                               Name="Input.PreferredLanguage"
-                                               TextFieldName="Text"
-                                               ValueFieldName="Value"
-                                               @bind-Value="Input.PreferredLanguage" />
+                    <DxComboBox Data="@languageOptions"
+                                TData="OptionItem"
+                                TValue="string"
+                                TextFieldName="Text"
+                                ValueFieldName="Value"
+                                @bind-Value="Input.PreferredLanguage" />
                 </DxFormLayoutItem>
                 <DxFormLayoutItem Caption="Time zone" ColSpanMd="6">
-                    <InteractiveServerComboBox Data="@(timeZoneOptions.Cast<object>())"
-                                               Name="Input.TimeZone"
-                                               TextFieldName="Text"
-                                               ValueFieldName="Value"
-                                               @bind-Value="Input.TimeZone" />
+                    <DxComboBox Data="@timeZoneOptions"
+                                TData="OptionItem"
+                                TValue="string"
+                                TextFieldName="Text"
+                                ValueFieldName="Value"
+                                @bind-Value="Input.TimeZone" />
                 </DxFormLayoutItem>
             </DxFormLayoutGroup>
             <DxFormLayoutGroup Caption="Navigation">
                 <DxFormLayoutItem Caption="Start page" ColSpanMd="6">
-                    <InteractiveServerComboBox Data="@(startPageOptions.Cast<object>())"
-                                               Name="Input.StartPage"
-                                               TextFieldName="Text"
-                                               ValueFieldName="Value"
-                                               @bind-Value="Input.StartPage" />
+                    <DxComboBox Data="@startPageOptions"
+                                TData="OptionItem"
+                                TValue="string"
+                                TextFieldName="Text"
+                                ValueFieldName="Value"
+                                @bind-Value="Input.StartPage" />
                 </DxFormLayoutItem>
             </DxFormLayoutGroup>
             <DxFormLayoutGroup Caption="Notifications">
                 <DxFormLayoutItem ColSpanMd="6">
-                    <InteractiveServerCheckbox Name="Input.ReceiveProductUpdates" @bind-Value="Input.ReceiveProductUpdates" LabelText="Product updates" />
+                    <DxCheckBox @bind-Checked="Input.ReceiveProductUpdates" LabelText="Product updates" />
                 </DxFormLayoutItem>
                 <DxFormLayoutItem ColSpanMd="6">
-                    <InteractiveServerCheckbox Name="Input.ReceiveWeeklyDigest" @bind-Value="Input.ReceiveWeeklyDigest" LabelText="Weekly digest" />
+                    <DxCheckBox @bind-Checked="Input.ReceiveWeeklyDigest" LabelText="Weekly digest" />
                 </DxFormLayoutItem>
                 <DxFormLayoutItem ColSpanMd="6">
-                    <InteractiveServerCheckbox Name="Input.ReceiveReminderEmails" @bind-Value="Input.ReceiveReminderEmails" LabelText="Reminder emails" />
+                    <DxCheckBox @bind-Checked="Input.ReceiveReminderEmails" LabelText="Reminder emails" />
                 </DxFormLayoutItem>
             </DxFormLayoutGroup>
             <DxFormLayoutItem ColSpanMd="12" BeginRow="true">
@@ -124,24 +127,24 @@
     [
         new("English", "en"),
         new("Deutsch", "de"),
-        new("Français", "fr"),
-        new("Español", "es"),
+        new("Francais", "fr"),
+        new("Espanol", "es"),
         new("Italiano", "it"),
         new("Dansk", "da"),
         new("Norsk", "no"),
         new("Nederlands", "nl"),
         new("Polski", "pl"),
-        new("Português", "pt"),
+        new("Portugues", "pt"),
         new("Suomi", "fi"),
         new("Svenska", "sv"),
-        new("????????", "el"),
-        new("???????", "ru"),
-        new("??????????", "uk"),
-        new("???", "ja"),
-        new("???", "ko"),
-        new("?? (??)", "zh-hans"),
-        new("?? (??)", "zh-hant"),
-        new("Türkçe", "tr"),
+        new("Greek", "el"),
+        new("Russian", "ru"),
+        new("Ukrainian", "uk"),
+        new("Japanese", "ja"),
+        new("Korean", "ko"),
+        new("Chinese (Simplified)", "zh-hans"),
+        new("Chinese (Traditional)", "zh-hant"),
+        new("Turkce", "tr"),
     ];
 
     private List<OptionItem> timeZoneOptions =
@@ -188,14 +191,7 @@
             return;
         }
 
-        Input.ThemePreference = user.ThemePreference ?? "system";
-        Input.DensityPreference = user.DensityPreference ?? "comfortable";
-        Input.PreferredLanguage = user.PreferredLanguage ?? "en";
-        Input.TimeZone = user.TimeZone;
-        Input.StartPage = string.IsNullOrWhiteSpace(user.StartPage) ? "/" : user.StartPage;
-        Input.ReceiveProductUpdates = user.ReceiveProductUpdates;
-        Input.ReceiveWeeklyDigest = user.ReceiveWeeklyDigest;
-        Input.ReceiveReminderEmails = user.ReceiveReminderEmails;
+        PopulateInputFromUser(user);
     }
 
     private async Task OnValidSubmitAsync()
@@ -206,14 +202,23 @@
             return;
         }
 
-        user.ThemePreference = Input.ThemePreference;
-        user.DensityPreference = Input.DensityPreference;
-        user.PreferredLanguage = Input.PreferredLanguage;
-        user.TimeZone = Input.TimeZone;
-        user.StartPage = Input.StartPage;
-        user.ReceiveProductUpdates = Input.ReceiveProductUpdates;
-        user.ReceiveWeeklyDigest = Input.ReceiveWeeklyDigest;
-        user.ReceiveReminderEmails = Input.ReceiveReminderEmails;
+        var expectedTheme = Input.ThemePreference;
+        var expectedDensity = Input.DensityPreference;
+        var expectedLanguage = Input.PreferredLanguage;
+        var expectedTimeZone = Input.TimeZone;
+        var expectedStartPage = Input.StartPage;
+        var expectedProductUpdates = Input.ReceiveProductUpdates;
+        var expectedWeeklyDigest = Input.ReceiveWeeklyDigest;
+        var expectedReminderEmails = Input.ReceiveReminderEmails;
+
+        user.ThemePreference = expectedTheme;
+        user.DensityPreference = expectedDensity;
+        user.PreferredLanguage = expectedLanguage;
+        user.TimeZone = expectedTimeZone;
+        user.StartPage = expectedStartPage;
+        user.ReceiveProductUpdates = expectedProductUpdates;
+        user.ReceiveWeeklyDigest = expectedWeeklyDigest;
+        user.ReceiveReminderEmails = expectedReminderEmails;
 
         var updateResult = await UserManager.UpdateAsync(user);
         if (!updateResult.Succeeded)
@@ -222,10 +227,59 @@
             return;
         }
 
+        var reloadedUser = await UserManager.FindByIdAsync(user.Id);
+        if (reloadedUser is null)
+        {
+            message = "Error: Preferences were saved, but the user could not be reloaded.";
+            return;
+        }
+
+        if (!PreferencesMatch(reloadedUser, expectedTheme, expectedDensity, expectedLanguage, expectedTimeZone, expectedStartPage, expectedProductUpdates, expectedWeeklyDigest, expectedReminderEmails))
+        {
+            message = "Error: Preferences could not be persisted reliably. Please reload and try again.";
+            return;
+        }
+
+        user = reloadedUser;
+        PopulateInputFromUser(user);
+
         await JsRuntime.InvokeVoidAsync("wikiBlaze.setTheme", user.ThemePreference);
         await JsRuntime.InvokeVoidAsync("wikiBlaze.setDensity", user.DensityPreference);
 
         message = "Your preferences have been updated";
+    }
+
+    private void PopulateInputFromUser(ApplicationUser source)
+    {
+        Input.ThemePreference = source.ThemePreference ?? ApplicationUser.DefaultThemePreference;
+        Input.DensityPreference = source.DensityPreference ?? ApplicationUser.DefaultDensityPreference;
+        Input.PreferredLanguage = source.PreferredLanguage ?? ApplicationUser.DefaultPreferredLanguage;
+        Input.TimeZone = source.TimeZone ?? "UTC";
+        Input.StartPage = string.IsNullOrWhiteSpace(source.StartPage) ? ApplicationUser.DefaultStartPage : source.StartPage;
+        Input.ReceiveProductUpdates = source.ReceiveProductUpdates;
+        Input.ReceiveWeeklyDigest = source.ReceiveWeeklyDigest;
+        Input.ReceiveReminderEmails = source.ReceiveReminderEmails;
+    }
+
+    private static bool PreferencesMatch(
+        ApplicationUser source,
+        string expectedTheme,
+        string expectedDensity,
+        string? expectedLanguage,
+        string? expectedTimeZone,
+        string expectedStartPage,
+        bool expectedProductUpdates,
+        bool expectedWeeklyDigest,
+        bool expectedReminderEmails)
+    {
+        return string.Equals(source.ThemePreference ?? ApplicationUser.DefaultThemePreference, expectedTheme, StringComparison.Ordinal)
+            && string.Equals(source.DensityPreference ?? ApplicationUser.DefaultDensityPreference, expectedDensity, StringComparison.Ordinal)
+            && string.Equals(source.PreferredLanguage ?? ApplicationUser.DefaultPreferredLanguage, expectedLanguage ?? ApplicationUser.DefaultPreferredLanguage, StringComparison.Ordinal)
+            && string.Equals(source.TimeZone ?? "UTC", expectedTimeZone ?? "UTC", StringComparison.Ordinal)
+            && string.Equals(string.IsNullOrWhiteSpace(source.StartPage) ? ApplicationUser.DefaultStartPage : source.StartPage, expectedStartPage, StringComparison.Ordinal)
+            && source.ReceiveProductUpdates == expectedProductUpdates
+            && source.ReceiveWeeklyDigest == expectedWeeklyDigest
+            && source.ReceiveReminderEmails == expectedReminderEmails;
     }
 
     private record OptionItem(string Text, string Value);
@@ -233,10 +287,10 @@
     private sealed class InputModel
     {
         [Required]
-        public string ThemePreference { get; set; } = "system";
+        public string ThemePreference { get; set; } = ApplicationUser.DefaultThemePreference;
 
         [Required]
-        public string DensityPreference { get; set; } = "comfortable";
+        public string DensityPreference { get; set; } = ApplicationUser.DefaultDensityPreference;
 
         [MaxLength(80)]
         public string? PreferredLanguage { get; set; }
@@ -246,7 +300,7 @@
 
         [Required]
         [MaxLength(80)]
-        public string StartPage { get; set; } = "/";
+        public string StartPage { get; set; } = ApplicationUser.DefaultStartPage;
 
         public bool ReceiveProductUpdates { get; set; }
 
@@ -255,4 +309,3 @@
         public bool ReceiveReminderEmails { get; set; } = true;
     }
 }
-
