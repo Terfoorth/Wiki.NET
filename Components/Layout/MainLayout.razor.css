@@ -64,6 +64,16 @@
     margin-left: auto;
 }
 
+.nav-user-actions {
+    align-items: center;
+    display: flex;
+    gap: 0.5rem;
+}
+
+.logout-form {
+    margin: 0;
+}
+
 ::deep .nav-buttons-container .btn-icon-only,
 ::deep .navigation-drawer-header .btn-icon-only {
     --dxbl-btn-padding-x: 0.5rem;

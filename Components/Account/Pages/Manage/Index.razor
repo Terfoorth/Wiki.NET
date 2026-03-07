@@ -43,7 +43,7 @@
                     <InteractiveServerMaskedInput Name="Input.PhoneNumber" Value="@Input.PhoneNumber" Mask="(999)000-0000"></InteractiveServerMaskedInput>
                 </DxFormLayoutItem>
                 <DxFormLayoutItem Caption="Bio" ColSpanMd="12">
-                    <DxMemo @bind-Text="Input.Bio" Rows="4" />
+                    <textarea class="form-control" rows="4" name="Input.Bio" @bind="Input.Bio"></textarea>
                 </DxFormLayoutItem>
                 @if (!isAdmin)
                 {

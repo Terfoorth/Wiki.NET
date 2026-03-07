@@ -826,6 +826,9 @@ namespace Wiki_Blaze.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("Name")
+                        .IsUnique();
+
                     b.ToTable("WikiAttributeDefinitions");
 
                     b.HasData(

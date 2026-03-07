@@ -179,7 +179,7 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender || preferencesApplied)
+        if (preferencesApplied || applyingPreferences)
         {
             return;
         }
@@ -256,8 +256,18 @@
     {
         _ = InvokeAsync(async () =>
         {
-            var authState = await authenticationStateTask;
-            preferencesApplied = true;
+            AuthenticationState authState;
+            try
+            {
+                authState = await authenticationStateTask;
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "AuthenticationStateChanged failed in MainLayout.");
+                return;
+            }
+
+            preferencesApplied = false;
             await ApplyUserPreferencesAsync(authState);
         });
     }
@@ -465,6 +475,7 @@
     }
 
     public void Dispose() {
+        isDisposed = true;
         NavigationManager.LocationChanged -= OnLocationChanged;
         AuthenticationStateProvider.AuthenticationStateChanged -= OnAuthenticationStateChanged;
         notificationsCts?.Cancel();

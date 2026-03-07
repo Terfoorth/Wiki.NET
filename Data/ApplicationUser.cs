@@ -61,6 +61,8 @@ namespace Wiki_Blaze.Data
 
         public bool ReceiveWeeklyDigest { get; set; }
 
+        public bool ReceiveReminderEmails { get; set; } = true;
+
         public ICollection<WikiPage> OwnedEntries { get; set; } = new List<WikiPage>();
 
     }

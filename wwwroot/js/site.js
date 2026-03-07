@@ -26,22 +26,48 @@ window.wikiBlaze.themeMap = {
     yeti: "https://cdn.jsdelivr.net/npm/bootswatch@5.3.3/dist/yeti/bootstrap.min.css",
     zephyr: "https://cdn.jsdelivr.net/npm/bootswatch@5.3.3/dist/zephyr/bootstrap.min.css"
 };
+window.wikiBlaze.preferenceStorage = {
+    themeKey: "wikiBlaze.preference.theme",
+    densityKey: "wikiBlaze.preference.density",
+    themeHrefKey: "wikiBlaze.preference.themeHref"
+};
+
+window.wikiBlaze.cacheUiPreferences = function (theme, density, themeHref) {
+    try {
+        if (theme !== undefined && theme !== null) {
+            window.localStorage.setItem(window.wikiBlaze.preferenceStorage.themeKey, theme);
+        }
+
+        if (density !== undefined && density !== null) {
+            window.localStorage.setItem(window.wikiBlaze.preferenceStorage.densityKey, density);
+        }
+
+        if (themeHref !== undefined && themeHref !== null) {
+            window.localStorage.setItem(window.wikiBlaze.preferenceStorage.themeHrefKey, themeHref);
+        }
+    } catch (error) {
+        // Ignore local storage access errors in locked-down browser contexts.
+    }
+};
 
 window.wikiBlaze.setTheme = function (theme) {
     var root = document.documentElement;
     var bootstrapLink = document.getElementById("bootstrap-theme");
     var defaultHref = bootstrapLink ? bootstrapLink.getAttribute("data-default-href") : null;
+    var resolvedTheme = theme || "system";
+    var resolvedThemeHref = bootstrapLink ? bootstrapLink.getAttribute("href") : defaultHref;
     var applyTheme = function (value) {
         root.setAttribute('data-bs-theme', value);
     };
     var applyBootstrapHref = function (href) {
         if (bootstrapLink && href) {
             bootstrapLink.setAttribute("href", href);
+            resolvedThemeHref = href;
         }
     };
 
-    if (theme && theme.startsWith("bootswatch:")) {
-        var name = theme.split(":")[1];
+    if (resolvedTheme && resolvedTheme.startsWith("bootswatch:")) {
+        var name = resolvedTheme.split(":")[1];
         var cssHref = window.wikiBlaze.themeMap[name];
         if (cssHref) {
             applyBootstrapHref(cssHref);
@@ -52,6 +78,7 @@ window.wikiBlaze.setTheme = function (theme) {
             window.wikiBlaze._themeListener = null;
             window.wikiBlaze._themeMediaQuery = null;
         }
+        window.wikiBlaze.cacheUiPreferences(resolvedTheme, null, resolvedThemeHref);
         return;
     }
 
@@ -59,12 +86,12 @@ window.wikiBlaze.setTheme = function (theme) {
         applyBootstrapHref(defaultHref);
     }
 
-    if (theme === 'system') {
+    if (resolvedTheme === 'system') {
         var mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
         applyTheme(mediaQuery.matches ? 'dark' : 'light');
 
-        if (window.wikiBlaze._themeListener) {
-            mediaQuery.removeEventListener('change', window.wikiBlaze._themeListener);
+        if (window.wikiBlaze._themeMediaQuery && window.wikiBlaze._themeListener) {
+            window.wikiBlaze._themeMediaQuery.removeEventListener('change', window.wikiBlaze._themeListener);
         }
 
         window.wikiBlaze._themeListener = function (event) {
@@ -74,17 +101,21 @@ window.wikiBlaze.setTheme = function (theme) {
         mediaQuery.addEventListener('change', window.wikiBlaze._themeListener);
         window.wikiBlaze._themeMediaQuery = mediaQuery;
     } else {
-        applyTheme(theme);
+        applyTheme(resolvedTheme);
         if (window.wikiBlaze._themeMediaQuery && window.wikiBlaze._themeListener) {
             window.wikiBlaze._themeMediaQuery.removeEventListener('change', window.wikiBlaze._themeListener);
             window.wikiBlaze._themeListener = null;
             window.wikiBlaze._themeMediaQuery = null;
         }
     }
+
+    window.wikiBlaze.cacheUiPreferences(resolvedTheme, null, resolvedThemeHref);
 };
 
 window.wikiBlaze.setDensity = function (density) {
-    document.documentElement.setAttribute('data-density', density);
+    var resolvedDensity = density || "comfortable";
+    document.documentElement.setAttribute('data-density', resolvedDensity);
+    window.wikiBlaze.cacheUiPreferences(null, resolvedDensity, null);
 };
 
 window.wikiBlaze.loadDashboardSettings = function (key) {

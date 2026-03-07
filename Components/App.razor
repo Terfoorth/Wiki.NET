@@ -7,7 +7,54 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <base href="/" />
-    <link href=@AppendVersion("css/bootstrap/bootstrap.min.css") rel="stylesheet" id="bootstrap-theme" />
+    <script>
+        (function () {
+            try {
+                var root = document.documentElement;
+                var cachedTheme = window.localStorage.getItem("wikiBlaze.preference.theme");
+                var cachedDensity = window.localStorage.getItem("wikiBlaze.preference.density");
+                var cachedThemeHref = window.localStorage.getItem("wikiBlaze.preference.themeHref");
+
+                if (cachedDensity) {
+                    root.setAttribute("data-density", cachedDensity);
+                }
+
+                if (cachedTheme) {
+                    if (cachedTheme === "system") {
+                        var mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+                        root.setAttribute("data-bs-theme", mediaQuery.matches ? "dark" : "light");
+                    } else if (cachedTheme.indexOf("bootswatch:") === 0) {
+                        root.setAttribute("data-bs-theme", "light");
+                    } else {
+                        root.setAttribute("data-bs-theme", cachedTheme);
+                    }
+                }
+
+                if (cachedThemeHref) {
+                    window.__wikiBlazeCachedThemeHref = cachedThemeHref;
+                }
+            } catch (error) {
+                // Ignore local storage access errors in locked-down browser contexts.
+            }
+        })();
+    </script>
+    <link href="@AppendVersion("css/bootstrap/bootstrap.min.css")"
+          rel="stylesheet"
+          id="bootstrap-theme"
+          data-default-href="@AppendVersion("css/bootstrap/bootstrap.min.css")" />
+    <script>
+        (function () {
+            try {
+                var bootstrapLink = document.getElementById("bootstrap-theme");
+                var cachedThemeHref = window.__wikiBlazeCachedThemeHref;
+                if (bootstrapLink && cachedThemeHref) {
+                    bootstrapLink.setAttribute("href", cachedThemeHref);
+                }
+            } catch (error) {
+                // Ignore local storage access errors in locked-down browser contexts.
+            }
+        })();
+    </script>
     @DxResourceManager.RegisterTheme(Themes.BootstrapExternal)
     @DxResourceManager.RegisterScripts()
     <link href=@AppendVersion("_content/DevExpress.Blazor.RichEdit/dx-blazor-richedit.css") rel="stylesheet" />
