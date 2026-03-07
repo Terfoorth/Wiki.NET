@@ -30,13 +30,17 @@
     <Compile Remove="Components\Pages\Index\Class.cs" />
     <Compile Remove="contract-management\**" />
     <Compile Remove="Onboarding_modul\**\*.cs" />
+    <Compile Remove="Wiki-Blaze.Tests\**" />
     <RazorComponent Remove="Onboarding_modul\**\*.razor" />
     <ScopedCssInput Remove="Onboarding_modul\**\*.razor.css" />
     <Content Remove="contract-management\**" />
     <Content Remove="Onboarding_modul\**\*" />
+    <Content Remove="Wiki-Blaze.Tests\**" />
     <EmbeddedResource Remove="contract-management\**" />
     <EmbeddedResource Remove="Onboarding_modul\**\*" />
+    <EmbeddedResource Remove="Wiki-Blaze.Tests\**" />
     <None Remove="contract-management\**" />
+    <None Remove="Wiki-Blaze.Tests\**" />
 
   </ItemGroup>
 
