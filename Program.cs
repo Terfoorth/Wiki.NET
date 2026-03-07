@@ -22,7 +22,7 @@ builder.Services.AddDevExpressBlazor(options =>
 {
     options.SizeMode = DevExpress.Blazor.SizeMode.Medium;
 });
-builder.Services.AddMvc();
+builder.Services.AddMvc().AddJsonOptions(options => options.JsonSerializerOptions.PropertyNamingPolicy = null);
 
 builder.Services.AddDevExpressBlazorReporting();
 builder.Services.AddScoped<ReportStorageWebExtension, ReportStorage>();
@@ -189,5 +189,7 @@ app.MapRazorComponents<App>()
     .AllowAnonymous();
 
 app.MapAdditionalIdentityEndpoints();
+
+app.MapControllers();
 
 app.Run();

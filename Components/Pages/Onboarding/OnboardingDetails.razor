@@ -32,6 +32,19 @@
     }
     else
     {
+        @if (ProfileValidationErrors.Count > 0)
+        {
+            <div class="alert alert-danger" role="alert">
+                <div class="fw-semibold mb-1">Bitte Eingaben prüfen:</div>
+                <ul class="mb-0 ps-3">
+                    @foreach (var validationError in ProfileValidationErrors)
+                    {
+                        <li>@validationError</li>
+                    }
+                </ul>
+            </div>
+        }
+
         @if (!string.IsNullOrWhiteSpace(ProfileActionMessage))
         {
             <div class="alert @(ProfileActionIsError ? "alert-danger" : "alert-success") d-flex justify-content-between align-items-start gap-2" role="status">
@@ -478,6 +491,7 @@
     private string? ProfileActionMessage { get; set; }
     private bool ProfileActionIsError { get; set; }
     private bool IsProfileSaveInProgress { get; set; }
+    private List<string> ProfileValidationErrors { get; } = new();
 
     private List<OnboardingMeasureCatalogItem> MeasureCatalog { get; set; } = new();
     private List<OnboardingAssigneeLookupItem> AssigneeLookup { get; set; } = new();
@@ -581,6 +595,7 @@
     private async Task LoadProfileAsync()
     {
         ClearProfileActionMessage();
+        ClearProfileValidationErrors();
         Profile = await OnboardingService.GetProfileAsync(ProfileId);
         AttachmentInfo = Profile is null
             ? null
@@ -603,8 +618,15 @@
         {
             IsProfileSaveInProgress = true;
             ClearProfileActionMessage();
+            if (!ValidateProfileForSave(Profile))
+            {
+                SetProfileActionError("Speichern abgebrochen: Bitte Validierungsfehler korrigieren.");
+                return;
+            }
+
             Profile = await OnboardingService.UpdateProfileAsync(Profile);
             SetProfileActionMessage("Profil wurde gespeichert.");
+            ClearProfileValidationErrors();
         }
         catch (Exception ex)
         {
@@ -959,6 +981,40 @@
     {
         ProfileActionMessage = null;
         ProfileActionIsError = false;
+    }
+
+    private bool ValidateProfileForSave(OnboardingProfile profile)
+    {
+        ClearProfileValidationErrors();
+
+        if (string.IsNullOrWhiteSpace(profile.FirstName))
+        {
+            ProfileValidationErrors.Add("Vorname ist ein Pflichtfeld.");
+        }
+
+        if (string.IsNullOrWhiteSpace(profile.LastName))
+        {
+            ProfileValidationErrors.Add("Nachname ist ein Pflichtfeld.");
+        }
+
+        if (profile.ExitDate.HasValue && profile.ExitDate.Value.Date < profile.EntryDate.Date)
+        {
+            ProfileValidationErrors.Add("Austrittsdatum darf nicht vor dem Eintrittsdatum liegen.");
+        }
+
+        if (profile.StartDate.HasValue
+            && profile.TargetDate.HasValue
+            && profile.TargetDate.Value.Date < profile.StartDate.Value.Date)
+        {
+            ProfileValidationErrors.Add("Zieldatum darf nicht vor dem Startdatum liegen.");
+        }
+
+        return ProfileValidationErrors.Count == 0;
+    }
+
+    private void ClearProfileValidationErrors()
+    {
+        ProfileValidationErrors.Clear();
     }
 
     private sealed record TimelineEntry(DateTime Timestamp, string Title, string Description);

@@ -14,7 +14,6 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
     <GenerateAssemblyInfo>False</GenerateAssemblyInfo>
   </PropertyGroup>
-
   <ItemGroup>
     <Compile Remove="Components\Pages\Index\Class.cs" />
     <Compile Remove="contract-management\**" />
@@ -26,39 +25,35 @@
     <EmbeddedResource Remove="contract-management\**" />
     <EmbeddedResource Remove="Onboarding_modul\**\*" />
     <None Remove="contract-management\**" />
-
   </ItemGroup>
-
   <ItemGroup>
     <Content Remove="Services\MainLayout.razor" />
   </ItemGroup>
-
   <ItemGroup>
+    <PackageReference Include="DevExpress.AspNetCore.ProjectTemplates" Version="25.2.3" />
     <PackageReference Include="DevExpress.AspNetCore.Reporting" Version="25.2.*" />
     <PackageReference Include="DevExpress.Blazor" Version="25.2.*" />
     <PackageReference Include="DevExpress.Blazor.PdfViewer" Version="25.2.*" />
     <PackageReference Include="DevExpress.Blazor.PivotTable" Version="25.2.*" />
+    <PackageReference Include="DevExpress.Blazor.ProjectTemplates" Version="25.2.3" />
     <PackageReference Include="DevExpress.Blazor.Reporting.JSBasedControls" Version="25.2.*" />
     <PackageReference Include="DevExpress.Blazor.Reporting.Viewer" Version="25.2.*" />
     <PackageReference Include="DevExpress.Blazor.RichEdit" Version="25.2.*" />
     <PackageReference Include="DevExpress.Drawing.Skia" Version="25.2.*" />
     <PackageReference Include="DevExpress.Pdf.SkiaRenderer" Version="25.2.*" />
-
+    <PackageReference Include="DevExpress.Web.Bootstrap" Version="25.2.3" />
     <PackageReference Include="Microsoft.AspNetCore.Diagnostics.EntityFrameworkCore" Version="8.0.18" />
     <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="8.0.18" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="8.0.18" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="8.0.18" />
     <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.2" />
   </ItemGroup>
-
   <ItemGroup>
     <EmbeddedResource Include="Documents\Example.docx" />
   </ItemGroup>
-
   <ItemGroup>
     <EmbeddedResource Include="Documents\Invoice.pdf" />
   </ItemGroup>
-
   <ItemGroup>
     <Folder Include="Data\Migrations\" />
     <Folder Include="Migrations\" />
