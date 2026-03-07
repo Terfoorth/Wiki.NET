@@ -5,6 +5,8 @@
 @inject UserManager<Wiki_Blaze.Data.ApplicationUser> UserManager
 @inject INotificationService NotificationService
 @inject IJSRuntime JsRuntime
+@inject ILogger<MainLayout> Logger
+@using System.Security.Claims
 @using Wiki_Blaze.Services
 
 <div class="page">
@@ -49,12 +51,14 @@
                         <Authorized>
                             <div class="menu-button-float-end display-desktop notification-header-actions">
                                 <div class="notification-dropdown-wrapper">
-                                    <DxButton Text=""
-                                              CssClass="notification-bell-button"
-                                              RenderStyle="ButtonRenderStyle.Secondary"
-                                              RenderStyleMode="ButtonRenderStyleMode.Text"
-                                              IconCssClass="oi oi-bell"
-                                              Click="ToggleNotificationsDropdownAsync" />
+                                    <button type="button"
+                                            class="notification-bell-button"
+                                            aria-label="Benachrichtigungen"
+                                            aria-haspopup="menu"
+                                            aria-expanded="@IsNotificationDropdownOpen"
+                                            @onclick="ToggleNotificationsDropdownAsync">
+                                        <span class="oi oi-bell" aria-hidden="true"></span>
+                                    </button>
                                     @if (NotificationInbox.UnreadCount > 0)
                                     {
                                         <span class="notification-badge">@NotificationInbox.UnreadCount</span>
@@ -85,9 +89,13 @@
                                                         <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
                                                     </div>
                                                 }
+                                                else if (!string.IsNullOrWhiteSpace(NotificationErrorMessage))
+                                                {
+                                                    <div class="notification-error-state small p-2">@NotificationErrorMessage</div>
+                                                }
                                                 else if (NotificationInbox.Items.Count == 0)
                                                 {
-                                                    <div class="small text-muted p-2">Keine Benachrichtigungen vorhanden.</div>
+                                                    <div class="small text-muted p-2">Keine fälligen Notifications für heute (werktags ab 08:00).</div>
                                                 }
                                                 else
                                                 {
@@ -148,6 +156,7 @@
     private bool IsNotificationDropdownOpen;
     private bool NotificationsOnlyUnread;
     private bool IsNotificationLoading;
+    private string? NotificationErrorMessage;
     private NotificationInboxDto NotificationInbox { get; set; } = new();
     private PeriodicTimer? notificationsTimer;
     private CancellationTokenSource? notificationsCts;
@@ -195,7 +204,19 @@
 
         if (userPrincipal.Identity?.IsAuthenticated == true)
         {
-            var user = await UserManager.GetUserAsync(userPrincipal);
+            var claimUserId = ResolveUserIdFromClaims(userPrincipal);
+            Wiki_Blaze.Data.ApplicationUser? user = null;
+
+            if (!string.IsNullOrWhiteSpace(claimUserId))
+            {
+                user = await UserManager.FindByIdAsync(claimUserId);
+            }
+
+            if (user is null)
+            {
+                user = await UserManager.GetUserAsync(userPrincipal);
+            }
+
             if (user is not null)
             {
                 return
@@ -205,14 +226,22 @@
                         user.StartPage ?? Wiki_Blaze.Data.ApplicationUser.DefaultStartPage,
                         user.Id);
             }
+
+            if (!string.IsNullOrWhiteSpace(claimUserId))
+            {
+                return new EffectivePreferences(
+                    Wiki_Blaze.Data.ApplicationUser.DefaultThemePreference,
+                    Wiki_Blaze.Data.ApplicationUser.DefaultDensityPreference,
+                    Wiki_Blaze.Data.ApplicationUser.DefaultStartPage,
+                    claimUserId);
+            }
         }
+
         return new EffectivePreferences(
                         Wiki_Blaze.Data.ApplicationUser.DefaultThemePreference,
                         Wiki_Blaze.Data.ApplicationUser.DefaultDensityPreference,
                         Wiki_Blaze.Data.ApplicationUser.DefaultStartPage,
                         null);
-
-
     }
 
     private async Task ApplyPreferencesToUiAsync(EffectivePreferences preferences)
@@ -272,7 +301,18 @@
             return;
         }
 
-        await NotificationService.MarkAsReadAsync(currentUserId, notification.Id);
+        try
+        {
+            await NotificationService.MarkAsReadAsync(currentUserId, notification.Id);
+            NotificationErrorMessage = null;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to mark notification {NotificationId} as read for user {UserId}.", notification.Id, currentUserId);
+            NotificationErrorMessage = "Notifications konnten nicht geladen werden.";
+            return;
+        }
+
         IsNotificationDropdownOpen = false;
         await RefreshNotificationsAsync();
 
@@ -322,20 +362,40 @@
     {
         if (string.IsNullOrWhiteSpace(currentUserId))
         {
+            currentUserId = await ResolveCurrentUserIdAsync();
+        }
+
+        if (string.IsNullOrWhiteSpace(currentUserId))
+        {
             NotificationInbox = new NotificationInboxDto();
-            IsNotificationDropdownOpen = false;
+            NotificationErrorMessage = null;
             await InvokeAsync(StateHasChanged);
             return;
         }
 
-        await notificationsGate.WaitAsync();
+        var hasLock = await notificationsGate.WaitAsync(TimeSpan.Zero);
+        if (!hasLock)
+        {
+            return;
+        }
+
         try
         {
             IsNotificationLoading = true;
-            NotificationInbox = await NotificationService.GetInboxAsync(
-                currentUserId,
-                take: 20,
-                includeRead: !NotificationsOnlyUnread);
+            NotificationErrorMessage = null;
+            try
+            {
+                NotificationInbox = await NotificationService.GetInboxAsync(
+                    currentUserId,
+                    take: 20,
+                    includeRead: !NotificationsOnlyUnread);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Failed to load notification inbox for user {UserId}.", currentUserId);
+                NotificationInbox = new NotificationInboxDto();
+                NotificationErrorMessage = "Notifications konnten nicht geladen werden.";
+            }
         }
         finally
         {
@@ -369,6 +429,39 @@
         }
 
         return targetUrl.StartsWith("/", StringComparison.Ordinal) ? targetUrl : "/";
+    }
+
+    private async Task<string?> ResolveCurrentUserIdAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var userPrincipal = authState.User;
+        if (userPrincipal.Identity?.IsAuthenticated != true)
+        {
+            return null;
+        }
+
+        var claimUserId = ResolveUserIdFromClaims(userPrincipal);
+        if (!string.IsNullOrWhiteSpace(claimUserId))
+        {
+            return claimUserId;
+        }
+
+        try
+        {
+            var user = await UserManager.GetUserAsync(userPrincipal);
+            return user?.Id;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Failed to resolve current user id from UserManager.");
+            return null;
+        }
+    }
+
+    private static string? ResolveUserIdFromClaims(ClaimsPrincipal userPrincipal)
+    {
+        return userPrincipal.FindFirst(ClaimTypes.NameIdentifier)?.Value
+            ?? userPrincipal.FindFirst("sub")?.Value;
     }
 
     public void Dispose() {

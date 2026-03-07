@@ -90,6 +90,55 @@ public class NotificationServiceTests
         Assert.NotNull(saved.ReadAtUtc);
     }
 
+    [Fact]
+    public async Task Scheduler_SkipsInvalidUserSourcesWithoutBlockingValidOnes()
+    {
+        var (service, factory) = CreateService();
+        await SeedWikiReviewSourceAsync(factory, "valid-user", "UTC", 120, new DateTime(2026, 1, 12));
+        await SeedOnboardingProfileAsync(
+            factory,
+            profileId: 5001,
+            assignedAgentUserId: "missing-user",
+            startDate: new DateTime(2026, 1, 12),
+            targetDate: null);
+
+        await service.GenerateScheduledNotificationsAsync(new DateTime(2026, 1, 7, 8, 30, 0, DateTimeKind.Utc));
+
+        var notifications = await GetNotificationsAsync(factory);
+        Assert.Single(notifications);
+        Assert.Equal("valid-user", notifications[0].UserId);
+    }
+
+    [Fact]
+    public async Task Scheduler_CreatesSeparateOnboardingStartAndTargetNotifications()
+    {
+        var (service, factory) = CreateService();
+        await using (var context = await factory.CreateDbContextAsync())
+        {
+            context.Users.Add(new ApplicationUser
+            {
+                Id = "onboarding-agent",
+                UserName = "onboarding-agent",
+                TimeZone = "UTC"
+            });
+            await context.SaveChangesAsync();
+        }
+
+        await SeedOnboardingProfileAsync(
+            factory,
+            profileId: 5002,
+            assignedAgentUserId: "onboarding-agent",
+            startDate: new DateTime(2026, 1, 12),
+            targetDate: new DateTime(2026, 1, 13));
+
+        await service.GenerateScheduledNotificationsAsync(new DateTime(2026, 1, 8, 8, 30, 0, DateTimeKind.Utc));
+
+        var notifications = await GetNotificationsAsync(factory);
+        Assert.Equal(2, notifications.Count);
+        Assert.Contains(notifications, item => item.Kind == NotificationKind.OnboardingStartDate);
+        Assert.Contains(notifications, item => item.Kind == NotificationKind.OnboardingTargetDate);
+    }
+
     private static (NotificationService Service, TestDbContextFactory Factory) CreateService()
     {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
@@ -156,6 +205,29 @@ public class NotificationServiceTests
             WikiPageId = pageId,
             AttributeDefinitionId = reviewDefinition.Id,
             Value = dueDate.ToString("yyyy-MM-dd")
+        });
+
+        await context.SaveChangesAsync();
+    }
+
+    private static async Task SeedOnboardingProfileAsync(
+        TestDbContextFactory factory,
+        int profileId,
+        string assignedAgentUserId,
+        DateTime? startDate,
+        DateTime? targetDate)
+    {
+        await using var context = await factory.CreateDbContextAsync();
+        context.OnboardingProfiles.Add(new OnboardingProfile
+        {
+            Id = profileId,
+            FullName = $"Profile {profileId}",
+            EntryDate = new DateTime(2026, 1, 1),
+            AssignedAgentUserId = assignedAgentUserId,
+            StartDate = startDate,
+            TargetDate = targetDate,
+            CreatedAt = DateTime.UtcNow,
+            LastModifiedAt = DateTime.UtcNow
         });
 
         await context.SaveChangesAsync();

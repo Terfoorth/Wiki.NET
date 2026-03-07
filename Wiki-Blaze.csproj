@@ -8,6 +8,12 @@
     <AssemblyName>$(AssemblyName.Replace(' ', '_'))</AssemblyName>
     <DefaultItemExcludes>$(DefaultItemExcludes);Onboarding_modul\**\*;Wiki-Blaze.Tests\**\*</DefaultItemExcludes>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+    <GenerateAssemblyInfo>False</GenerateAssemblyInfo>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
+    <GenerateAssemblyInfo>False</GenerateAssemblyInfo>
+  </PropertyGroup>
 
   <ItemGroup>
     <Compile Remove="Components\Pages\Index\Class.cs" />

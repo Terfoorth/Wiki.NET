@@ -195,26 +195,74 @@ public class NotificationService(
         await using var context = await dbFactory.CreateDbContextAsync(cancellationToken);
 
         var sourceCandidates = await LoadSourceCandidatesAsync(context, cancellationToken);
-        var activeSourceKeys = sourceCandidates
+        var totalCandidates = sourceCandidates.Count;
+        var resolvedUserIds = await ResolveExistingUserIdsAsync(context, sourceCandidates, cancellationToken);
+
+        var skippedInvalidUser = 0;
+        var validSourceCandidates = new List<NotificationSourceCandidate>(sourceCandidates.Count);
+        foreach (var candidate in sourceCandidates)
+        {
+            if (!TryNormalizeUserId(candidate.UserId, out var normalizedUserId) || !resolvedUserIds.Contains(normalizedUserId))
+            {
+                skippedInvalidUser++;
+                logger.LogWarning(
+                    "Skipping notification source {Kind}/{SourceId} because user '{UserId}' is invalid or missing.",
+                    candidate.Kind,
+                    candidate.SourceId,
+                    candidate.UserId);
+                continue;
+            }
+
+            validSourceCandidates.Add(candidate with { UserId = normalizedUserId });
+        }
+
+        var activeSourceKeys = validSourceCandidates
             .Select(candidate => candidate.SourceKey)
             .ToHashSet();
 
-        await MarkStaleUnreadNotificationsAsync(context, activeSourceKeys, normalizedUtcNow, cancellationToken);
+        var staleMarkedCount = await MarkStaleUnreadNotificationsAsync(
+            context,
+            activeSourceKeys,
+            normalizedUtcNow,
+            cancellationToken);
 
-        if (sourceCandidates.Count == 0)
+        if (staleMarkedCount > 0)
         {
-            await context.SaveChangesAsync(cancellationToken);
-            logger.LogDebug("Notification scheduler run completed without candidates.");
+            try
+            {
+                await context.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbUpdateException ex)
+            {
+                logger.LogWarning(ex, "Failed to persist stale notification updates.");
+                context.ChangeTracker.Clear();
+            }
+        }
+
+        if (validSourceCandidates.Count == 0)
+        {
+            logger.LogInformation(
+                "Notification scheduler run summary: candidates total={CandidatesTotal}, skipped invalid user={SkippedInvalidUser}, skipped weekend={SkippedWeekend}, skipped before 08:00={SkippedBeforeEight}, skipped pre-window={SkippedPreWindow}, created={CreatedCount}.",
+                totalCandidates,
+                skippedInvalidUser,
+                0,
+                0,
+                0,
+                0);
             return;
         }
 
         var userTimeZones = await ResolveUserTimeZonesAsync(
             context,
-            sourceCandidates.Select(candidate => candidate.UserId).Distinct().ToList(),
+            validSourceCandidates.Select(candidate => candidate.UserId).Distinct().ToList(),
             cancellationToken);
 
+        var skippedWeekend = 0;
+        var skippedBeforeEight = 0;
+        var skippedPreWindow = 0;
+
         var dueCandidates = new List<DueNotificationCandidate>();
-        foreach (var source in sourceCandidates)
+        foreach (var source in validSourceCandidates)
         {
             if (!userTimeZones.TryGetValue(source.UserId, out var userTimeZone))
             {
@@ -225,31 +273,28 @@ public class NotificationService(
             var localDate = localNow.Date;
             if (!NotificationScheduleCalculator.IsBusinessDay(localDate))
             {
+                skippedWeekend++;
                 continue;
             }
 
             var firstReminderDate = NotificationScheduleCalculator.GetFirstReminderDate(source.DueDate);
             if (localDate < firstReminderDate)
             {
+                skippedPreWindow++;
                 continue;
             }
 
             if (localNow.TimeOfDay < ReminderTriggerLocalTime)
             {
+                skippedBeforeEight++;
                 continue;
             }
 
             dueCandidates.Add(new DueNotificationCandidate(source, localDate));
         }
 
-        if (dueCandidates.Count == 0)
-        {
-            await context.SaveChangesAsync(cancellationToken);
-            logger.LogDebug("Notification scheduler run completed without due notifications.");
-            return;
-        }
-
         var createdCount = 0;
+        var saveConflictCount = 0;
         var groupedCandidates = dueCandidates
             .GroupBy(candidate => new { candidate.Source.UserId, candidate.TriggerDate })
             .ToList();
@@ -276,7 +321,7 @@ public class NotificationService(
                     continue;
                 }
 
-                context.AppNotifications.Add(new AppNotification
+                var notification = new AppNotification
                 {
                     UserId = candidate.Source.UserId,
                     Kind = candidate.Source.Kind,
@@ -289,26 +334,50 @@ public class NotificationService(
                     Title = candidate.Source.Title,
                     Body = candidate.Source.Body,
                     TargetUrl = candidate.Source.TargetUrl
-                });
+                };
 
-                createdCount++;
+                context.AppNotifications.Add(notification);
+                try
+                {
+                    await context.SaveChangesAsync(cancellationToken);
+                    createdCount++;
+                }
+                catch (DbUpdateException ex)
+                {
+                    saveConflictCount++;
+                    context.Entry(notification).State = EntityState.Detached;
+                    logger.LogWarning(
+                        ex,
+                        "Notification candidate save failed for user {UserId}, kind {Kind}, source {SourceId}, trigger {TriggerDate}.",
+                        candidate.Source.UserId,
+                        candidate.Source.Kind,
+                        candidate.Source.SourceId,
+                        candidate.TriggerDate);
+                }
+                catch (Exception ex)
+                {
+                    saveConflictCount++;
+                    context.Entry(notification).State = EntityState.Detached;
+                    logger.LogError(
+                        ex,
+                        "Notification candidate save crashed for user {UserId}, kind {Kind}, source {SourceId}, trigger {TriggerDate}.",
+                        candidate.Source.UserId,
+                        candidate.Source.Kind,
+                        candidate.Source.SourceId,
+                        candidate.TriggerDate);
+                }
             }
         }
 
-        try
-        {
-            await context.SaveChangesAsync(cancellationToken);
-        }
-        catch (DbUpdateException ex)
-        {
-            logger.LogWarning(ex, "Notification scheduler hit a duplicate/constraint conflict while saving.");
-        }
-
         logger.LogInformation(
-            "Notification scheduler run finished. Sources={SourceCount}, Due={DueCount}, Created={CreatedCount}.",
-            sourceCandidates.Count,
-            dueCandidates.Count,
-            createdCount);
+            "Notification scheduler run summary: candidates total={CandidatesTotal}, skipped invalid user={SkippedInvalidUser}, skipped weekend={SkippedWeekend}, skipped before 08:00={SkippedBeforeEight}, skipped pre-window={SkippedPreWindow}, created={CreatedCount}, save conflicts={SaveConflictCount}.",
+            totalCandidates,
+            skippedInvalidUser,
+            skippedWeekend,
+            skippedBeforeEight,
+            skippedPreWindow,
+            createdCount,
+            saveConflictCount);
     }
 
     private async Task<List<NotificationSourceCandidate>> LoadSourceCandidatesAsync(
@@ -358,7 +427,7 @@ public class NotificationService(
                     NotificationKind.WikiReviewDate,
                     source.PageId,
                     dueDate.Date,
-                    $"Review fällig: {source.PageTitle}",
+                    $"Review faellig: {source.PageTitle}",
                     $"Der Review-Termin ist am {dueDate:dd.MM.yyyy}.",
                     $"/wiki/view/{source.PageId}"));
             }
@@ -412,7 +481,45 @@ public class NotificationService(
         return candidates;
     }
 
-    private async Task MarkStaleUnreadNotificationsAsync(
+    private static bool TryNormalizeUserId(string? rawUserId, out string normalizedUserId)
+    {
+        normalizedUserId = string.Empty;
+        if (string.IsNullOrWhiteSpace(rawUserId))
+        {
+            return false;
+        }
+
+        normalizedUserId = rawUserId.Trim();
+        return normalizedUserId.Length > 0;
+    }
+
+    private async Task<HashSet<string>> ResolveExistingUserIdsAsync(
+        ApplicationDbContext context,
+        IReadOnlyCollection<NotificationSourceCandidate> sourceCandidates,
+        CancellationToken cancellationToken)
+    {
+        var requestedUserIds = sourceCandidates
+            .Select(candidate => candidate.UserId)
+            .Where(userId => TryNormalizeUserId(userId, out _))
+            .Select(userId => userId.Trim())
+            .Distinct()
+            .ToList();
+
+        if (requestedUserIds.Count == 0)
+        {
+            return new HashSet<string>(StringComparer.Ordinal);
+        }
+
+        var existingUsers = await context.Users
+            .AsNoTracking()
+            .Where(user => requestedUserIds.Contains(user.Id))
+            .Select(user => user.Id)
+            .ToListAsync(cancellationToken);
+
+        return existingUsers.ToHashSet(StringComparer.Ordinal);
+    }
+
+    private async Task<int> MarkStaleUnreadNotificationsAsync(
         ApplicationDbContext context,
         HashSet<NotificationSourceKey> activeSourceKeys,
         DateTime utcNow,
@@ -424,6 +531,7 @@ public class NotificationService(
                 && ManagedNotificationKinds.Contains(notification.Kind))
             .ToListAsync(cancellationToken);
 
+        var markedCount = 0;
         foreach (var notification in unreadNotifications)
         {
             var notificationKey = new NotificationSourceKey(
@@ -439,7 +547,10 @@ public class NotificationService(
 
             notification.IsRead = true;
             notification.ReadAtUtc = utcNow;
+            markedCount++;
         }
+
+        return markedCount;
     }
 
     private async Task<TimeZoneInfo> ResolveUserTimeZoneAsync(

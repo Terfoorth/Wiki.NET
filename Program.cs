@@ -100,6 +100,27 @@ var app = builder.Build();
 
 await using (var scope = app.Services.CreateAsyncScope())
 {
+    var startupLogger = scope.ServiceProvider
+        .GetRequiredService<ILoggerFactory>()
+        .CreateLogger("Startup");
+    var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    try
+    {
+        var pendingMigrations = await dbContext.Database.GetPendingMigrationsAsync();
+        var pendingMigrationsList = pendingMigrations.ToList();
+        if (pendingMigrationsList.Count > 0)
+        {
+            startupLogger.LogWarning(
+                "Pending database migrations detected ({Count}): {Migrations}. Notifications may remain inactive until 'dotnet ef database update' is applied.",
+                pendingMigrationsList.Count,
+                string.Join(", ", pendingMigrationsList));
+        }
+    }
+    catch (Exception ex)
+    {
+        startupLogger.LogWarning(ex, "Could not determine pending migrations at startup.");
+    }
+
     var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
     var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
     var configuration = scope.ServiceProvider.GetRequiredService<IConfiguration>();
