@@ -62,6 +62,8 @@
     <link href=@AppendVersion("_content/DevExpress.Blazor.Reporting.Viewer/css/dx-blazor-reporting-components.bs5.css") rel="stylesheet" />
     <link href=@AppendVersion("css/site.css") rel="stylesheet" />
     <link href=@AppendVersion("Wiki-Blaze.styles.css") rel="stylesheet" />
+    <link href=@AppendVersion("css/dx.fluent.blue.light.css") rel="stylesheet" />
+
     <HeadOutlet />
 </head>
 <body>
@@ -73,6 +75,7 @@
 
 @code {
     private string AppendVersion(string path) => FileVersionProvider.AddFileVersionToPath("/", path);
+    private static readonly ITheme FluentLight = Themes.Fluent.Clone(p => p.AddFilePaths($"css/theme-fluent.css"));
 
 }
 

@@ -22,7 +22,7 @@ builder.Services.AddDevExpressBlazor(options =>
 {
     options.SizeMode = DevExpress.Blazor.SizeMode.Medium;
 });
-builder.Services.AddMvc();
+builder.Services.AddMvc().AddJsonOptions(options => options.JsonSerializerOptions.PropertyNamingPolicy = null);
 
 builder.Services.AddDevExpressBlazorReporting();
 builder.Services.AddScoped<ReportStorageWebExtension, ReportStorage>();
@@ -89,18 +89,10 @@ builder.Services.AddScoped<IWikiService, WikiService>();
 builder.Services.AddScoped<IWikiFavoriteGroupService, WikiFavoriteGroupService>();
 builder.Services.AddScoped<IUserIdResolver, UserIdResolver>();
 builder.Services.AddScoped<IOnboardingService, OnboardingService>();
-builder.Services.AddScoped<INotificationService, NotificationService>();
-builder.Services.AddScoped<IReminderCandidateProvider, ReminderCandidateProvider>();
-builder.Services.AddSingleton<IReminderEmailSender, SmtpReminderEmailSender>();
-builder.Services.AddScoped<IReminderSettingsAdminService, ReminderSettingsAdminService>();
-
-builder.Services.AddOptions<ReminderEmailOptions>()
-    .Bind(builder.Configuration.GetSection(ReminderEmailOptions.SectionName))
-    .ValidateDataAnnotations();
-
-builder.Services.AddOptions<ReminderSmtpOptions>()
-    .Bind(builder.Configuration.GetSection(ReminderSmtpOptions.SectionName))
-    .ValidateDataAnnotations();
+builder.Services.AddScoped<NotificationService>();
+builder.Services.AddScoped<INotificationService>(serviceProvider => serviceProvider.GetRequiredService<NotificationService>());
+builder.Services.AddScoped<INotificationSchedulerService>(serviceProvider => serviceProvider.GetRequiredService<NotificationService>());
+builder.Services.AddHostedService<NotificationSchedulerHostedService>();
 
 builder.Services.AddSingleton<IEmailSender<ApplicationUser>, IdentityNoOpEmailSender>();
 
@@ -108,6 +100,27 @@ var app = builder.Build();
 
 await using (var scope = app.Services.CreateAsyncScope())
 {
+    var startupLogger = scope.ServiceProvider
+        .GetRequiredService<ILoggerFactory>()
+        .CreateLogger("Startup");
+    var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    try
+    {
+        var pendingMigrations = await dbContext.Database.GetPendingMigrationsAsync();
+        var pendingMigrationsList = pendingMigrations.ToList();
+        if (pendingMigrationsList.Count > 0)
+        {
+            startupLogger.LogWarning(
+                "Pending database migrations detected ({Count}): {Migrations}. Notifications may remain inactive until 'dotnet ef database update' is applied.",
+                pendingMigrationsList.Count,
+                string.Join(", ", pendingMigrationsList));
+        }
+    }
+    catch (Exception ex)
+    {
+        startupLogger.LogWarning(ex, "Could not determine pending migrations at startup.");
+    }
+
     var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
     var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
     var configuration = scope.ServiceProvider.GetRequiredService<IConfiguration>();
@@ -176,5 +189,7 @@ app.MapRazorComponents<App>()
     .AllowAnonymous();
 
 app.MapAdditionalIdentityEndpoints();
+
+app.MapControllers();
 
 app.Run();

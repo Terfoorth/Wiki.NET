@@ -32,6 +32,27 @@
     }
     else
     {
+        @if (ProfileValidationErrors.Count > 0)
+        {
+            <div class="alert alert-danger" role="alert">
+                <div class="fw-semibold mb-1">Bitte Eingaben prüfen:</div>
+                <ul class="mb-0 ps-3">
+                    @foreach (var validationError in ProfileValidationErrors)
+                    {
+                        <li>@validationError</li>
+                    }
+                </ul>
+            </div>
+        }
+
+        @if (!string.IsNullOrWhiteSpace(ProfileActionMessage))
+        {
+            <div class="alert @(ProfileActionIsError ? "alert-danger" : "alert-success") d-flex justify-content-between align-items-start gap-2" role="status">
+                <span>@ProfileActionMessage</span>
+                <button type="button" class="btn-close" aria-label="Schliessen" @onclick="ClearProfileActionMessage"></button>
+            </div>
+        }
+
         <div class="card p-3 mb-3">
             <div class="d-flex justify-content-between align-items-start gap-2">
                 <div>
@@ -208,7 +229,10 @@
                     @if (CanEdit)
                     {
                         <div class="d-flex justify-content-end gap-2 mt-3">
-                            <DxButton Text="Profil speichern" RenderStyle="ButtonRenderStyle.Primary" Click="SaveProfileAsync" />
+                            <DxButton Text="Profil speichern"
+                                      RenderStyle="ButtonRenderStyle.Primary"
+                                      Click="SaveProfileAsync"
+                                      Enabled="@(!IsProfileSaveInProgress)" />
                             <DxButton Text="Profil duplizieren" RenderStyle="ButtonRenderStyle.Secondary" Click="DuplicateProfileAsync" />
                         </div>
                     }
@@ -416,7 +440,10 @@
                         @if (CanEdit)
                         {
                             <div class="mt-2">
-                                <DxButton Text="Notizen speichern" RenderStyle="ButtonRenderStyle.Primary" Click="SaveProfileAsync" />
+                                <DxButton Text="Notizen speichern"
+                                          RenderStyle="ButtonRenderStyle.Primary"
+                                          Click="SaveProfileAsync"
+                                          Enabled="@(!IsProfileSaveInProgress)" />
                             </div>
                         }
                     </div>
@@ -461,6 +488,10 @@
     private string? CurrentUserId { get; set; }
     private string? AttachmentMessage { get; set; }
     private string? AttachmentErrorMessage { get; set; }
+    private string? ProfileActionMessage { get; set; }
+    private bool ProfileActionIsError { get; set; }
+    private bool IsProfileSaveInProgress { get; set; }
+    private List<string> ProfileValidationErrors { get; } = new();
 
     private List<OnboardingMeasureCatalogItem> MeasureCatalog { get; set; } = new();
     private List<OnboardingAssigneeLookupItem> AssigneeLookup { get; set; } = new();
@@ -563,6 +594,8 @@
 
     private async Task LoadProfileAsync()
     {
+        ClearProfileActionMessage();
+        ClearProfileValidationErrors();
         Profile = await OnboardingService.GetProfileAsync(ProfileId);
         AttachmentInfo = Profile is null
             ? null
@@ -581,7 +614,28 @@
             return;
         }
 
-        Profile = await OnboardingService.UpdateProfileAsync(Profile);
+        try
+        {
+            IsProfileSaveInProgress = true;
+            ClearProfileActionMessage();
+            if (!ValidateProfileForSave(Profile))
+            {
+                SetProfileActionError("Speichern abgebrochen: Bitte Validierungsfehler korrigieren.");
+                return;
+            }
+
+            Profile = await OnboardingService.UpdateProfileAsync(Profile);
+            SetProfileActionMessage("Profil wurde gespeichert.");
+            ClearProfileValidationErrors();
+        }
+        catch (Exception ex)
+        {
+            SetProfileActionError($"Speichern fehlgeschlagen: {ex.Message}");
+        }
+        finally
+        {
+            IsProfileSaveInProgress = false;
+        }
     }
 
     private async Task DuplicateProfileAsync()
@@ -909,6 +963,58 @@
             .OrderByDescending(item => item.Timestamp)
             .Take(30)
             .ToList();
+    }
+
+    private void SetProfileActionMessage(string message)
+    {
+        ProfileActionMessage = message;
+        ProfileActionIsError = false;
+    }
+
+    private void SetProfileActionError(string message)
+    {
+        ProfileActionMessage = message;
+        ProfileActionIsError = true;
+    }
+
+    private void ClearProfileActionMessage()
+    {
+        ProfileActionMessage = null;
+        ProfileActionIsError = false;
+    }
+
+    private bool ValidateProfileForSave(OnboardingProfile profile)
+    {
+        ClearProfileValidationErrors();
+
+        if (string.IsNullOrWhiteSpace(profile.FirstName))
+        {
+            ProfileValidationErrors.Add("Vorname ist ein Pflichtfeld.");
+        }
+
+        if (string.IsNullOrWhiteSpace(profile.LastName))
+        {
+            ProfileValidationErrors.Add("Nachname ist ein Pflichtfeld.");
+        }
+
+        if (profile.ExitDate.HasValue && profile.ExitDate.Value.Date < profile.EntryDate.Date)
+        {
+            ProfileValidationErrors.Add("Austrittsdatum darf nicht vor dem Eintrittsdatum liegen.");
+        }
+
+        if (profile.StartDate.HasValue
+            && profile.TargetDate.HasValue
+            && profile.TargetDate.Value.Date < profile.StartDate.Value.Date)
+        {
+            ProfileValidationErrors.Add("Zieldatum darf nicht vor dem Startdatum liegen.");
+        }
+
+        return ProfileValidationErrors.Count == 0;
+    }
+
+    private void ClearProfileValidationErrors()
+    {
+        ProfileValidationErrors.Clear();
     }
 
     private sealed record TimelineEntry(DateTime Timestamp, string Title, string Description);

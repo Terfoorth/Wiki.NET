@@ -1,8 +1,10 @@
-@page "/wiki/templates"
+﻿@page "/wiki/templates"
 @using Microsoft.AspNetCore.Components.Web
 @using Wiki_Blaze.Data.Entities
 @using Wiki_Blaze.Services
+@using Wiki_Blaze.Components.Pages.Wiki.Components
 @inject IWikiService WikiService
+@inject INotificationService NotificationService
 @inject NavigationManager NavManager
 @inject IJSRuntime Js
 @inject AuthenticationStateProvider AuthenticationStateProvider
@@ -16,7 +18,7 @@
             <h2 class="mb-0 fw-bold text-primary">
                 <span class="oi oi-copywriting me-2"></span>Vorlagen
             </h2>
-            <small class="text-muted">Vorbereitete Strukturen für schnelle neue Wiki-Einträge</small>
+            <small class="text-muted">Vorbereitete Strukturen fÃ¼r schnelle neue Wiki-EintrÃ¤ge</small>
         </div>
         <div class="col-auto">
             <DxButton RenderStyle="ButtonRenderStyle.Success"
@@ -83,7 +85,7 @@
                         <button class="list-group-item list-group-item-action bg-transparent border-0 rounded px-2 py-2 @(SelectedGroupId == 0 ? "active-filter" : "")"
                                 @onclick="() => FilterGroup(0)">
                             <span class="d-flex justify-content-between align-items-center w-100">
-                                <span><span class="oi oi-grid-three-up me-2"></span> Alle Einträge</span>
+                                <span><span class="oi oi-grid-three-up me-2"></span> Alle EintrÃ¤ge</span>
                                 <span class="badge rounded-pill bg-light text-dark border">@GetAllEntriesCount()</span>
                             </span>
                         </button>
@@ -119,7 +121,7 @@
                                                     <button type="button" class="btn btn-sm btn-light border" title="Umbenennen" @onclick="() => StartRenameGroup(group)">
                                                         <span class="oi oi-pencil"></span>
                                                     </button>
-                                                    <button type="button" class="btn btn-sm btn-light border text-danger" title="Löschen" @onclick="() => DeleteGroupAsync(group)">
+                                                    <button type="button" class="btn btn-sm btn-light border text-danger" title="LÃ¶schen" @onclick="() => DeleteGroupAsync(group)">
                                                         <span class="oi oi-trash"></span>
                                                     </button>
                                                 }
@@ -143,11 +145,15 @@
             }
             else if (FilteredPages != null && FilteredPages.Any())
             {
-                <div class="@CardGridCss">
+                <WikiCardSizeControls CardWidthPx="@CardWidthPx"
+                                      CardWidthPxChanged="OnCardWidthChanged"
+                                      CardHeightPx="@CardHeightPx"
+                                      CardHeightPxChanged="OnCardHeightChanged" />
+                <div class="wiki-card-grid" style="@CardGridStyle">
                     @foreach (var page in FilteredPages)
                     {
-                        <div class="col">
-                            <div class="card h-100 shadow-sm border-0 hover-card wiki-card @(UseLargeCards ? "wiki-card--large" : "wiki-card--compact")"
+                        <div class="wiki-card-grid-item">
+                            <div class="card h-100 shadow-sm border-0 hover-card wiki-card @(GetReviewAlertCardCss(page.Id))"
                                  @oncontextmenu="(args) => OnContextMenuAsync(args, page)" @oncontextmenu:preventDefault>
                                 <div class="card-body d-flex flex-column">
                                     <div class="d-flex justify-content-between align-items-start mb-2">
@@ -164,7 +170,7 @@
                                         </div>
                                         <div class="d-flex align-items-center gap-2">
                                             <small class="text-muted">@(page.LastModified.ToString("dd.MM.yy"))</small>
-                                            <small class="text-muted" title="Rechtsklick für Aktionen">Rechtsklick für Aktionen</small>
+                                            <small class="text-muted" title="Rechtsklick fÃ¼r Aktionen">Rechtsklick fÃ¼r Aktionen</small>
                                         </div>
                                     </div>
 
@@ -176,7 +182,7 @@
 
                                     @if (page.Content != null && page.Content.Length > 0)
                                     {
-                                        <div class="wiki-preview flex-grow-1 @(UseLargeCards ? "preview-large" : "preview-compact")">
+                                        <div class="wiki-preview flex-grow-1">
                                             <DxRichEdit DocumentContent="@(page.Content)"
                                                         ReadOnly="true"
                                                         ViewType="ViewType.Simple"
@@ -187,8 +193,15 @@
                                     else
                                     {
                                         <p class="card-text text-muted small flex-grow-1 text-truncate-multiline">
-                                            @(string.IsNullOrWhiteSpace(page.PreviewText) ? "Keine Vorschau verfügbar..." : page.PreviewText)
+                                            @(string.IsNullOrWhiteSpace(page.PreviewText) ? "Keine Vorschau verfÃ¼gbar..." : page.PreviewText)
                                         </p>
+                                    }
+
+                                    @if (TryGetReviewAlertState(page.Id, out var reviewAlert))
+                                    {
+                                        <div class="wiki-review-alert-label @(reviewAlert.IsOverdue ? "is-overdue" : "is-due")">
+                                            @GetReviewAlertLabel(reviewAlert)
+                                        </div>
                                     }
 
                                     <div class="mt-3 pt-2 border-top d-flex align-items-center text-muted small">
@@ -207,7 +220,7 @@
                     <p>Keine Vorlagen gefunden.</p>
                     @if (SelectedGroupId != 0 || !string.IsNullOrEmpty(SearchTerm))
                     {
-                        <button class="btn btn-link" @onclick="ResetFilters">Filter zurücksetzen</button>
+                        <button class="btn btn-link" @onclick="ResetFilters">Filter zurÃ¼cksetzen</button>
                     }
                 </div>
             }
@@ -234,36 +247,56 @@
         -webkit-box-orient: vertical;
         overflow: hidden;
     }
+    .wiki-card-grid {
+        display: grid;
+        gap: 1.5rem;
+        grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--wiki-card-width, 420px)), 1fr));
+    }
+    .wiki-card-grid-item {
+        min-width: 0;
+    }
+    .wiki-card .card-body {
+        min-height: var(--wiki-card-height, 420px);
+    }
     .wiki-preview {
+        max-height: var(--wiki-card-preview-height, 240px);
         overflow: hidden;
         pointer-events: none;
     }
-    .wiki-card--large .wiki-preview.preview-large {
-        max-height: 240px;
-    }
-    .wiki-card--compact .wiki-preview.preview-compact {
-        max-height: 140px;
-    }
-    .wiki-card--large .card-body {
-        min-height: 420px;
-    }
-    .wiki-card--compact .card-body {
-        min-height: 320px;
-    }
     .wiki-preview .preview-rich-edit {
         background-color: transparent;
+    }
+    .wiki-review-alert-card {
+        border: 2px solid #dc3545 !important;
+        box-shadow: 0 0 0 1px rgba(220, 53, 69, 0.3), 0 .5rem 1rem rgba(220, 53, 69, 0.15) !important;
+    }
+    .wiki-review-alert-label {
+        border-radius: 0.35rem;
+        font-size: 0.82rem;
+        font-weight: 700;
+        margin-top: 0.75rem;
+        padding: 0.35rem 0.5rem;
+        text-align: center;
+    }
+    .wiki-review-alert-label.is-due {
+        background: #fde2e1;
+        color: #9f1239;
+    }
+    .wiki-review-alert-label.is-overdue {
+        background: #dc3545;
+        color: #fff;
     }
 </style>
 
 <DxContextMenu @ref="ContextMenu" ItemClick="OnContextMenuItemClick">
     <Items>
-        <DxContextMenuItem Text="Öffnen" IconCssClass="oi oi-eye" Name="open" />
+        <DxContextMenuItem Text="Ã–ffnen" IconCssClass="oi oi-eye" Name="open" />
         <DxContextMenuItem Text="Bearbeiten" IconCssClass="oi oi-pencil" Name="edit" />
         <DxContextMenuItem Text="Eigenschaften" IconCssClass="oi oi-info" Name="properties" />
         <DxContextMenuItem Text="Eintrag aus Vorlage erstellen" IconCssClass="oi oi-copywriting" Name="create-from-template-root">
             <Items>
                 <DxContextMenuItem Text="Im Wiki Dashboard erstellen" IconCssClass="oi oi-home" Name="create-from-template-dashboard" />
-                <DxContextMenuItem Text="In Wiki Entwürfen erstellen" IconCssClass="oi oi-document" Name="create-from-template-drafts" />
+                <DxContextMenuItem Text="In Wiki EntwÃ¼rfen erstellen" IconCssClass="oi oi-document" Name="create-from-template-drafts" />
             </Items>
         </DxContextMenuItem>
         @if (CanShowTemplateGroupContextItems)
@@ -277,9 +310,7 @@
                     <DxContextMenuItem Text="Neue Gruppe erstellen" IconCssClass="oi oi-plus" Name="create-group" BeginGroup="true" />
                 </Items>
             </DxContextMenuItem>
-        }
-        <DxContextMenuItem Text="Ansicht umschalten" IconCssClass="oi oi-resize-height" Name="toggle-view" />
-        <DxContextMenuItem Text="Löschen" IconCssClass="oi oi-trash" Name="delete" BeginGroup="true" />
+        }        <DxContextMenuItem Text="LÃ¶schen" IconCssClass="oi oi-trash" Name="delete" BeginGroup="true" />
     </Items>
 </DxContextMenu>
 
@@ -296,7 +327,8 @@
     private int SelectedGroupId = 0;
     private string? SearchTerm;
     private bool IsLoading = true;
-    private bool UseLargeCards = true;
+    private int CardWidthPx = WikiCardSizeSettings.DefaultWidth;
+    private int CardHeightPx = WikiCardSizeSettings.DefaultHeight;
     private DxContextMenu? ContextMenu;
     private WikiPage? ContextMenuPage;
     private Dictionary<int, int> TemplateCountsByGroupId = new();
@@ -310,13 +342,14 @@
     private string? GroupActionError;
     private string? TemplateActionMessage;
     private const string AssignGroupNamePrefix = "assign-group-";
+    private Dictionary<int, WikiReviewAlertStateDto> ReviewAlertsByPageId = new();
 
     private bool CanShowTemplateGroupContextItems =>
         !string.IsNullOrWhiteSpace(CurrentUserId) && TemplateGroups is { Count: > 0 };
 
-    private string CardGridCss => UseLargeCards
-        ? "row row-cols-1 row-cols-lg-2 g-4"
-        : "row row-cols-1 row-cols-md-2 row-cols-xl-3 g-4";
+    private int CardPreviewHeightPx => Math.Max(140, CardHeightPx - 180);
+    private string CardGridStyle
+        => $"--wiki-card-width:{CardWidthPx}px;--wiki-card-height:{CardHeightPx}px;--wiki-card-preview-height:{CardPreviewHeightPx}px;";
 
     protected override async Task OnInitializedAsync()
     {
@@ -336,12 +369,24 @@
             AllPages = await pageTask;
             TemplateGroups = await groupTask;
 
+            await LoadReviewAlertsAsync();
             ApplyFilters();
         }
         finally
         {
             IsLoading = false;
         }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        await LoadCardSizeSettingsAsync();
+        StateHasChanged();
     }
 
     private void OnSearchTextChanged(string text)
@@ -510,7 +555,7 @@
             return;
         }
 
-        var confirmed = await Js.InvokeAsync<bool>("confirm", $"Gruppe \"{group.Name}\" wirklich löschen?");
+        var confirmed = await Js.InvokeAsync<bool>("confirm", $"Gruppe \"{group.Name}\" wirklich lÃ¶schen?");
         if (!confirmed)
         {
             return;
@@ -641,7 +686,7 @@
 
     private async Task DeleteEntryAsync(WikiPage page)
     {
-        var confirmed = await Js.InvokeAsync<bool>("confirm", $"Eintrag \"{page.Title}\" wirklich löschen?");
+        var confirmed = await Js.InvokeAsync<bool>("confirm", $"Eintrag \"{page.Title}\" wirklich lÃ¶schen?");
         if (!confirmed)
         {
             return;
@@ -651,6 +696,7 @@
         if (AllPages != null)
         {
             AllPages = AllPages.Where(p => p.Id != page.Id).ToList();
+            await LoadReviewAlertsAsync();
             ApplyFilters();
         }
     }
@@ -674,10 +720,9 @@
         if (index >= 0)
         {
             AllPages[index] = page;
+            await LoadReviewAlertsAsync();
             ApplyFilters();
         }
-
-        await Task.CompletedTask;
     }
 
     private Task OnPropertiesDialogVisibilityChanged(bool isVisible)
@@ -753,9 +798,46 @@
         return int.TryParse(suffix, out groupId);
     }
 
-    private void ToggleEntryViewMode()
+    private async Task OnCardWidthChanged(int value)
     {
-        UseLargeCards = !UseLargeCards;
+        var normalizedValue = WikiCardSizeSettings.Clamp(value);
+        if (CardWidthPx == normalizedValue)
+        {
+            return;
+        }
+
+        CardWidthPx = normalizedValue;
+        await SaveCardSizeSettingsAsync();
+    }
+
+    private async Task OnCardHeightChanged(int value)
+    {
+        var normalizedValue = WikiCardSizeSettings.Clamp(value);
+        if (CardHeightPx == normalizedValue)
+        {
+            return;
+        }
+
+        CardHeightPx = normalizedValue;
+        await SaveCardSizeSettingsAsync();
+    }
+
+    private async Task LoadCardSizeSettingsAsync()
+    {
+        var settings = await WikiCardSizeSettingsStore.LoadOrDefaultAsync(Js);
+        CardWidthPx = settings.CardWidthPx;
+        CardHeightPx = settings.CardHeightPx;
+    }
+
+    private Task SaveCardSizeSettingsAsync()
+    {
+        var settings = new WikiCardSizeSettings
+        {
+            CardWidthPx = CardWidthPx,
+            CardHeightPx = CardHeightPx
+        };
+
+        return WikiCardSizeSettingsStore.SaveAsync(Js, settings);
     }
 
     private async Task OnContextMenuAsync(MouseEventArgs args, WikiPage page)
@@ -813,9 +895,6 @@
             case "create-from-template-drafts":
                 await CreateEntryFromTemplateAsync(ContextMenuPage, WikiPageStatus.Draft, "/wiki/drafts");
                 break;
-            case "toggle-view":
-                ToggleEntryViewMode();
-                break;
             case "delete":
                 await DeleteEntryAsync(ContextMenuPage);
                 break;
@@ -824,4 +903,37 @@
                 break;
         }
     }
+
+    private async Task LoadReviewAlertsAsync()
+    {
+        if (AllPages is null || AllPages.Count == 0 || string.IsNullOrWhiteSpace(CurrentUserId))
+        {
+            ReviewAlertsByPageId = new Dictionary<int, WikiReviewAlertStateDto>();
+            return;
+        }
+
+        var states = await NotificationService.GetWikiReviewAlertStatesAsync(
+            CurrentUserId,
+            AllPages.Select(page => page.Id));
+
+        ReviewAlertsByPageId = states.ToDictionary(state => state.PageId);
+    }
+
+    private bool TryGetReviewAlertState(int pageId, out WikiReviewAlertStateDto state)
+    {
+        return ReviewAlertsByPageId.TryGetValue(pageId, out state!);
+    }
+
+    private string GetReviewAlertCardCss(int pageId)
+    {
+        return ReviewAlertsByPageId.ContainsKey(pageId) ? "wiki-review-alert-card" : string.Empty;
+    }
+
+    private static string GetReviewAlertLabel(WikiReviewAlertStateDto state)
+    {
+        return state.IsOverdue
+            ? $"Review Ã¼berfÃ¤llig seit {state.DueDate:dd.MM.yyyy}"
+            : $"Review fÃ¤llig am {state.DueDate:dd.MM.yyyy}";
+    }
 }
+

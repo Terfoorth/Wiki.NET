@@ -1,12 +1,17 @@
-@page "/reportdesigner"
+﻿@page "/reportdesigner"
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.JSInterop
+@using System.Globalization
 @rendermode InteractiveServer
 @attribute [Authorize]
+@implements IAsyncDisposable
 @using Wiki_Blaze.Data.Entities
 @using Wiki_Blaze.Services
 @inject IOnboardingService OnboardingService
 @inject NavigationManager NavigationManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IJSRuntime JsRuntime
 
 <PageTitle>Onboarding Management</PageTitle>
 
@@ -18,7 +23,7 @@
                     <Template>
                         <div class="onboarding-title-wrap">
                             <h3 class="mb-0">Onboarding Management</h3>
-                            <small class="text-muted">Grid-Ansicht mit Profil-Detailpanel und vollständiger Detailseite</small>
+                            <small class="text-muted">Grid-Ansicht mit Profil-Detailpanel und vollstÃ¤ndiger Detailseite</small>
                         </div>
                     </Template>
                 </DxToolbarItem>
@@ -67,6 +72,21 @@
         </div>
     </div>
 
+    @if (!string.IsNullOrWhiteSpace(UiErrorMessage))
+    {
+        <div class="alert alert-danger d-flex justify-content-between align-items-start gap-2" role="alert">
+            <span>@UiErrorMessage</span>
+            <button type="button" class="btn-close" aria-label="SchlieÃŸen" @onclick="() => UiErrorMessage = null"></button>
+        </div>
+    }
+    @if (!string.IsNullOrWhiteSpace(UiInfoMessage))
+    {
+        <div class="alert alert-success d-flex justify-content-between align-items-start gap-2" role="status">
+            <span>@UiInfoMessage</span>
+            <button type="button" class="btn-close" aria-label="SchlieÃŸen" @onclick="() => UiInfoMessage = null"></button>
+        </div>
+    }
+
     <DxDrawer CssClass="onboarding-drawer"
               @bind-IsOpen="IsDrawerOpen"
               Position="DrawerPosition.Right"
@@ -77,7 +97,7 @@
             <div class="onboarding-panel p-3">
                 @if (ActiveProfileDraft is null)
                 {
-                    <div class="text-muted">Wählen Sie links ein Profil aus.</div>
+                    <div class="text-muted">WÃ¤hlen Sie links ein Profil aus.</div>
                 }
                 else
                 {
@@ -108,6 +128,9 @@
                             <DxButton Text="Speichern" RenderStyle="ButtonRenderStyle.Primary" Click="SaveActiveProfileAsync" />
                             <DxButton Text="Duplizieren" RenderStyle="ButtonRenderStyle.Secondary" Click="DuplicateActiveProfileAsync" />
                             <DxButton Text="Offene To-Dos" RenderStyle="ButtonRenderStyle.Secondary" Click="ToggleOpenTodoFilter" />
+                            <DxButton Text="Eintrag lÃ¶schen"
+                                      RenderStyle="ButtonRenderStyle.Danger"
+                                      Click="@(async () => await OpenDeleteConfirmationAsync(ActiveProfileDraft.Id))" />
                         </div>
                     }
 
@@ -147,6 +170,14 @@
                                 <input type="date" class="form-control" @bind="ActiveProfileDraft.ExitDate" readonly="@(!CanEdit)" />
                             </div>
                             <div class="col-md-6">
+                                <label class="form-label">Startdatum (Onboarding)</label>
+                                <input type="date" class="form-control" @bind="ActiveProfileDraft.StartDate" readonly="@(!CanEdit)" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Zieldatum (Onboarding)</label>
+                                <input type="date" class="form-control" @bind="ActiveProfileDraft.TargetDate" readonly="@(!CanEdit)" />
+                            </div>
+                            <div class="col-md-6">
                                 <label class="form-label">Abteilung</label>
                                 <input class="form-control" @bind="ActiveProfileDraft.Department" readonly="@(!CanEdit)" />
                             </div>
@@ -179,7 +210,7 @@
                                 <input class="form-control" @bind="ActiveProfileDraft.Hostname" readonly="@(!CanEdit)" />
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label">Gerätenummer</label>
+                                <label class="form-label">GerÃ¤tenummer</label>
                                 <input class="form-control" @bind="ActiveProfileDraft.DeviceNumber" readonly="@(!CanEdit)" />
                             </div>
                             <div class="col-md-6">
@@ -206,17 +237,17 @@
                                 </select>
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label">Verknüpfter Benutzer (Id)</label>
+                                <label class="form-label">VerknÃ¼pfter Benutzer (Id)</label>
                                 <input class="form-control" @bind="ActiveProfileDraft.LinkedUserId" readonly="@(!CanEdit)" />
                             </div>
                         </div>
                     </div>
 
                     <div class="mt-3">
-                        <h6>Onboarding-Maßnahmen</h6>
+                        <h6>Onboarding-MaÃŸnahmen</h6>
                         @if (GetFilteredMeasureEntries(ActiveProfileDraft).Count == 0)
                         {
-                            <div class="small text-muted">Keine Maßnahmeneinträge vorhanden.</div>
+                            <div class="small text-muted">Keine MaÃŸnahmeneintrÃ¤ge vorhanden.</div>
                         }
                         else
                         {
@@ -276,48 +307,95 @@
         </BodyTemplate>
 
         <TargetContent>
-            <DxGrid @ref="Grid"
-                    Data="Profiles"
-                    KeyFieldName="Id"
-                    FocusedRowEnabled="true"
-                    HighlightRowOnHover="true"
-                    ShowFilterRow="false"
-                    ShowGroupPanel="false"
-                    ShowSearchBox="false"
-                    VirtualScrollingEnabled="true"
-                    RowClick="OnRowClick"
-                    TextWrapEnabled="false"
-                    CssClass="onboarding-grid">
-                <Columns>
-                    <DxGridDataColumn FieldName="DisplayName" Caption="Mitarbeiter" MinWidth="220" />
-                    <DxGridDataColumn FieldName="Username" Caption="Benutzername" MinWidth="150" />
-                    <DxGridDataColumn FieldName="Department" Caption="Abteilung" MinWidth="140" />
-                    <DxGridDataColumn FieldName="JobTitle" Caption="Stelle" MinWidth="160" />
-                    <DxGridDataColumn FieldName="EntryDate" Caption="Eintritt" DisplayFormat="dd.MM.yyyy" MinWidth="120" />
-                    <DxGridDataColumn FieldName="AssignedAgentDisplayName" Caption="Bearbeiter" MinWidth="170" />
-                    <DxGridDataColumn FieldName="Status" Caption="Status" MinWidth="110">
-                        <CellDisplayTemplate>
-                            @{ var item = (OnboardingProfileListItem)context.DataItem; }
-                            <span class="badge @GetStatusBadgeCss(item.Status)">@GetStatusLabel(item.Status)</span>
-                        </CellDisplayTemplate>
-                    </DxGridDataColumn>
-                    <DxGridDataColumn Caption="Fortschritt" MinWidth="180">
-                        <CellDisplayTemplate>
-                            @{ var item = (OnboardingProfileListItem)context.DataItem; }
-                            <div>
-                                <div class="progress">
-                                    <div class="progress-bar" role="progressbar" style="@($"width: {item.ProgressPercent}%")"></div>
+            <div id="@GridHostId" class="onboarding-grid-host">
+                <DxGrid @ref="Grid"
+                        Data="Profiles"
+                        KeyFieldName="Id"
+                        FocusedRowEnabled="true"
+                        HighlightRowOnHover="true"
+                        ShowFilterRow="false"
+                        ShowGroupPanel="false"
+                        ShowSearchBox="false"
+                        VirtualScrollingEnabled="true"
+                        RowClick="OnRowClick"
+                        CustomizeElement="OnGridCustomizeElement"
+                        TextWrapEnabled="false"
+                        CssClass="onboarding-grid">
+                    <Columns>
+                        <DxGridDataColumn FieldName="DisplayName" Caption="Mitarbeiter" MinWidth="220" />
+                        <DxGridDataColumn FieldName="Username" Caption="Benutzername" MinWidth="150" />
+                        <DxGridDataColumn FieldName="Department" Caption="Abteilung" MinWidth="140" />
+                        <DxGridDataColumn FieldName="JobTitle" Caption="Stelle" MinWidth="160" />
+                        <DxGridDataColumn FieldName="EntryDate" Caption="Eintritt" DisplayFormat="dd.MM.yyyy" MinWidth="120" />
+                        <DxGridDataColumn FieldName="AssignedAgentDisplayName" Caption="Bearbeiter" MinWidth="170" />
+                        <DxGridDataColumn FieldName="Status" Caption="Status" MinWidth="110">
+                            <CellDisplayTemplate>
+                                @{ var item = (OnboardingProfileListItem)context.DataItem; }
+                                <span class="badge @GetStatusBadgeCss(item.Status)">@GetStatusLabel(item.Status)</span>
+                            </CellDisplayTemplate>
+                        </DxGridDataColumn>
+                        <DxGridDataColumn Caption="Fortschritt" MinWidth="180">
+                            <CellDisplayTemplate>
+                                @{ var item = (OnboardingProfileListItem)context.DataItem; }
+                                <div>
+                                    <div class="progress">
+                                        <div class="progress-bar" role="progressbar" style="@($"width: {item.ProgressPercent}%")"></div>
+                                    </div>
+                                    <small class="text-muted">@item.ProgressPercent% Â· @item.OpenTodoCount offene Punkte</small>
                                 </div>
-                                <small class="text-muted">@item.ProgressPercent% · @item.OpenTodoCount offene Punkte</small>
-                            </div>
-                        </CellDisplayTemplate>
-                    </DxGridDataColumn>
-                    <DxGridDataColumn FieldName="LastModifiedAt" Caption="Letzte Änderung" DisplayFormat="dd.MM.yyyy HH:mm" MinWidth="150" />
-                </Columns>
-            </DxGrid>
+                            </CellDisplayTemplate>
+                        </DxGridDataColumn>
+                        <DxGridDataColumn FieldName="LastModifiedAt" Caption="Letzte Ã„nderung" DisplayFormat="dd.MM.yyyy HH:mm" MinWidth="150" />
+                    </Columns>
+                </DxGrid>
+            </div>
         </TargetContent>
     </DxDrawer>
+
+    <DxContextMenu @ref="GridContextMenu"
+                   ItemClick="OnGridContextMenuItemClick">
+        <Items>
+            <DxContextMenuItem Text="Detailseite Ã¶ffnen" IconCssClass="oi oi-eye" Name="open-details" />
+            <DxContextMenuItem Text="Offene To-Dos" IconCssClass="oi oi-check" Name="toggle-open-todos" />
+            @if (CanEdit)
+            {
+                <DxContextMenuItem Text="Status Ã¤ndern" IconCssClass="oi oi-loop-circular" Name="change-status-root">
+                    <Items>
+                        <DxContextMenuItem Text="Entwurf" Name="status-draft" />
+                        <DxContextMenuItem Text="In Bearbeitung" Name="status-in-progress" />
+                        <DxContextMenuItem Text="Abgeschlossen" Name="status-completed" />
+                        <DxContextMenuItem Text="Archiviert" Name="status-archived" />
+                    </Items>
+                </DxContextMenuItem>
+                <DxContextMenuItem Text="Duplizieren" IconCssClass="oi oi-copywriting" Name="duplicate" />
+                <DxContextMenuItem Text="Eintrag lÃ¶schen" IconCssClass="oi oi-trash" Name="delete" BeginGroup="true" />
+            }
+        </Items>
+    </DxContextMenu>
 </div>
+
+<DxPopup @bind-Visible="DeletePopupVisible"
+         HeaderText="Eintrag endgÃ¼ltig lÃ¶schen"
+         Width="30rem"
+         ShowCloseButton="true"
+         CloseOnOutsideClick="false">
+    <BodyContentTemplate>
+        <div class="p-2">
+            <p class="mb-2">
+                MÃ¶chten Sie das Onboarding-Profil
+                <strong>@DeleteTargetDisplayName</strong>
+                endgÃ¼ltig lÃ¶schen?
+            </p>
+            <p class="text-danger small mb-0">Diese Aktion kann nicht rÃ¼ckgÃ¤ngig gemacht werden.</p>
+            <div class="d-flex justify-content-end gap-2 mt-3">
+                <DxButton Text="Abbrechen" RenderStyle="ButtonRenderStyle.Secondary" Click="CloseDeleteConfirmation" />
+                <DxButton Text="EndgÃ¼ltig lÃ¶schen"
+                          RenderStyle="ButtonRenderStyle.Danger"
+                          Click="ConfirmDeleteProfileAsync" />
+            </div>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
 
 <DxPopup @bind-Visible="CreatePopupVisible"
          HeaderText="Neues Onboarding-Profil"
@@ -351,6 +429,14 @@
                 <div class="col-md-6">
                     <label class="form-label">Austrittsdatum (optional)</label>
                     <input type="date" class="form-control" @bind="CreateProfileModel.ExitDate" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Startdatum (Onboarding)</label>
+                    <input type="date" class="form-control" @bind="CreateProfileModel.StartDate" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Zieldatum (Onboarding)</label>
+                    <input type="date" class="form-control" @bind="CreateProfileModel.TargetDate" />
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">Benutzername</label>
@@ -399,6 +485,11 @@
 
 @code {
     private IGrid? Grid { get; set; }
+    private DxContextMenu? GridContextMenu { get; set; }
+    private DotNetObjectReference<ReportDesigner>? GridHostDotNetReference { get; set; }
+
+    private string GridHostId { get; } = $"onboarding-grid-host-{Guid.NewGuid():N}";
+    private bool GridHostInteropAttached { get; set; }
 
     private List<OnboardingProfileListItem> Profiles { get; set; } = new();
     private OnboardingProfile? ActiveProfileDraft { get; set; }
@@ -410,6 +501,15 @@
     private bool IsDrawerOpen { get; set; }
     private bool ShowOnlyOpenTodos { get; set; }
     private bool CanEdit { get; set; }
+
+    private string? UiInfoMessage { get; set; }
+    private string? UiErrorMessage { get; set; }
+
+    private int? ContextMenuProfileId { get; set; }
+
+    private bool DeletePopupVisible { get; set; }
+    private int? DeleteTargetProfileId { get; set; }
+    private string DeleteTargetDisplayName { get; set; } = string.Empty;
 
     private bool CreatePopupVisible { get; set; }
     private OnboardingProfile CreateProfileModel { get; set; } = CreateNewProfileTemplate();
@@ -453,10 +553,55 @@
         await LoadProfilesAsync();
     }
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || GridHostInteropAttached)
+        {
+            return;
+        }
+
+        try
+        {
+            GridHostDotNetReference = DotNetObjectReference.Create(this);
+            await JsRuntime.InvokeVoidAsync("wikiBlaze.onboardingGrid.attach", GridHostId, GridHostDotNetReference);
+            GridHostInteropAttached = true;
+        }
+        catch (JSDisconnectedException)
+        {
+            // Ignore teardown race conditions during disconnect/reload.
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (GridHostInteropAttached)
+        {
+            try
+            {
+                await JsRuntime.InvokeVoidAsync("wikiBlaze.onboardingGrid.detach", GridHostId);
+            }
+            catch (JSDisconnectedException)
+            {
+                // Ignore teardown race conditions during disconnect/reload.
+            }
+            catch (ObjectDisposedException)
+            {
+                // Ignore app shutdown disposal order.
+            }
+        }
+
+        GridHostDotNetReference?.Dispose();
+    }
+
     private async Task LoadProfilesAsync()
     {
         var selectedStatus = ParseStatusFilter(SelectedStatusFilterValue);
         Profiles = await OnboardingService.GetProfilesAsync(SearchText, selectedStatus, OnlyOpenProfiles);
+
+        if (ContextMenuProfileId.HasValue && Profiles.All(item => item.Id != ContextMenuProfileId.Value))
+        {
+            ContextMenuProfileId = null;
+        }
 
         if (ActiveProfileDraft is not null)
         {
@@ -465,27 +610,121 @@
             IsDrawerOpen = refreshed is not null;
         }
 
-        StateHasChanged();
+        await InvokeAsync(StateHasChanged);
     }
 
-    private async Task OnRowClick(GridRowClickEventArgs args)
+    private void OnGridCustomizeElement(GridCustomizeElementEventArgs args)
     {
-        if (Grid is null)
+        if (args.ElementType != GridElementType.DataRow || args.VisibleIndex < 0)
         {
             return;
         }
 
-        var item = (OnboardingProfileListItem)Grid.GetDataItem(args.VisibleIndex);
-        var profile = await OnboardingService.GetProfileAsync(item.Id);
+        args.Attributes["data-onboarding-visible-index"] = args.VisibleIndex.ToString(CultureInfo.InvariantCulture);
+    }
 
+    [JSInvokable]
+    public Task HandleGridBlankClick()
+    {
+        return InvokeAsync(() =>
+        {
+            IsDrawerOpen = false;
+            ActiveProfileDraft = null;
+            ContextMenuProfileId = null;
+            StateHasChanged();
+        });
+    }
+
+    [JSInvokable]
+    public Task HandleGridRowContextMenu(int visibleIndex, double clientX, double clientY)
+    {
+        return InvokeAsync(async () =>
+        {
+            var item = GetProfileListItemByVisibleIndex(visibleIndex);
+            if (item is null)
+            {
+                return;
+            }
+
+            ContextMenuProfileId = item.Id;
+
+            if (GridContextMenu is not null)
+            {
+                var mouseArgs = new MouseEventArgs
+                {
+                    ClientX = clientX,
+                    ClientY = clientY,
+                    Button = 2,
+                    Type = "contextmenu"
+                };
+
+                await GridContextMenu.ShowAsync(mouseArgs);
+            }
+        });
+    }
+
+    private async Task OnRowClick(GridRowClickEventArgs args)
+    {
+        var item = GetProfileListItemByVisibleIndex(args.VisibleIndex);
+        if (item is null)
+        {
+            return;
+        }
+
+        var profile = await OnboardingService.GetProfileAsync(item.Id);
         if (profile is null)
         {
             return;
         }
 
+        ContextMenuProfileId = item.Id;
         ActiveProfileDraft = profile;
         IsDrawerOpen = true;
         StateHasChanged();
+    }
+
+    private async Task OnGridContextMenuItemClick(ContextMenuItemClickEventArgs args)
+    {
+        var profileId = ContextMenuProfileId;
+        if (!profileId.HasValue)
+        {
+            return;
+        }
+
+        try
+        {
+            switch (args.ItemInfo.Name)
+            {
+                case "open-details":
+                    NavigationManager.NavigateTo($"/reportdesigner/details/{profileId.Value}");
+                    break;
+                case "toggle-open-todos":
+                    await ToggleOpenTodosFromContextAsync(profileId.Value);
+                    break;
+                case "duplicate":
+                    if (CanEdit)
+                    {
+                        await DuplicateProfileByIdAsync(profileId.Value);
+                    }
+                    break;
+                case "delete":
+                    if (CanEdit)
+                    {
+                        await OpenDeleteConfirmationAsync(profileId.Value);
+                    }
+                    break;
+                default:
+                    if (CanEdit && TryParseStatusMenuItem(args.ItemInfo.Name, out var targetStatus))
+                    {
+                        await ChangeProfileStatusAsync(profileId.Value, targetStatus);
+                    }
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            SetUiError($"Aktion fehlgeschlagen: {ex.Message}");
+        }
     }
 
     private async Task SaveActiveProfileAsync()
@@ -495,8 +734,17 @@
             return;
         }
 
-        ActiveProfileDraft = await OnboardingService.UpdateProfileAsync(ActiveProfileDraft);
-        await LoadProfilesAsync();
+        try
+        {
+            ClearUiMessages();
+            ActiveProfileDraft = await OnboardingService.UpdateProfileAsync(ActiveProfileDraft);
+            await LoadProfilesAsync();
+            SetUiInfo("Profil wurde gespeichert.");
+        }
+        catch (Exception ex)
+        {
+            SetUiError($"Speichern fehlgeschlagen: {ex.Message}");
+        }
     }
 
     private async Task DuplicateActiveProfileAsync()
@@ -506,14 +754,7 @@
             return;
         }
 
-        var duplicate = await OnboardingService.DuplicateProfileAsync(ActiveProfileDraft.Id);
-        await LoadProfilesAsync();
-
-        if (duplicate is not null)
-        {
-            ActiveProfileDraft = duplicate;
-            IsDrawerOpen = true;
-        }
+        await DuplicateProfileByIdAsync(ActiveProfileDraft.Id);
     }
 
     private async Task ToggleMeasureCompletedAsync(OnboardingMeasureEntry entry, bool isCompleted)
@@ -555,6 +796,7 @@
 
     private void OpenCreateProfilePopup()
     {
+        ClearUiMessages();
         CreateProfileModel = CreateNewProfileTemplate();
         CreatePopupVisible = true;
     }
@@ -571,13 +813,218 @@
             return;
         }
 
-        var created = await OnboardingService.CreateProfileAsync(CreateProfileModel);
-        CreatePopupVisible = false;
+        try
+        {
+            ClearUiMessages();
+            var created = await OnboardingService.CreateProfileAsync(CreateProfileModel);
+            CreatePopupVisible = false;
 
+            await LoadProfilesAsync();
+
+            ActiveProfileDraft = created;
+            IsDrawerOpen = true;
+            SetUiInfo("Profil wurde angelegt.");
+        }
+        catch (Exception ex)
+        {
+            SetUiError($"Anlegen fehlgeschlagen: {ex.Message}");
+        }
+    }
+
+    private async Task OpenDeleteConfirmationAsync(int profileId)
+    {
+        if (!CanEdit)
+        {
+            return;
+        }
+
+        ClearUiMessages();
+
+        DeleteTargetProfileId = profileId;
+        DeleteTargetDisplayName = Profiles.FirstOrDefault(item => item.Id == profileId)?.DisplayName ?? string.Empty;
+
+        if (string.IsNullOrWhiteSpace(DeleteTargetDisplayName))
+        {
+            var profile = await OnboardingService.GetProfileAsync(profileId);
+            DeleteTargetDisplayName = profile is null ? $"ID {profileId}" : GetProfileDisplayName(profile);
+        }
+
+        DeletePopupVisible = true;
+    }
+
+    private void CloseDeleteConfirmation()
+    {
+        DeletePopupVisible = false;
+        DeleteTargetProfileId = null;
+        DeleteTargetDisplayName = string.Empty;
+    }
+
+    private async Task ConfirmDeleteProfileAsync()
+    {
+        if (!CanEdit || !DeleteTargetProfileId.HasValue)
+        {
+            return;
+        }
+
+        var profileId = DeleteTargetProfileId.Value;
+
+        try
+        {
+            ClearUiMessages();
+            await OnboardingService.DeleteProfileAsync(profileId);
+
+            if (ActiveProfileDraft?.Id == profileId)
+            {
+                ActiveProfileDraft = null;
+                IsDrawerOpen = false;
+            }
+
+            if (ContextMenuProfileId == profileId)
+            {
+                ContextMenuProfileId = null;
+            }
+
+            CloseDeleteConfirmation();
+            await LoadProfilesAsync();
+            SetUiInfo("Profil wurde endgültig gelöscht.");
+        }
+        catch (Exception ex)
+        {
+            SetUiError($"Löschen fehlgeschlagen: {ex.Message}");
+        }
+    }
+
+    private async Task ToggleOpenTodosFromContextAsync(int profileId)
+    {
+        if (!await TryLoadProfileIntoDrawerAsync(profileId))
+        {
+            SetUiError("Profil konnte nicht geladen werden.");
+            return;
+        }
+
+        ToggleOpenTodoFilter();
+        IsDrawerOpen = true;
+    }
+
+    private async Task DuplicateProfileByIdAsync(int profileId)
+    {
+        if (!CanEdit)
+        {
+            return;
+        }
+
+        ClearUiMessages();
+        var duplicate = await OnboardingService.DuplicateProfileAsync(profileId);
         await LoadProfilesAsync();
 
-        ActiveProfileDraft = created;
+        if (duplicate is null)
+        {
+            SetUiError("Profil konnte nicht dupliziert werden.");
+            return;
+        }
+
+        ContextMenuProfileId = duplicate.Id;
+        ActiveProfileDraft = duplicate;
         IsDrawerOpen = true;
+        SetUiInfo("Profil wurde dupliziert.");
+    }
+
+    private async Task ChangeProfileStatusAsync(int profileId, OnboardingProfileStatus targetStatus)
+    {
+        if (!CanEdit)
+        {
+            return;
+        }
+
+        ClearUiMessages();
+        var profile = await OnboardingService.GetProfileAsync(profileId);
+        if (profile is null)
+        {
+            SetUiError("Profil konnte nicht geladen werden.");
+            return;
+        }
+
+        if (profile.Status == targetStatus)
+        {
+            return;
+        }
+
+        profile.Status = targetStatus;
+        ActiveProfileDraft = await OnboardingService.UpdateProfileAsync(profile);
+        IsDrawerOpen = true;
+        await LoadProfilesAsync();
+        SetUiInfo("Status wurde aktualisiert.");
+    }
+
+    private async Task<bool> TryLoadProfileIntoDrawerAsync(int profileId)
+    {
+        var profile = await OnboardingService.GetProfileAsync(profileId);
+        if (profile is null)
+        {
+            return false;
+        }
+
+        ContextMenuProfileId = profileId;
+        ActiveProfileDraft = profile;
+        IsDrawerOpen = true;
+        return true;
+    }
+
+    private OnboardingProfileListItem? GetProfileListItemByVisibleIndex(int visibleIndex)
+    {
+        if (Grid is null || visibleIndex < 0)
+        {
+            return null;
+        }
+
+        try
+        {
+            return Grid.GetDataItem(visibleIndex) as OnboardingProfileListItem;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static bool TryParseStatusMenuItem(string menuItemName, out OnboardingProfileStatus status)
+    {
+        switch (menuItemName)
+        {
+            case "status-draft":
+                status = OnboardingProfileStatus.Draft;
+                return true;
+            case "status-in-progress":
+                status = OnboardingProfileStatus.InProgress;
+                return true;
+            case "status-completed":
+                status = OnboardingProfileStatus.Completed;
+                return true;
+            case "status-archived":
+                status = OnboardingProfileStatus.Archived;
+                return true;
+            default:
+                status = default;
+                return false;
+        }
+    }
+
+    private void ClearUiMessages()
+    {
+        UiInfoMessage = null;
+        UiErrorMessage = null;
+    }
+
+    private void SetUiInfo(string message)
+    {
+        UiInfoMessage = message;
+        UiErrorMessage = null;
+    }
+
+    private void SetUiError(string message)
+    {
+        UiInfoMessage = null;
+        UiErrorMessage = message;
     }
 
     private List<OnboardingMeasureEntry> GetFilteredMeasureEntries(OnboardingProfile profile)
@@ -699,9 +1146,3 @@
 
     private sealed record StatusFilterItem(string Text, string Value);
 }
-
-
-
-
-
-

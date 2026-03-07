@@ -1,0 +1,8 @@
+.wiki-card-size-controls {
+    background: rgba(248, 249, 250, 0.9);
+}
+
+.wiki-card-size-input {
+    width: 6.5rem;
+    min-width: 6.5rem;
+}

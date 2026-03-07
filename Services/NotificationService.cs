@@ -1,247 +1,694 @@
-using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Wiki_Blaze.Data;
 using Wiki_Blaze.Data.Entities;
+using Wiki_Blaze.Services.Notifications;
 
 namespace Wiki_Blaze.Services;
 
 public class NotificationService(
     IDbContextFactory<ApplicationDbContext> dbFactory,
-    IReminderCandidateProvider reminderCandidateProvider) : INotificationService
+    ILogger<NotificationService> logger) : INotificationService, INotificationSchedulerService
 {
-    public async Task<IReadOnlyList<UserNotification>> RefreshAndGetAsync(string userId, CancellationToken cancellationToken = default)
+    private static readonly NotificationKind[] ManagedNotificationKinds =
+    [
+        NotificationKind.WikiReviewDate,
+        NotificationKind.OnboardingStartDate,
+        NotificationKind.OnboardingTargetDate
+    ];
+
+    private static readonly TimeSpan ReminderTriggerLocalTime = new(8, 0, 0);
+
+    public async Task<NotificationInboxDto> GetInboxAsync(
+        string userId,
+        int take = 20,
+        bool includeRead = true,
+        CancellationToken cancellationToken = default)
     {
-        var normalizedUserId = NormalizeUserId(userId);
-        if (normalizedUserId is null)
+        if (string.IsNullOrWhiteSpace(userId))
         {
-            return Array.Empty<UserNotification>();
+            return new NotificationInboxDto();
         }
+
+        var boundedTake = Math.Clamp(take, 1, 200);
 
         await using var context = await dbFactory.CreateDbContextAsync(cancellationToken);
 
-        var timeZoneId = await context.Users
+        var unreadCount = await context.AppNotifications
             .AsNoTracking()
-            .Where(user => user.Id == normalizedUserId)
-            .Select(user => user.TimeZone)
-            .FirstOrDefaultAsync(cancellationToken);
+            .Where(notification => notification.UserId == userId && !notification.IsRead)
+            .CountAsync(cancellationToken);
 
-        var timeZone = ReminderCandidateProvider.ResolveTimeZone(timeZoneId);
-        var todayLocal = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, timeZone));
+        var query = context.AppNotifications
+            .AsNoTracking()
+            .Where(notification => notification.UserId == userId);
 
-        var candidates = await reminderCandidateProvider.GetCandidatesAsync(
-            context,
-            normalizedUserId,
-            todayLocal,
-            timeZone,
-            cancellationToken);
+        if (!includeRead)
+        {
+            query = query.Where(notification => !notification.IsRead);
+        }
 
-        var existing = await context.UserNotifications
-            .Where(notification => notification.UserId == normalizedUserId)
+        var items = await query
+            .OrderByDescending(notification => notification.CreatedAtUtc)
+            .Take(boundedTake)
+            .Select(notification => new NotificationInboxItemDto
+            {
+                Id = notification.Id,
+                Kind = notification.Kind,
+                SourceId = notification.SourceId,
+                Title = notification.Title,
+                Body = notification.Body,
+                TargetUrl = notification.TargetUrl,
+                DueDate = notification.DueDate,
+                TriggerDate = notification.TriggerDate,
+                CreatedAtUtc = notification.CreatedAtUtc,
+                IsRead = notification.IsRead
+            })
             .ToListAsync(cancellationToken);
 
-        MergeNotifications(context, existing, normalizedUserId, candidates);
-
-        try
+        return new NotificationInboxDto
         {
-            await context.SaveChangesAsync(cancellationToken);
-        }
-        catch (DbUpdateException ex) when (IsUniqueConstraintViolation(ex))
+            Items = items,
+            UnreadCount = unreadCount
+        };
+    }
+
+    public async Task<int> GetUnreadCountAsync(string userId, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(userId))
         {
-            // Race-condition fallback: another request inserted the same notification key.
+            return 0;
         }
 
-        return await LoadActiveNotificationsAsync(normalizedUserId, cancellationToken);
+        await using var context = await dbFactory.CreateDbContextAsync(cancellationToken);
+        return await context.AppNotifications
+            .AsNoTracking()
+            .Where(notification => notification.UserId == userId && !notification.IsRead)
+            .CountAsync(cancellationToken);
     }
 
     public async Task<bool> MarkAsReadAsync(string userId, int notificationId, CancellationToken cancellationToken = default)
     {
-        var normalizedUserId = NormalizeUserId(userId);
-        if (normalizedUserId is null)
+        if (string.IsNullOrWhiteSpace(userId) || notificationId <= 0)
         {
             return false;
         }
 
         await using var context = await dbFactory.CreateDbContextAsync(cancellationToken);
+        var notification = await context.AppNotifications
+            .FirstOrDefaultAsync(
+                entry => entry.Id == notificationId && entry.UserId == userId,
+                cancellationToken);
 
-        var notification = await context.UserNotifications
-            .FirstOrDefaultAsync(item => item.Id == notificationId && item.UserId == normalizedUserId, cancellationToken);
-
-        if (notification is null)
+        if (notification is null || notification.IsRead)
         {
-            return false;
+            return notification is not null;
         }
 
-        if (!notification.IsRead)
-        {
-            notification.IsRead = true;
-            notification.ReadAtUtc = DateTime.UtcNow;
-            await context.SaveChangesAsync(cancellationToken);
-        }
-
+        notification.IsRead = true;
+        notification.ReadAtUtc = DateTime.UtcNow;
+        await context.SaveChangesAsync(cancellationToken);
         return true;
     }
 
-    public async Task<int> MarkAllAsReadAsync(string userId, CancellationToken cancellationToken = default)
-    {
-        var normalizedUserId = NormalizeUserId(userId);
-        if (normalizedUserId is null)
-        {
-            return 0;
-        }
-
-        await using var context = await dbFactory.CreateDbContextAsync(cancellationToken);
-
-        var unreadNotifications = await context.UserNotifications
-            .Where(notification =>
-                notification.UserId == normalizedUserId
-                && !notification.IsArchived
-                && !notification.IsRead)
-            .ToListAsync(cancellationToken);
-
-        if (unreadNotifications.Count == 0)
-        {
-            return 0;
-        }
-
-        var readAtUtc = DateTime.UtcNow;
-        foreach (var notification in unreadNotifications)
-        {
-            notification.IsRead = true;
-            notification.ReadAtUtc = readAtUtc;
-        }
-
-        await context.SaveChangesAsync(cancellationToken);
-        return unreadNotifications.Count;
-    }
-
-    private async Task<IReadOnlyList<UserNotification>> LoadActiveNotificationsAsync(string userId, CancellationToken cancellationToken)
-    {
-        await using var context = await dbFactory.CreateDbContextAsync(cancellationToken);
-
-        return await context.UserNotifications
-            .AsNoTracking()
-            .Where(notification => notification.UserId == userId && !notification.IsArchived)
-            .OrderBy(notification => notification.IsRead)
-            .ThenBy(notification => notification.DueDate)
-            .ThenByDescending(notification => notification.CreatedAtUtc)
-            .ToListAsync(cancellationToken);
-    }
-
-    private static void MergeNotifications(
-        ApplicationDbContext context,
-        IReadOnlyCollection<UserNotification> existingNotifications,
+    public async Task<IReadOnlyList<WikiReviewAlertStateDto>> GetWikiReviewAlertStatesAsync(
         string userId,
-        IReadOnlyCollection<ReminderCandidate> candidates)
+        IEnumerable<int> wikiPageIds,
+        CancellationToken cancellationToken = default)
     {
-        var nowUtc = DateTime.UtcNow;
-
-        var candidateByKey = candidates
-            .GroupBy(CreateKey)
-            .ToDictionary(group => group.Key, group => group.First());
-
-        var existingByKey = existingNotifications
-            .GroupBy(CreateKey)
-            .ToDictionary(group => group.Key, group => group.OrderBy(item => item.Id).ToList());
-
-        foreach (var pair in candidateByKey)
+        if (string.IsNullOrWhiteSpace(userId))
         {
-            var candidate = pair.Value;
-            if (existingByKey.TryGetValue(pair.Key, out var sameKeyNotifications))
+            return Array.Empty<WikiReviewAlertStateDto>();
+        }
+
+        var pageIds = wikiPageIds
+            .Where(pageId => pageId > 0)
+            .Distinct()
+            .ToList();
+
+        if (pageIds.Count == 0)
+        {
+            return Array.Empty<WikiReviewAlertStateDto>();
+        }
+
+        await using var context = await dbFactory.CreateDbContextAsync(cancellationToken);
+
+        var timeZoneInfo = await ResolveUserTimeZoneAsync(context, userId, cancellationToken);
+        var localDate = ConvertUtcToLocal(DateTime.UtcNow, timeZoneInfo).Date;
+
+        var reviewAttributeDefinitionId = await context.WikiAttributeDefinitions
+            .AsNoTracking()
+            .Where(definition => definition.Name == "ReviewDate")
+            .Select(definition => definition.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (reviewAttributeDefinitionId == 0)
+        {
+            return Array.Empty<WikiReviewAlertStateDto>();
+        }
+
+        var reviewRows = await (
+            from value in context.WikiPageAttributeValues.AsNoTracking()
+            join page in context.WikiPages.AsNoTracking() on value.WikiPageId equals page.Id
+            where value.AttributeDefinitionId == reviewAttributeDefinitionId
+                && page.OwnerId == userId
+                && pageIds.Contains(page.Id)
+            select new
             {
-                var primary = sameKeyNotifications[0];
-                primary.DueDate = ToUtcDate(candidate.DueDate);
-                primary.Title = candidate.Title;
-                primary.Message = candidate.Message;
-                primary.TargetUrl = candidate.TargetUrl;
-                primary.IsArchived = false;
-                primary.ArchivedAtUtc = null;
+                PageId = page.Id,
+                RawValue = value.Value
+            })
+            .ToListAsync(cancellationToken);
 
-                for (var i = 1; i < sameKeyNotifications.Count; i++)
-                {
-                    var duplicate = sameKeyNotifications[i];
-                    duplicate.IsArchived = true;
-                    duplicate.ArchivedAtUtc ??= nowUtc;
-                }
-
+        var result = new List<WikiReviewAlertStateDto>();
+        foreach (var row in reviewRows)
+        {
+            if (!NotificationDateParser.TryParseToDate(row.RawValue, out var dueDate))
+            {
                 continue;
             }
 
-            context.UserNotifications.Add(new UserNotification
+            var firstReminderDate = NotificationScheduleCalculator.GetFirstReminderDate(dueDate);
+            if (localDate < firstReminderDate)
             {
-                UserId = userId,
-                Type = candidate.Type,
-                SourceEntityId = candidate.SourceEntityId,
-                StageDaysBefore = candidate.StageDaysBefore,
-                DueDate = ToUtcDate(candidate.DueDate),
-                Title = candidate.Title,
-                Message = candidate.Message,
-                TargetUrl = candidate.TargetUrl,
-                IsRead = false,
-                ReadAtUtc = null,
-                IsArchived = false,
-                ArchivedAtUtc = null,
-                CreatedAtUtc = nowUtc
+                continue;
+            }
+
+            result.Add(new WikiReviewAlertStateDto
+            {
+                PageId = row.PageId,
+                IsAlert = true,
+                IsOverdue = dueDate.Date < localDate,
+                DueDate = dueDate.Date,
+                BusinessDaysToDue = NotificationScheduleCalculator.BusinessDaysDifference(localDate, dueDate.Date)
             });
         }
 
-        var activeKeys = candidateByKey.Keys.ToHashSet();
-        foreach (var existing in existingNotifications)
+        return result;
+    }
+
+    public async Task GenerateScheduledNotificationsAsync(DateTime utcNow, CancellationToken cancellationToken = default)
+    {
+        var normalizedUtcNow = utcNow.Kind == DateTimeKind.Utc
+            ? utcNow
+            : DateTime.SpecifyKind(utcNow, DateTimeKind.Utc);
+
+        await using var context = await dbFactory.CreateDbContextAsync(cancellationToken);
+
+        var sourceCandidates = await LoadSourceCandidatesAsync(context, cancellationToken);
+        var totalCandidates = sourceCandidates.Count;
+        var resolvedUserIds = await ResolveExistingUserIdsAsync(context, sourceCandidates, cancellationToken);
+
+        var skippedInvalidUser = 0;
+        var validSourceCandidates = new List<NotificationSourceCandidate>(sourceCandidates.Count);
+        foreach (var candidate in sourceCandidates)
         {
-            var key = CreateKey(existing);
-            if (activeKeys.Contains(key))
+            if (!TryNormalizeUserId(candidate.UserId, out var normalizedUserId) || !resolvedUserIds.Contains(normalizedUserId))
+            {
+                skippedInvalidUser++;
+                logger.LogWarning(
+                    "Skipping notification source {Kind}/{SourceId} because user '{UserId}' is invalid or missing.",
+                    candidate.Kind,
+                    candidate.SourceId,
+                    candidate.UserId);
+                continue;
+            }
+
+            validSourceCandidates.Add(candidate with { UserId = normalizedUserId });
+        }
+
+        var activeSourceKeys = validSourceCandidates
+            .Select(candidate => candidate.SourceKey)
+            .ToHashSet();
+
+        var staleMarkedCount = await MarkStaleUnreadNotificationsAsync(
+            context,
+            activeSourceKeys,
+            normalizedUtcNow,
+            cancellationToken);
+
+        if (staleMarkedCount > 0)
+        {
+            try
+            {
+                await context.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbUpdateException ex)
+            {
+                logger.LogWarning(ex, "Failed to persist stale notification updates.");
+                context.ChangeTracker.Clear();
+            }
+        }
+
+        if (validSourceCandidates.Count == 0)
+        {
+            logger.LogInformation(
+                "Notification scheduler run summary: candidates total={CandidatesTotal}, skipped invalid user={SkippedInvalidUser}, skipped weekend={SkippedWeekend}, skipped before 08:00={SkippedBeforeEight}, skipped pre-window={SkippedPreWindow}, created={CreatedCount}.",
+                totalCandidates,
+                skippedInvalidUser,
+                0,
+                0,
+                0,
+                0);
+            return;
+        }
+
+        var userTimeZones = await ResolveUserTimeZonesAsync(
+            context,
+            validSourceCandidates.Select(candidate => candidate.UserId).Distinct().ToList(),
+            cancellationToken);
+
+        var skippedWeekend = 0;
+        var skippedBeforeEight = 0;
+        var skippedPreWindow = 0;
+
+        var dueCandidates = new List<DueNotificationCandidate>();
+        foreach (var source in validSourceCandidates)
+        {
+            if (!userTimeZones.TryGetValue(source.UserId, out var userTimeZone))
+            {
+                userTimeZone = TimeZoneInfo.Utc;
+            }
+
+            var localNow = ConvertUtcToLocal(normalizedUtcNow, userTimeZone);
+            var localDate = localNow.Date;
+            if (!NotificationScheduleCalculator.IsBusinessDay(localDate))
+            {
+                skippedWeekend++;
+                continue;
+            }
+
+            var firstReminderDate = NotificationScheduleCalculator.GetFirstReminderDate(source.DueDate);
+            if (localDate < firstReminderDate)
+            {
+                skippedPreWindow++;
+                continue;
+            }
+
+            if (localNow.TimeOfDay < ReminderTriggerLocalTime)
+            {
+                skippedBeforeEight++;
+                continue;
+            }
+
+            dueCandidates.Add(new DueNotificationCandidate(source, localDate));
+        }
+
+        var createdCount = 0;
+        var saveConflictCount = 0;
+        var groupedCandidates = dueCandidates
+            .GroupBy(candidate => new { candidate.Source.UserId, candidate.TriggerDate })
+            .ToList();
+
+        foreach (var group in groupedCandidates)
+        {
+            var existingSourceKeysForDay = await context.AppNotifications
+                .AsNoTracking()
+                .Where(notification =>
+                    notification.UserId == group.Key.UserId
+                    && notification.TriggerDate == group.Key.TriggerDate)
+                .Select(notification => new { notification.Kind, notification.SourceId })
+                .ToListAsync(cancellationToken);
+
+            var existingSet = existingSourceKeysForDay
+                .Select(entry => (entry.Kind, entry.SourceId))
+                .ToHashSet();
+
+            foreach (var candidate in group)
+            {
+                var dedupeKey = (candidate.Source.Kind, candidate.Source.SourceId);
+                if (!existingSet.Add(dedupeKey))
+                {
+                    continue;
+                }
+
+                var notification = new AppNotification
+                {
+                    UserId = candidate.Source.UserId,
+                    Kind = candidate.Source.Kind,
+                    SourceId = candidate.Source.SourceId,
+                    DueDate = candidate.Source.DueDate.Date,
+                    TriggerDate = candidate.TriggerDate.Date,
+                    CreatedAtUtc = normalizedUtcNow,
+                    IsRead = false,
+                    ReadAtUtc = null,
+                    Title = candidate.Source.Title,
+                    Body = candidate.Source.Body,
+                    TargetUrl = candidate.Source.TargetUrl
+                };
+
+                context.AppNotifications.Add(notification);
+                try
+                {
+                    await context.SaveChangesAsync(cancellationToken);
+                    createdCount++;
+                }
+                catch (DbUpdateException ex)
+                {
+                    saveConflictCount++;
+                    context.Entry(notification).State = EntityState.Detached;
+                    logger.LogWarning(
+                        ex,
+                        "Notification candidate save failed for user {UserId}, kind {Kind}, source {SourceId}, trigger {TriggerDate}.",
+                        candidate.Source.UserId,
+                        candidate.Source.Kind,
+                        candidate.Source.SourceId,
+                        candidate.TriggerDate);
+                }
+                catch (Exception ex)
+                {
+                    saveConflictCount++;
+                    context.Entry(notification).State = EntityState.Detached;
+                    logger.LogError(
+                        ex,
+                        "Notification candidate save crashed for user {UserId}, kind {Kind}, source {SourceId}, trigger {TriggerDate}.",
+                        candidate.Source.UserId,
+                        candidate.Source.Kind,
+                        candidate.Source.SourceId,
+                        candidate.TriggerDate);
+                }
+            }
+        }
+
+        logger.LogInformation(
+            "Notification scheduler run summary: candidates total={CandidatesTotal}, skipped invalid user={SkippedInvalidUser}, skipped weekend={SkippedWeekend}, skipped before 08:00={SkippedBeforeEight}, skipped pre-window={SkippedPreWindow}, created={CreatedCount}, save conflicts={SaveConflictCount}.",
+            totalCandidates,
+            skippedInvalidUser,
+            skippedWeekend,
+            skippedBeforeEight,
+            skippedPreWindow,
+            createdCount,
+            saveConflictCount);
+    }
+
+    private async Task<List<NotificationSourceCandidate>> LoadSourceCandidatesAsync(
+        ApplicationDbContext context,
+        CancellationToken cancellationToken)
+    {
+        var candidates = new List<NotificationSourceCandidate>();
+        var reviewDefinitionId = await context.WikiAttributeDefinitions
+            .AsNoTracking()
+            .Where(definition => definition.Name == "ReviewDate")
+            .Select(definition => definition.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (reviewDefinitionId > 0)
+        {
+            var wikiSources = await (
+                from value in context.WikiPageAttributeValues.AsNoTracking()
+                join page in context.WikiPages.AsNoTracking() on value.WikiPageId equals page.Id
+                where value.AttributeDefinitionId == reviewDefinitionId
+                    && page.OwnerId != null
+                select new
+                {
+                    UserId = page.OwnerId!,
+                    PageId = page.Id,
+                    PageTitle = page.Title,
+                    ReviewDateRaw = value.Value
+                })
+                .ToListAsync(cancellationToken);
+
+            foreach (var source in wikiSources)
+            {
+                if (!NotificationDateParser.TryParseToDate(source.ReviewDateRaw, out var dueDate))
+                {
+                    if (!string.IsNullOrWhiteSpace(source.ReviewDateRaw))
+                    {
+                        logger.LogWarning(
+                            "Invalid ReviewDate '{ReviewDateRaw}' for WikiPageId={WikiPageId}.",
+                            source.ReviewDateRaw,
+                            source.PageId);
+                    }
+
+                    continue;
+                }
+
+                candidates.Add(new NotificationSourceCandidate(
+                    source.UserId,
+                    NotificationKind.WikiReviewDate,
+                    source.PageId,
+                    dueDate.Date,
+                    $"Review faellig: {source.PageTitle}",
+                    $"Der Review-Termin ist am {dueDate:dd.MM.yyyy}.",
+                    $"/wiki/view/{source.PageId}"));
+            }
+        }
+
+        var onboardingSources = await context.OnboardingProfiles
+            .AsNoTracking()
+            .Where(profile => profile.AssignedAgentUserId != null && (profile.StartDate != null || profile.TargetDate != null))
+            .Select(profile => new
+            {
+                ProfileId = profile.Id,
+                UserId = profile.AssignedAgentUserId!,
+                profile.FirstName,
+                profile.LastName,
+                profile.FullName,
+                profile.StartDate,
+                profile.TargetDate
+            })
+            .ToListAsync(cancellationToken);
+
+        foreach (var profile in onboardingSources)
+        {
+            var displayName = ResolveOnboardingProfileDisplayName(profile.FirstName, profile.LastName, profile.FullName);
+            if (profile.StartDate.HasValue)
+            {
+                var dueDate = profile.StartDate.Value.Date;
+                candidates.Add(new NotificationSourceCandidate(
+                    profile.UserId,
+                    NotificationKind.OnboardingStartDate,
+                    profile.ProfileId,
+                    dueDate,
+                    $"Onboarding Startdatum: {displayName}",
+                    $"Das Startdatum ist am {dueDate:dd.MM.yyyy}.",
+                    $"/reportdesigner/details/{profile.ProfileId}"));
+            }
+
+            if (profile.TargetDate.HasValue)
+            {
+                var dueDate = profile.TargetDate.Value.Date;
+                candidates.Add(new NotificationSourceCandidate(
+                    profile.UserId,
+                    NotificationKind.OnboardingTargetDate,
+                    profile.ProfileId,
+                    dueDate,
+                    $"Onboarding Zieldatum: {displayName}",
+                    $"Das Zieldatum ist am {dueDate:dd.MM.yyyy}.",
+                    $"/reportdesigner/details/{profile.ProfileId}"));
+            }
+        }
+
+        return candidates;
+    }
+
+    private static bool TryNormalizeUserId(string? rawUserId, out string normalizedUserId)
+    {
+        normalizedUserId = string.Empty;
+        if (string.IsNullOrWhiteSpace(rawUserId))
+        {
+            return false;
+        }
+
+        normalizedUserId = rawUserId.Trim();
+        return normalizedUserId.Length > 0;
+    }
+
+    private async Task<HashSet<string>> ResolveExistingUserIdsAsync(
+        ApplicationDbContext context,
+        IReadOnlyCollection<NotificationSourceCandidate> sourceCandidates,
+        CancellationToken cancellationToken)
+    {
+        var requestedUserIds = sourceCandidates
+            .Select(candidate => candidate.UserId)
+            .Where(userId => TryNormalizeUserId(userId, out _))
+            .Select(userId => userId.Trim())
+            .Distinct()
+            .ToList();
+
+        if (requestedUserIds.Count == 0)
+        {
+            return new HashSet<string>(StringComparer.Ordinal);
+        }
+
+        var existingUsers = await context.Users
+            .AsNoTracking()
+            .Where(user => requestedUserIds.Contains(user.Id))
+            .Select(user => user.Id)
+            .ToListAsync(cancellationToken);
+
+        return existingUsers.ToHashSet(StringComparer.Ordinal);
+    }
+
+    private async Task<int> MarkStaleUnreadNotificationsAsync(
+        ApplicationDbContext context,
+        HashSet<NotificationSourceKey> activeSourceKeys,
+        DateTime utcNow,
+        CancellationToken cancellationToken)
+    {
+        var unreadNotifications = await context.AppNotifications
+            .Where(notification =>
+                !notification.IsRead
+                && ManagedNotificationKinds.Contains(notification.Kind))
+            .ToListAsync(cancellationToken);
+
+        var markedCount = 0;
+        foreach (var notification in unreadNotifications)
+        {
+            var notificationKey = new NotificationSourceKey(
+                notification.UserId,
+                notification.Kind,
+                notification.SourceId,
+                notification.DueDate.Date);
+
+            if (activeSourceKeys.Contains(notificationKey))
             {
                 continue;
             }
 
-            if (!existing.IsArchived)
-            {
-                existing.IsArchived = true;
-                existing.ArchivedAtUtc = nowUtc;
-            }
+            notification.IsRead = true;
+            notification.ReadAtUtc = utcNow;
+            markedCount++;
         }
+
+        return markedCount;
     }
 
-    private static NotificationKey CreateKey(UserNotification notification)
+    private async Task<TimeZoneInfo> ResolveUserTimeZoneAsync(
+        ApplicationDbContext context,
+        string userId,
+        CancellationToken cancellationToken)
     {
-        return new NotificationKey(
-            notification.Type,
-            notification.SourceEntityId,
-            notification.StageDaysBefore,
-            DateOnly.FromDateTime(notification.DueDate));
+        var timeZoneId = await context.Users
+            .AsNoTracking()
+            .Where(user => user.Id == userId)
+            .Select(user => user.TimeZone)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return ResolveTimeZoneInfo(userId, timeZoneId);
     }
 
-    private static NotificationKey CreateKey(ReminderCandidate candidate)
+    private async Task<Dictionary<string, TimeZoneInfo>> ResolveUserTimeZonesAsync(
+        ApplicationDbContext context,
+        IReadOnlyCollection<string> userIds,
+        CancellationToken cancellationToken)
     {
-        return new NotificationKey(
-            candidate.Type,
-            candidate.SourceEntityId,
-            candidate.StageDaysBefore,
-            candidate.DueDate);
-    }
-
-    private static DateTime ToUtcDate(DateOnly date)
-    {
-        return DateTime.SpecifyKind(date.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
-    }
-
-    private static bool IsUniqueConstraintViolation(DbUpdateException exception)
-    {
-        if (exception.InnerException is SqlException sqlException)
+        if (userIds.Count == 0)
         {
-            return sqlException.Number is 2601 or 2627;
+            return new Dictionary<string, TimeZoneInfo>();
         }
 
-        return false;
+        var userTimeZones = await context.Users
+            .AsNoTracking()
+            .Where(user => userIds.Contains(user.Id))
+            .Select(user => new { user.Id, user.TimeZone })
+            .ToListAsync(cancellationToken);
+
+        return userTimeZones
+            .ToDictionary(
+                entry => entry.Id,
+                entry => ResolveTimeZoneInfo(entry.Id, entry.TimeZone));
     }
 
-    private static string? NormalizeUserId(string? userId)
+    private TimeZoneInfo ResolveTimeZoneInfo(string userId, string? timeZoneId)
     {
-        return string.IsNullOrWhiteSpace(userId) ? null : userId.Trim();
+        if (string.IsNullOrWhiteSpace(timeZoneId))
+        {
+            return TimeZoneInfo.Utc;
+        }
+
+        var normalizedTimeZoneId = timeZoneId.Trim();
+
+        if (TryFindTimeZoneInfo(normalizedTimeZoneId, out var resolvedTimeZone))
+        {
+            return resolvedTimeZone;
+        }
+
+        if (TimeZoneInfo.TryConvertIanaIdToWindowsId(normalizedTimeZoneId, out var windowsTimeZoneId)
+            && TryFindTimeZoneInfo(windowsTimeZoneId, out resolvedTimeZone))
+        {
+            return resolvedTimeZone;
+        }
+
+        if (TimeZoneInfo.TryConvertWindowsIdToIanaId(normalizedTimeZoneId, out var ianaTimeZoneId)
+            && TryFindTimeZoneInfo(ianaTimeZoneId, out resolvedTimeZone))
+        {
+            return resolvedTimeZone;
+        }
+
+        logger.LogWarning(
+            "Unknown or invalid time zone '{TimeZoneId}' for user {UserId}. Falling back to UTC.",
+            normalizedTimeZoneId,
+            userId);
+
+        return TimeZoneInfo.Utc;
     }
 
-    private readonly record struct NotificationKey(
-        UserNotificationType Type,
-        int SourceEntityId,
-        int StageDaysBefore,
-        DateOnly DueDate);
+    private static bool TryFindTimeZoneInfo(string timeZoneId, out TimeZoneInfo timeZoneInfo)
+    {
+        try
+        {
+            timeZoneInfo = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
+            return true;
+        }
+        catch (TimeZoneNotFoundException)
+        {
+            timeZoneInfo = TimeZoneInfo.Utc;
+            return false;
+        }
+        catch (InvalidTimeZoneException)
+        {
+            timeZoneInfo = TimeZoneInfo.Utc;
+            return false;
+        }
+    }
+
+    private static DateTime ConvertUtcToLocal(DateTime utcNow, TimeZoneInfo timeZoneInfo)
+    {
+        var normalized = utcNow.Kind == DateTimeKind.Utc
+            ? utcNow
+            : DateTime.SpecifyKind(utcNow, DateTimeKind.Utc);
+
+        return TimeZoneInfo.ConvertTimeFromUtc(normalized, timeZoneInfo);
+    }
+
+    private static string ResolveOnboardingProfileDisplayName(string? firstName, string? lastName, string? fullName)
+    {
+        var normalizedFirstName = firstName?.Trim();
+        var normalizedLastName = lastName?.Trim();
+        var fromSplitName = string.Join(
+            " ",
+            new[] { normalizedFirstName, normalizedLastName }
+                .Where(value => !string.IsNullOrWhiteSpace(value)));
+
+        if (!string.IsNullOrWhiteSpace(fromSplitName))
+        {
+            return fromSplitName;
+        }
+
+        return string.IsNullOrWhiteSpace(fullName)
+            ? "Unbekannt"
+            : fullName.Trim();
+    }
+
+    private readonly record struct NotificationSourceKey(
+        string UserId,
+        NotificationKind Kind,
+        int SourceId,
+        DateTime DueDate);
+
+    private sealed record NotificationSourceCandidate(
+        string UserId,
+        NotificationKind Kind,
+        int SourceId,
+        DateTime DueDate,
+        string Title,
+        string Body,
+        string TargetUrl)
+    {
+        public NotificationSourceKey SourceKey => new(UserId, Kind, SourceId, DueDate.Date);
+    }
+
+    private sealed record DueNotificationCandidate(
+        NotificationSourceCandidate Source,
+        DateTime TriggerDate);
 }

@@ -86,3 +86,127 @@
     flex-grow: 1;
     min-height: 0;
 }
+
+.notification-header-actions {
+    align-items: center;
+    display: flex;
+    gap: 0.5rem;
+}
+
+.notification-bell-button {
+    align-items: center;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 0.4rem;
+    color: inherit;
+    display: inline-flex;
+    font-size: 1.1rem;
+    justify-content: center;
+    line-height: 1;
+    min-height: 2rem;
+    min-width: 2rem;
+    padding: 0.25rem;
+}
+
+.notification-bell-button:hover {
+    background: rgba(13, 110, 253, 0.08);
+    border-color: rgba(13, 110, 253, 0.2);
+}
+
+.notification-bell-button:focus-visible {
+    outline: 2px solid rgba(13, 110, 253, 0.45);
+    outline-offset: 2px;
+}
+
+.notification-dropdown-wrapper {
+    position: relative;
+    z-index: 1101;
+}
+
+.notification-badge {
+    align-items: center;
+    background: #dc3545;
+    border: 2px solid #fff;
+    border-radius: 999px;
+    color: #fff;
+    display: inline-flex;
+    font-size: 0.7rem;
+    font-weight: 700;
+    height: 1.2rem;
+    justify-content: center;
+    min-width: 1.2rem;
+    padding: 0 0.25rem;
+    position: absolute;
+    right: -0.35rem;
+    top: -0.3rem;
+}
+
+.notification-dropdown-menu {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 0.35rem);
+    width: min(26rem, 90vw);
+    z-index: 1102;
+}
+
+.notification-dropdown-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    max-height: 22rem;
+    overflow-y: auto;
+}
+
+.notification-item {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.4rem;
+    cursor: pointer;
+    padding: 0.5rem 0.65rem;
+    text-align: left;
+    width: 100%;
+}
+
+.notification-item:hover {
+    border-color: #c7d2fe;
+    box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.15);
+}
+
+.notification-item.is-unread {
+    background: #f8fbff;
+    border-left: 3px solid #0d6efd;
+}
+
+.notification-item-title {
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.notification-item-body {
+    color: #4b5563;
+    font-size: 0.78rem;
+    margin-top: 0.15rem;
+}
+
+.notification-item-meta {
+    color: #6b7280;
+    font-size: 0.72rem;
+    margin-top: 0.3rem;
+}
+
+.notification-error-state {
+    background: #fff5f5;
+    border: 1px solid #f1aeb5;
+    border-radius: 0.4rem;
+    color: #842029;
+}
+
+.notification-dropdown-backdrop {
+    background: transparent;
+    bottom: 0;
+    left: 0;
+    position: fixed;
+    right: 0;
+    top: 0;
+    z-index: 1100;
+}

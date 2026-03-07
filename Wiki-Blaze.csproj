@@ -8,75 +8,220 @@
     <TypeScriptSourceMap>False</TypeScriptSourceMap>
   </PropertyGroup>
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net8.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UserSecretsId>aspnet-Wiki_Blaze-adc61716-0a08-4a8a-9b63-7320dd731198</UserSecretsId>
     <RootNamespace>Wiki_Blaze</RootNamespace>
     <AssemblyName>$(AssemblyName.Replace(' ', '_'))</AssemblyName>
-    <DefaultItemExcludes>$(DefaultItemExcludes);Onboarding_modul\**\*</DefaultItemExcludes>
-    <ApplicationIcon>orbit.ico</ApplicationIcon>
-    <PublishAot>False</PublishAot>
-    <SignAssembly>False</SignAssembly>
-    <Copyright></Copyright>
-    <Description>Knowledge-Base und Benutzermanagement</Description>
-    <PackageIcon>calf_germany_logo.jpg</PackageIcon>
-    <PackAsTool>False</PackAsTool>
-    <FileVersion></FileVersion>
-    <RunAnalyzersDuringLiveAnalysis>True</RunAnalyzersDuringLiveAnalysis>
+    <NodeModulesDir>$(ProjectDir)node_modules\</NodeModulesDir>
+    <WwwRootDir>$(ProjectDir)wwwroot\</WwwRootDir>
+    <DefaultItemExcludes>$(DefaultItemExcludes);Onboarding_modul\**\*;Wiki-Blaze.Tests\**\*</DefaultItemExcludes>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+    <GenerateAssemblyInfo>False</GenerateAssemblyInfo>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
+    <GenerateAssemblyInfo>False</GenerateAssemblyInfo>
+  </PropertyGroup>
+
+  <Target Name="DebugEnsureNodeEnv" BeforeTargets="BeforeBuild" Condition=" '$(Configuration)' == 'Debug' ">
+    <!-- Ensure Node.js is installed -->
+    <Exec Command="node --version" ContinueOnError="true">
+      <Output TaskParameter="ExitCode" PropertyName="ErrorCode" />
+    </Exec>
+    <Error Condition="'$(ErrorCode)' != '0'" Text="Node.js is required to build and run this project. To continue, please install Node.js from https://nodejs.org/, and then restart your command prompt or IDE." />
+    <Message Importance="high" Text="Restoring dependencies using 'npm'. This may take several minutes..." />
+    <Exec WorkingDirectory="$(SpaRoot)" Command="npm install" />
+  </Target>
+
+  <Target Name="CopyFilesFromNodeModules" BeforeTargets="Build">
+    <ItemGroup>
+      <StyleFiles Include="$(NodeModulesDir)devextreme-dist\css\dx.fluent.blue.light.css" />
+    </ItemGroup>
+    <Copy SourceFiles="@(StyleFiles)" DestinationFolder="$(WwwRootDir)css\%(RecursiveDir)" SkipUnchangedFiles="true" />
+  </Target>
 
   <ItemGroup>
     <Compile Remove="Components\Pages\Index\Class.cs" />
+    <Compile Remove="Program(Slider).cs" />
     <Compile Remove="contract-management\**" />
     <Compile Remove="Onboarding_modul\**\*.cs" />
+    <RazorComponent Remove="Components\App(Slider).razor" />
+    <RazorComponent Remove="Components\Layout\MainLayout(Slider).razor" />
+    <RazorComponent Remove="Components\Pages\Index\Index(Slider).razor" />
     <RazorComponent Remove="Onboarding_modul\**\*.razor" />
+    <ScopedCssInput Remove="Components\Pages\Index\Index(Slider).razor.css" />
     <ScopedCssInput Remove="Onboarding_modul\**\*.razor.css" />
+    <Content Remove="Components\App(Slider).razor" />
+    <Content Remove="Components\Layout\MainLayout(Slider).razor" />
+    <Content Remove="Components\Pages\Index\Index(Slider).razor" />
+    <Content Remove="Components\Pages\Index\Index(Slider).razor.css" />
     <Content Remove="contract-management\**" />
     <Content Remove="Onboarding_modul\**\*" />
+    <None Remove="Components\Pages\Index\Index(Slider).razor.css" />
     <EmbeddedResource Remove="contract-management\**" />
     <EmbeddedResource Remove="Onboarding_modul\**\*" />
     <None Remove="contract-management\**" />
-
   </ItemGroup>
-
   <ItemGroup>
     <Content Remove="Services\MainLayout.razor" />
   </ItemGroup>
-
   <ItemGroup>
-    <Content Include="orbit.ico" />
+    <Content Include="node_modules\.package-lock.json" />
+    <Content Include="node_modules\devextreme-dist\css\dx.carmine.compact.css" />
+    <Content Include="node_modules\devextreme-dist\css\dx.carmine.css" />
+    <Content Include="node_modules\devextreme-dist\css\dx.common.css" />
+    <Content Include="node_modules\devextreme-dist\css\dx.contrast.compact.css" />
+    <Content Include="node_modules\devextreme-dist\css\dx.contrast.css" />
+    <Content Include="node_modules\devextreme-dist\css\dx.dark.compact.css" />
+    <Content Include="node_modules\devextreme-dist\css\dx.dark.css" />
+    <Content Include="node_modules\devextreme-dist\css\dx.darkmoon.compact.css" />
+    <Content Include="node_modules\devextreme-dist\css\dx.darkmoon.css" />
+    <Content Include="node_modules\devextreme-dist\css\dx.darkviolet.compact.css" />
+    <Content Include="node_modules\devextreme-dist\css\dx.darkviolet.css" />
+    <Content Include="node_modules\devextreme-dist\css\dx.fluent.blue.dark.compact.css" />
+    <Content Include="node_modules\devextreme-dist\css\dx.fluent.blue.dark.css" />
+    <Content Include="node_modules\devextreme-dist\css\dx.fluent.blue.light.compact.css" />
+    <Content Include="node_modules\devextreme-dist\css\dx.fluent.blue.light.css" />
+    <Content Include="node_modules\devextreme-dist\css\dx.fluent.saas.dark.compact.css" />
+    <Content Include="node_modules\devextreme-dist\css\dx.fluent.saas.dark.css" />
+    <Content Include="node_modules\devextreme-dist\css\dx.fluent.saas.light.compact.css" />
+    <Content Include="node_modules\devextreme-dist\css\dx.fluent.saas.light.css" />
+    <Content Include="node_modules\devextreme-dist\css\dx.greenmist.compact.css" />
+    <Content Include="node_modules\devextreme-dist\css\dx.greenmist.css" />
+    <Content Include="node_modules\devextreme-dist\css\dx.light.compact.css" />
+    <Content Include="node_modules\devextreme-dist\css\dx.light.css" />
+    <Content Include="node_modules\devextreme-dist\css\dx.material.blue.dark.compact.css" />
+    <Content Include="node_modules\devextreme-dist\css\dx.material.blue.dark.css" />
+    <Content Include="node_modules\devextreme-dist\css\dx.material.blue.light.compact.css" />
+    <Content Include="node_modules\devextreme-dist\css\dx.material.blue.light.css" />
+    <Content Include="node_modules\devextreme-dist\css\dx.material.lime.dark.compact.css" />
+    <Content Include="node_modules\devextreme-dist\css\dx.material.lime.dark.css" />
+    <Content Include="node_modules\devextreme-dist\css\dx.material.lime.light.compact.css" />
+    <Content Include="node_modules\devextreme-dist\css\dx.material.lime.light.css" />
+    <Content Include="node_modules\devextreme-dist\css\dx.material.orange.dark.compact.css" />
+    <Content Include="node_modules\devextreme-dist\css\dx.material.orange.dark.css" />
+    <Content Include="node_modules\devextreme-dist\css\dx.material.orange.light.compact.css" />
+    <Content Include="node_modules\devextreme-dist\css\dx.material.orange.light.css" />
+    <Content Include="node_modules\devextreme-dist\css\dx.material.purple.dark.compact.css" />
+    <Content Include="node_modules\devextreme-dist\css\dx.material.purple.dark.css" />
+    <Content Include="node_modules\devextreme-dist\css\dx.material.purple.light.compact.css" />
+    <Content Include="node_modules\devextreme-dist\css\dx.material.purple.light.css" />
+    <Content Include="node_modules\devextreme-dist\css\dx.material.teal.dark.compact.css" />
+    <Content Include="node_modules\devextreme-dist\css\dx.material.teal.dark.css" />
+    <Content Include="node_modules\devextreme-dist\css\dx.material.teal.light.compact.css" />
+    <Content Include="node_modules\devextreme-dist\css\dx.material.teal.light.css" />
+    <Content Include="node_modules\devextreme-dist\css\dx.softblue.compact.css" />
+    <Content Include="node_modules\devextreme-dist\css\dx.softblue.css" />
+    <Content Include="node_modules\devextreme-dist\css\fonts\Roboto-300.ttf" />
+    <Content Include="node_modules\devextreme-dist\css\fonts\Roboto-300.woff" />
+    <Content Include="node_modules\devextreme-dist\css\fonts\Roboto-400.ttf" />
+    <Content Include="node_modules\devextreme-dist\css\fonts\Roboto-400.woff" />
+    <Content Include="node_modules\devextreme-dist\css\fonts\Roboto-500.ttf" />
+    <Content Include="node_modules\devextreme-dist\css\fonts\Roboto-500.woff" />
+    <Content Include="node_modules\devextreme-dist\css\fonts\Roboto-700.ttf" />
+    <Content Include="node_modules\devextreme-dist\css\fonts\Roboto-700.woff" />
+    <Content Include="node_modules\devextreme-dist\css\icons\dxicons.ttf" />
+    <Content Include="node_modules\devextreme-dist\css\icons\dxicons.woff" />
+    <Content Include="node_modules\devextreme-dist\css\icons\dxiconsfluent.ttf" />
+    <Content Include="node_modules\devextreme-dist\css\icons\dxiconsfluent.woff" />
+    <Content Include="node_modules\devextreme-dist\css\icons\dxiconsmaterial.ttf" />
+    <Content Include="node_modules\devextreme-dist\css\icons\dxiconsmaterial.woff" />
+    <Content Include="node_modules\devextreme-dist\package.json" />
+    <Content Include="node_modules\devextreme-dist\ts\NOTICE.txt" />
   </ItemGroup>
-
   <ItemGroup>
+    <PackageReference Include="DevExpress.AspNetCore.ProjectTemplates" Version="25.2.3" />
     <PackageReference Include="DevExpress.AspNetCore.Reporting" Version="25.2.*" />
     <PackageReference Include="DevExpress.Blazor" Version="25.2.*" />
     <PackageReference Include="DevExpress.Blazor.PdfViewer" Version="25.2.*" />
     <PackageReference Include="DevExpress.Blazor.PivotTable" Version="25.2.*" />
+    <PackageReference Include="DevExpress.Blazor.ProjectTemplates" Version="25.2.3" />
     <PackageReference Include="DevExpress.Blazor.Reporting.JSBasedControls" Version="25.2.*" />
     <PackageReference Include="DevExpress.Blazor.Reporting.Viewer" Version="25.2.*" />
     <PackageReference Include="DevExpress.Blazor.RichEdit" Version="25.2.*" />
     <PackageReference Include="DevExpress.Drawing.Skia" Version="25.2.*" />
     <PackageReference Include="DevExpress.Pdf.SkiaRenderer" Version="25.2.*" />
-
     <PackageReference Include="Microsoft.AspNetCore.Diagnostics.EntityFrameworkCore" Version="8.0.18" />
     <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="8.0.18" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="8.0.18" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="8.0.18" />
     <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.2" />
   </ItemGroup>
-
   <ItemGroup>
     <EmbeddedResource Include="Documents\Example.docx" />
   </ItemGroup>
-
   <ItemGroup>
     <EmbeddedResource Include="Documents\Invoice.pdf" />
   </ItemGroup>
-
   <ItemGroup>
     <Folder Include="Data\Migrations\" />
     <Folder Include="Migrations\" />
+    <None Include="BlazorSlider.csproj" />
+    <None Include="node_modules\devextreme-dist\css\fonts\Roboto-300.woff2" />
+    <None Include="node_modules\devextreme-dist\css\fonts\Roboto-400.woff2" />
+    <None Include="node_modules\devextreme-dist\css\fonts\Roboto-500.woff2" />
+    <None Include="node_modules\devextreme-dist\css\fonts\Roboto-700.woff2" />
+    <None Include="node_modules\devextreme-dist\css\icons\dxicons.woff2" />
+    <None Include="node_modules\devextreme-dist\css\icons\dxiconsfluent.woff2" />
+    <None Include="node_modules\devextreme-dist\css\icons\dxiconsmaterial.woff2" />
+    <None Include="node_modules\devextreme-dist\js\dx.ai-integration.debug.js" />
+    <None Include="node_modules\devextreme-dist\js\dx.ai-integration.js" />
+    <None Include="node_modules\devextreme-dist\js\dx.all.debug.js" />
+    <None Include="node_modules\devextreme-dist\js\dx.all.js" />
+    <None Include="node_modules\devextreme-dist\js\dx.aspnet.data.js" />
+    <None Include="node_modules\devextreme-dist\js\dx.aspnet.mvc.js" />
+    <None Include="node_modules\devextreme-dist\js\FileSaver.js" />
+    <None Include="node_modules\devextreme-dist\js\FileSaver.min.js" />
+    <None Include="node_modules\devextreme-dist\js\localization\dx.messages.ar.js" />
+    <None Include="node_modules\devextreme-dist\js\localization\dx.messages.bg.js" />
+    <None Include="node_modules\devextreme-dist\js\localization\dx.messages.ca.js" />
+    <None Include="node_modules\devextreme-dist\js\localization\dx.messages.cs.js" />
+    <None Include="node_modules\devextreme-dist\js\localization\dx.messages.da.js" />
+    <None Include="node_modules\devextreme-dist\js\localization\dx.messages.de.js" />
+    <None Include="node_modules\devextreme-dist\js\localization\dx.messages.el.js" />
+    <None Include="node_modules\devextreme-dist\js\localization\dx.messages.en.js" />
+    <None Include="node_modules\devextreme-dist\js\localization\dx.messages.es.js" />
+    <None Include="node_modules\devextreme-dist\js\localization\dx.messages.fa.js" />
+    <None Include="node_modules\devextreme-dist\js\localization\dx.messages.fi.js" />
+    <None Include="node_modules\devextreme-dist\js\localization\dx.messages.fr.js" />
+    <None Include="node_modules\devextreme-dist\js\localization\dx.messages.hu.js" />
+    <None Include="node_modules\devextreme-dist\js\localization\dx.messages.it.js" />
+    <None Include="node_modules\devextreme-dist\js\localization\dx.messages.ja.js" />
+    <None Include="node_modules\devextreme-dist\js\localization\dx.messages.lt.js" />
+    <None Include="node_modules\devextreme-dist\js\localization\dx.messages.lv.js" />
+    <None Include="node_modules\devextreme-dist\js\localization\dx.messages.nb.js" />
+    <None Include="node_modules\devextreme-dist\js\localization\dx.messages.nl.js" />
+    <None Include="node_modules\devextreme-dist\js\localization\dx.messages.pl.js" />
+    <None Include="node_modules\devextreme-dist\js\localization\dx.messages.pt.js" />
+    <None Include="node_modules\devextreme-dist\js\localization\dx.messages.ro.js" />
+    <None Include="node_modules\devextreme-dist\js\localization\dx.messages.ru.js" />
+    <None Include="node_modules\devextreme-dist\js\localization\dx.messages.sl.js" />
+    <None Include="node_modules\devextreme-dist\js\localization\dx.messages.sv.js" />
+    <None Include="node_modules\devextreme-dist\js\localization\dx.messages.tr.js" />
+    <None Include="node_modules\devextreme-dist\js\localization\dx.messages.uk.js" />
+    <None Include="node_modules\devextreme-dist\js\localization\dx.messages.vi.js" />
+    <None Include="node_modules\devextreme-dist\js\localization\dx.messages.zh-tw.js" />
+    <None Include="node_modules\devextreme-dist\js\localization\dx.messages.zh.js" />
+    <None Include="node_modules\devextreme-dist\js\vectormap-data\africa.js" />
+    <None Include="node_modules\devextreme-dist\js\vectormap-data\canada.js" />
+    <None Include="node_modules\devextreme-dist\js\vectormap-data\eurasia.js" />
+    <None Include="node_modules\devextreme-dist\js\vectormap-data\europe.js" />
+    <None Include="node_modules\devextreme-dist\js\vectormap-data\usa.js" />
+    <None Include="node_modules\devextreme-dist\js\vectormap-data\world.js" />
+    <None Include="node_modules\devextreme-dist\js\vectormap-utils\dx.vectormaputils.debug.js" />
+    <None Include="node_modules\devextreme-dist\js\vectormap-utils\dx.vectormaputils.js" />
+    <None Include="node_modules\devextreme-dist\js\vectormap-utils\dx.vectormaputils.node.js" />
+    <None Include="node_modules\devextreme-dist\LICENSE.md" />
+    <PackageReference Include="DevExtreme.AspNet.Core" Version="25.2.3" />
+    <PackageReference Include="Microsoft.TypeScript.MSBuild" Version="5.9.3">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+  <ItemGroup>
+    <TypeScriptCompile Include="node_modules\devextreme-dist\ts\dx.all.d.ts" />
   </ItemGroup>
 
   <ItemGroup>

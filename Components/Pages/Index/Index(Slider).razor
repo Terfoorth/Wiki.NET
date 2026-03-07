@@ -1,0 +1,28 @@
+﻿@page "/"
+@rendermode InteractiveServer
+
+@using BlazorSlider.Components.Slider
+
+<div>
+    <DxFormLayout CssClass="slider-fl" ItemCaptionAlignment="ItemCaptionAlignment.All">
+        <DxFormLayoutGroup Caption="Process Value Changes" ColSpanXs="12">
+            <Items>
+                <DxFormLayoutItem ColSpanXs="12" Caption="On handle movement">
+                    <DxSlider @bind-Value="SliderValue" MinValue="0" MaxValue="100"
+                              ValueChangeMode="SliderValueChangeMode.OnHandleMove" />
+                </DxFormLayoutItem>
+                <DxFormLayoutItem ColSpanXs="12" Caption="On handle release">
+                    <DxSlider @bind-Value="SliderValue" MinValue="0" MaxValue="100"
+                              ValueChangeMode="SliderValueChangeMode.OnHandleRelease" />
+                </DxFormLayoutItem>
+                <DxFormLayoutItem ColSpanXs="12" Caption="Slider value">
+                    <DxSpinEdit @bind-Value="SliderValue" />
+                </DxFormLayoutItem>
+            </Items>
+        </DxFormLayoutGroup>
+    </DxFormLayout>
+</div>
+
+@code{
+    double SliderValue { get; set; } = 15;
+}

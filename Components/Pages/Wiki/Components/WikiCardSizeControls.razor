@@ -1,0 +1,108 @@
+@using Wiki_Blaze.Components.Slider
+
+<div class="wiki-card-size-controls card border-0 shadow-sm mb-3">
+    <div class="card-body py-3">
+        <div class="row g-3">
+            <div class="col-12 col-xl-6">
+                <label class="form-label fw-semibold mb-2" for="@WidthInputId">Kartenbreite (@CardWidthPx px)</label>
+                <div class="d-flex align-items-center gap-2">
+                    <div class="flex-grow-1">
+                        <DxSlider T="int"
+                                  MinValue="@WikiCardSizeSettings.Min"
+                                  MaxValue="@WikiCardSizeSettings.Max"
+                                  Step="1"
+                                  Value="@CardWidthPx"
+                                  ValueChanged="OnCardWidthSliderChanged"
+                                  ValueChangeMode="SliderValueChangeMode.OnHandleMove"
+                                  Enabled="@(!Disabled)">
+                            <DxSliderTooltipSettings T="int"
+                                                     Enabled="true"
+                                                     Position="VerticalEdge.Top"
+                                                     ShowMode="TooltipShowMode.Always" />
+                        </DxSlider>
+                    </div>
+                    <input id="@WidthInputId"
+                           type="number"
+                           class="form-control form-control-sm wiki-card-size-input"
+                           min="@WikiCardSizeSettings.Min"
+                           max="@WikiCardSizeSettings.Max"
+                           step="1"
+                           value="@CardWidthPx"
+                           disabled="@Disabled"
+                           @onchange="OnCardWidthInputChanged" />
+                </div>
+            </div>
+            <div class="col-12 col-xl-6">
+                <label class="form-label fw-semibold mb-2" for="@HeightInputId">Kartenhöhe (@CardHeightPx px)</label>
+                <div class="d-flex align-items-center gap-2">
+                    <div class="flex-grow-1">
+                        <DxSlider T="int"
+                                  MinValue="@WikiCardSizeSettings.Min"
+                                  MaxValue="@WikiCardSizeSettings.Max"
+                                  Step="1"
+                                  Value="@CardHeightPx"
+                                  ValueChanged="OnCardHeightSliderChanged"
+                                  ValueChangeMode="SliderValueChangeMode.OnHandleMove"
+                                  Enabled="@(!Disabled)">
+                            <DxSliderTooltipSettings T="int"
+                                                     Enabled="true"
+                                                     Position="VerticalEdge.Top"
+                                                     ShowMode="TooltipShowMode.Always" />
+                        </DxSlider>
+                    </div>
+                    <input id="@HeightInputId"
+                           type="number"
+                           class="form-control form-control-sm wiki-card-size-input"
+                           min="@WikiCardSizeSettings.Min"
+                           max="@WikiCardSizeSettings.Max"
+                           step="1"
+                           value="@CardHeightPx"
+                           disabled="@Disabled"
+                           @onchange="OnCardHeightInputChanged" />
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public int CardWidthPx { get; set; }
+
+    [Parameter]
+    public EventCallback<int> CardWidthPxChanged { get; set; }
+
+    [Parameter]
+    public int CardHeightPx { get; set; }
+
+    [Parameter]
+    public EventCallback<int> CardHeightPxChanged { get; set; }
+
+    [Parameter]
+    public bool Disabled { get; set; }
+
+    private string WidthInputId { get; } = $"wiki-card-width-{Guid.NewGuid():N}";
+    private string HeightInputId { get; } = $"wiki-card-height-{Guid.NewGuid():N}";
+
+    private Task OnCardWidthSliderChanged(int value)
+        => CardWidthPxChanged.InvokeAsync(WikiCardSizeSettings.Clamp(value));
+
+    private Task OnCardHeightSliderChanged(int value)
+        => CardHeightPxChanged.InvokeAsync(WikiCardSizeSettings.Clamp(value));
+
+    private Task OnCardWidthInputChanged(ChangeEventArgs args)
+        => TryParseAndUpdateAsync(args.Value?.ToString(), CardWidthPxChanged);
+
+    private Task OnCardHeightInputChanged(ChangeEventArgs args)
+        => TryParseAndUpdateAsync(args.Value?.ToString(), CardHeightPxChanged);
+
+    private static Task TryParseAndUpdateAsync(string? rawValue, EventCallback<int> callback)
+    {
+        if (int.TryParse(rawValue, out var parsed))
+        {
+            return callback.InvokeAsync(WikiCardSizeSettings.Clamp(parsed));
+        }
+
+        return Task.CompletedTask;
+    }
+}
