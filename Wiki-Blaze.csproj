@@ -1,4 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup Label="Configuration" Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+    <TypeScriptGeneratesDeclarations>False</TypeScriptGeneratesDeclarations>
+    <TypeScriptSourceMap>False</TypeScriptSourceMap>
+  </PropertyGroup>
+  <PropertyGroup Label="Configuration" Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
+    <TypeScriptGeneratesDeclarations>False</TypeScriptGeneratesDeclarations>
+    <TypeScriptSourceMap>False</TypeScriptSourceMap>
+  </PropertyGroup>
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
@@ -7,6 +15,15 @@
     <RootNamespace>Wiki_Blaze</RootNamespace>
     <AssemblyName>$(AssemblyName.Replace(' ', '_'))</AssemblyName>
     <DefaultItemExcludes>$(DefaultItemExcludes);Onboarding_modul\**\*</DefaultItemExcludes>
+    <ApplicationIcon>orbit.ico</ApplicationIcon>
+    <PublishAot>False</PublishAot>
+    <SignAssembly>False</SignAssembly>
+    <Copyright></Copyright>
+    <Description>Knowledge-Base und Benutzermanagement</Description>
+    <PackageIcon>calf_germany_logo.jpg</PackageIcon>
+    <PackAsTool>False</PackAsTool>
+    <FileVersion></FileVersion>
+    <RunAnalyzersDuringLiveAnalysis>True</RunAnalyzersDuringLiveAnalysis>
   </PropertyGroup>
 
   <ItemGroup>
@@ -25,6 +42,10 @@
 
   <ItemGroup>
     <Content Remove="Services\MainLayout.razor" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="orbit.ico" />
   </ItemGroup>
 
   <ItemGroup>
@@ -56,5 +77,12 @@
   <ItemGroup>
     <Folder Include="Data\Migrations\" />
     <Folder Include="Migrations\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\..\..\Pictures\calf_germany_logo.jpg">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
   </ItemGroup>
 </Project>
