@@ -116,3 +116,106 @@ window.wikiBlaze.downloadFileFromBytes = function (fileName, base64Data, content
     link.click();
     document.body.removeChild(link);
 };
+
+window.wikiBlaze.onboardingGrid = (function () {
+    const hostHandlers = new Map();
+    const rowAttributeName = "data-onboarding-visible-index";
+
+    function getHostElement(hostId) {
+        if (!hostId || typeof hostId !== "string") {
+            return null;
+        }
+
+        return document.getElementById(hostId);
+    }
+
+    function tryGetVisibleIndex(target) {
+        if (!(target instanceof Element)) {
+            return null;
+        }
+
+        const rowElement = target.closest("[" + rowAttributeName + "]");
+        if (!rowElement) {
+            return null;
+        }
+
+        const visibleIndexRaw = rowElement.getAttribute(rowAttributeName);
+        const visibleIndex = Number.parseInt(visibleIndexRaw ?? "", 10);
+        return Number.isInteger(visibleIndex) ? visibleIndex : null;
+    }
+
+    function isNonDataAreaClick(target) {
+        if (!(target instanceof Element)) {
+            return true;
+        }
+
+        // Ignore clicks on headers and pager controls.
+        return !!target.closest(".dxbl-grid-header, .dxbl-grid-pager");
+    }
+
+    function attach(hostId, dotNetRef) {
+        detach(hostId);
+
+        const host = getHostElement(hostId);
+        if (!host || !dotNetRef) {
+            return false;
+        }
+
+        const clickHandler = function (event) {
+            if (event.button !== 0) {
+                return;
+            }
+
+            if (tryGetVisibleIndex(event.target) !== null) {
+                return;
+            }
+
+            if (isNonDataAreaClick(event.target)) {
+                return;
+            }
+
+            dotNetRef.invokeMethodAsync("HandleGridBlankClick").catch(function () {
+            });
+        };
+
+        const contextMenuHandler = function (event) {
+            const visibleIndex = tryGetVisibleIndex(event.target);
+            if (visibleIndex === null) {
+                return;
+            }
+
+            event.preventDefault();
+            event.stopPropagation();
+
+            dotNetRef.invokeMethodAsync(
+                "HandleGridRowContextMenu",
+                visibleIndex,
+                event.clientX,
+                event.clientY)
+                .catch(function () {
+                });
+        };
+
+        host.addEventListener("click", clickHandler);
+        host.addEventListener("contextmenu", contextMenuHandler);
+        hostHandlers.set(hostId, { host: host, clickHandler: clickHandler, contextMenuHandler: contextMenuHandler });
+
+        return true;
+    }
+
+    function detach(hostId) {
+        const handlers = hostHandlers.get(hostId);
+        if (!handlers) {
+            return;
+        }
+
+        handlers.host.removeEventListener("click", handlers.clickHandler);
+        handlers.host.removeEventListener("contextmenu", handlers.contextMenuHandler);
+        hostHandlers.delete(hostId);
+    }
+
+    return {
+        attach: attach,
+        detach: detach
+    };
+})();
