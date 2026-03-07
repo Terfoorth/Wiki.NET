@@ -165,6 +165,10 @@ namespace Wiki_Blaze.Data
                 .HasDefaultValue(WikiEntryType.Standard)
                 .HasSentinel((WikiEntryType)(-1));
 
+            builder.Entity<WikiAttributeDefinition>()
+                .HasIndex(definition => definition.Name)
+                .IsUnique();
+
             builder.Entity<WikiPageAttributeValue>()
                 .HasIndex(value => new { value.WikiPageId, value.AttributeDefinitionId })
                 .IsUnique();

@@ -360,15 +360,28 @@
         IEnumerable<WikiAttributeDefinition> definitions,
         IEnumerable<WikiPageAttributeValue> values)
     {
-        var valueByDefinitionId = values
-            .GroupBy(value => value.AttributeDefinitionId)
-            .ToDictionary(group => group.Key, group => group.OrderByDescending(value => value.Id).First());
+        var valuesList = values.ToList();
+        var definitionGroups = definitions
+            .Where(definition => !string.Equals(definition.Name, "Owner", StringComparison.OrdinalIgnoreCase))
+            .GroupBy(definition => definition.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(group => new
+            {
+                Definition = group.OrderBy(definition => definition.Id).First(),
+                DefinitionIds = group.Select(definition => definition.Id).ToHashSet()
+            })
+            .OrderBy(group => group.Definition.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
         AttributeEditors.Clear();
 
-        foreach (var definition in definitions.Where(definition => !string.Equals(definition.Name, "Owner", StringComparison.OrdinalIgnoreCase)))
+        foreach (var definitionGroup in definitionGroups)
         {
-            valueByDefinitionId.TryGetValue(definition.Id, out var storedValue);
+            var definition = definitionGroup.Definition;
+            var storedValue = valuesList
+                .Where(value => definitionGroup.DefinitionIds.Contains(value.AttributeDefinitionId))
+                .OrderByDescending(value => value.Id)
+                .FirstOrDefault();
+
             var normalizedStorageValue = NormalizeAttributeValueForStorage(definition.ValueType, storedValue?.Value, out _);
 
             AttributeEditors.Add(new EditableAttributeValue
