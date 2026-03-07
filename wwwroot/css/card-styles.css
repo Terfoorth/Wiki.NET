@@ -1,0 +1,40 @@
+.priority-1 {
+    background-color: #ef7d59;
+}
+
+.priority-2 {
+    background-color: #edc578
+}
+
+.priority-3 {
+    background-color: #86c285
+}
+
+.my-kanban {
+    width: 100%;
+    padding: 2rem;
+}
+
+.card{
+    text-align: end;
+}
+
+.card-priority {
+    position: absolute;
+    top: 10px;
+    bottom: 10px;
+    left: 5px;
+    width: 5px;
+    border-radius: 2px;
+}
+
+.card-subject {
+    padding-bottom: 10px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+
+.card-assignee {
+    opacity: 0.6;
+}

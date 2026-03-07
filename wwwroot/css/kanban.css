@@ -1,0 +1,120 @@
+.dx-card {
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, .12), 0 1px 2px rgba(0, 0, 0, .24);
+    border-radius: 0.3rem;
+    background-color: #fff !important;
+    margin: 0 !important;
+    position: relative;
+    box-sizing: border-box;
+    width: 100%;
+    height: 4.5rem;
+    padding: 1rem 2rem;
+    cursor: pointer;
+    text-align: center;
+}
+
+.dxbl-grid[data-dx-focus-hidden] th.kanban-header-cell:focus-visible {
+    border-top-left-radius: 1rem !important;
+    border-top-right-radius: 1rem !important;
+}
+
+.dxbl-grid[data-dx-focus-hidden] td.kanban-data-cell:focus-visible, .dxbl-grid[data-dx-focus-hidden] td.kanban-data-cell:focus-within {
+    border-bottom-left-radius: 1rem !important;
+    border-bottom-right-radius: 1rem !important;
+}
+
+.kanban-data-cell {
+    border-bottom-left-radius: 1rem !important;
+    border-bottom-right-radius: 1rem !important;
+    background-color: rgba(192, 192, 192, 0.4);
+}
+
+.kanban-header-cell {
+    border-top-left-radius: 1rem !important;
+    border-top-right-radius: 1rem !important;
+    background-color: rgba(192, 192, 192, 0.4) !important;
+}  
+
+.kanban-drag-hint .dxbl-grid-row-drag-hint-drag-anchor {
+    display: none;
+}
+
+.kanban-drag-hint {
+    padding: 0;
+    width: 15rem;
+}
+
+.kanban-drag-anchor > * {
+    pointer-events: none;
+}
+
+.kanban-layout-grid {
+    border: none;
+    height: 30rem;
+}
+
+.kanban-layout-grid > .dxbl-scroll-viewer > .dxbl-scroll-viewer-content > .dxbl-grid-table {
+    border-collapse: separate;
+    border-spacing: 2rem 0px;
+    border: none;
+}
+
+.kanban-layout-grid .dxbl-grid-empty-data-area {
+    padding: 0.5rem;
+}
+
+.kanban-layout-grid > .dxbl-scroll-viewer > .dxbl-scroll-viewer-content > .dxbl-grid-table > tbdoy > tr.dxbl-grid-empty-row > .dxbl-grid-empty-data-area * {
+    display: none !important;
+}
+
+.kanban-layout-grid .dxbl-grid-empty-row {
+    border: none;
+}
+
+.kanban-column-grid {
+    height: 22.5rem;
+    background: transparent;
+    border: none;
+}
+
+.kanban-column-grid .kanban-drag-anchor {
+    padding: 0;
+}
+
+.kanban-column-grid .kanban-drag-anchor + td {
+    padding: 0 !important;
+}
+
+.kanban-column-grid .kanban-drag-anchor + td * {
+    padding: 0 !important;
+}
+
+.kanban-column-grid .dxbl-grid-indent-cell-size {
+    width: 100% !important;
+}
+
+.kanban-column-grid .dxbl-grid-indent-cell-size + col {
+    width: 0px !important;
+}
+
+.kanban-column-grid .dxbl-grid-header-row {
+    display: none;
+}
+
+.kanban-column-grid .dxbl-scroll-viewer {
+    background: transparent !important;
+}
+
+.kanban-column-grid .dxbl-grid-table {
+    border: none !important;
+    border-spacing: 0 1rem;
+    border-collapse: separate;
+}
+
+.kanban-column-grid .dxbl-grid-table tr {
+    background: transparent !important;
+}
+
+.kanban-column-grid .dxbl-grid-table td {
+    background: transparent !important;
+}
