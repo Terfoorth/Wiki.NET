@@ -41,7 +41,6 @@
     <PackageReference Include="DevExpress.Blazor.RichEdit" Version="25.2.*" />
     <PackageReference Include="DevExpress.Drawing.Skia" Version="25.2.*" />
     <PackageReference Include="DevExpress.Pdf.SkiaRenderer" Version="25.2.*" />
-    <PackageReference Include="DevExpress.Web.Bootstrap" Version="25.2.3" />
     <PackageReference Include="Microsoft.AspNetCore.Diagnostics.EntityFrameworkCore" Version="8.0.18" />
     <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="8.0.18" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="8.0.18" />
@@ -57,5 +56,6 @@
   <ItemGroup>
     <Folder Include="Data\Migrations\" />
     <Folder Include="Migrations\" />
+    <PackageReference Include="DevExtreme.AspNet.Core" Version="25.2.3" />
   </ItemGroup>
 </Project>
