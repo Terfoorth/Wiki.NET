@@ -5,6 +5,7 @@
 @inject UserManager<Wiki_Blaze.Data.ApplicationUser> UserManager
 @inject IJSRuntime JsRuntime
 @inject INotificationService NotificationService
+@inject ILogger<MainLayout> Logger
 @using System.Security.Claims
 @using Wiki_Blaze.Data.Entities
 @using Wiki_Blaze.Services
@@ -125,6 +126,7 @@
     private bool preferencesApplied;
     private bool applyingPreferences;
     private bool isDisposed;
+    private bool notificationsInitialized;
 
     private string? currentNotificationUserId;
     private string? pollingNotificationUserId;
@@ -135,19 +137,20 @@
 
     private sealed record EffectivePreferences(string Theme, string Density, string StartPage);
 
-    private static readonly EffectivePreferences DefaultPreferences = new(
-        Wiki_Blaze.Data.ApplicationUser.DefaultThemePreference,
-        Wiki_Blaze.Data.ApplicationUser.DefaultDensityPreference,
-        Wiki_Blaze.Data.ApplicationUser.DefaultStartPage);
-
     protected override void OnInitialized() {
         currentUrl = NavigationManager.ToBaseRelativePath(NavigationManager.Uri);
         NavigationManager.LocationChanged += OnLocationChanged;
         AuthenticationStateProvider.AuthenticationStateChanged += OnAuthenticationStateChanged;
+        _ = InvokeAsync(InitializeNotificationsAsync);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (firstRender)
+        {
+            await InitializeNotificationsAsync();
+        }
+
         if (preferencesApplied || applyingPreferences)
         {
             return;
@@ -169,17 +172,20 @@
         {
             var effectivePreferences = await LoadEffectivePreferencesAsync(authState);
             await ApplyPreferencesToUiAsync(effectivePreferences);
-            preferencesApplied = true;
-            await RefreshNotificationsForCurrentUserAsync(authState);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Failed to apply user preferences in MainLayout.");
         }
         finally
         {
+            preferencesApplied = true;
             applyingPreferences = false;
         }
 
         if (!isDisposed)
         {
-            StateHasChanged();
+            await InvokeAsync(StateHasChanged);
         }
     }
 
@@ -219,7 +225,19 @@
     {
         _ = InvokeAsync(async () =>
         {
-            var authState = await authenticationStateTask;
+            AuthenticationState authState;
+            try
+            {
+                authState = await authenticationStateTask;
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "AuthenticationStateChanged failed in MainLayout.");
+                return;
+            }
+
+            await RefreshNotificationsForCurrentUserAsync(authState);
+            notificationsInitialized = !string.IsNullOrWhiteSpace(currentNotificationUserId);
             preferencesApplied = false;
             await ApplyUserPreferencesAsync(authState);
         });
@@ -228,8 +246,7 @@
     private void OnLocationChanged(object? sender, LocationChangedEventArgs e) {
         currentUrl = NavigationManager.ToBaseRelativePath(e.Location);
         IsNotificationDropdownOpen = false;
-        preferencesApplied = false;
-        StateHasChanged();
+        _ = InvokeAsync(StateHasChanged);
     }
 
     public void Dispose() {
@@ -246,7 +263,8 @@
 
     private async Task ToggleNotificationsAsync()
     {
-        if (string.IsNullOrWhiteSpace(currentNotificationUserId))
+        var userId = await EnsureCurrentNotificationUserIdAsync();
+        if (string.IsNullOrWhiteSpace(userId))
         {
             return;
         }
@@ -254,21 +272,22 @@
         IsNotificationDropdownOpen = !IsNotificationDropdownOpen;
         if (IsNotificationDropdownOpen)
         {
-            await RefreshNotificationsForUserAsync(currentNotificationUserId);
+            await RefreshNotificationsForUserAsync(userId);
         }
     }
 
     private async Task OpenNotificationAsync(UserNotification notification)
     {
-        if (string.IsNullOrWhiteSpace(currentNotificationUserId))
+        var userId = await EnsureCurrentNotificationUserIdAsync();
+        if (string.IsNullOrWhiteSpace(userId))
         {
             return;
         }
 
-        await NotificationService.MarkAsReadAsync(currentNotificationUserId, notification.Id);
+        await NotificationService.MarkAsReadAsync(userId, notification.Id);
         IsNotificationDropdownOpen = false;
 
-        await RefreshNotificationsForUserAsync(currentNotificationUserId);
+        await RefreshNotificationsForUserAsync(userId);
 
         if (!string.IsNullOrWhiteSpace(notification.TargetUrl))
         {
@@ -278,13 +297,14 @@
 
     private async Task MarkAllNotificationsAsReadAsync()
     {
-        if (string.IsNullOrWhiteSpace(currentNotificationUserId))
+        var userId = await EnsureCurrentNotificationUserIdAsync();
+        if (string.IsNullOrWhiteSpace(userId))
         {
             return;
         }
 
-        await NotificationService.MarkAllAsReadAsync(currentNotificationUserId);
-        await RefreshNotificationsForUserAsync(currentNotificationUserId);
+        await NotificationService.MarkAllAsReadAsync(userId);
+        await RefreshNotificationsForUserAsync(userId);
     }
 
     private string GetNotificationBadgeText()
@@ -295,17 +315,8 @@
     private async Task RefreshNotificationsForCurrentUserAsync(AuthenticationState? authState = null, CancellationToken cancellationToken = default)
     {
         var state = authState ?? await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var userId = await ResolveAuthenticatedUserIdAsync(state.User);
 
-        if (state.User.Identity?.IsAuthenticated != true)
-        {
-            currentNotificationUserId = null;
-            notifications = [];
-            IsNotificationDropdownOpen = false;
-            StopNotificationPolling();
-            return;
-        }
-
-        var userId = state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (string.IsNullOrWhiteSpace(userId))
         {
             currentNotificationUserId = null;
@@ -331,9 +342,9 @@
         {
             throw;
         }
-        catch
+        catch (Exception ex)
         {
-            notifications = [];
+            Logger.LogWarning(ex, "Failed to refresh notifications for user {UserId}.", userId);
         }
 
         if (!isDisposed)
@@ -379,6 +390,10 @@
             catch (ObjectDisposedException)
             {
             }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "Notification polling loop stopped unexpectedly for user {UserId}.", userId);
+            }
         });
     }
 
@@ -394,5 +409,58 @@
         notificationPollTimer?.Dispose();
         notificationPollTimer = null;
         pollingNotificationUserId = null;
+    }
+
+    private async Task InitializeNotificationsAsync()
+    {
+        if (notificationsInitialized)
+        {
+            return;
+        }
+
+        await RefreshNotificationsForCurrentUserAsync();
+        notificationsInitialized = !string.IsNullOrWhiteSpace(currentNotificationUserId);
+    }
+
+    private async Task<string?> EnsureCurrentNotificationUserIdAsync()
+    {
+        if (!string.IsNullOrWhiteSpace(currentNotificationUserId))
+        {
+            return currentNotificationUserId;
+        }
+
+        var state = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var userId = await ResolveAuthenticatedUserIdAsync(state.User);
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            return null;
+        }
+
+        currentNotificationUserId = userId;
+        notificationsInitialized = true;
+        EnsureNotificationPolling(userId);
+        return userId;
+    }
+
+    private async Task<string?> ResolveAuthenticatedUserIdAsync(ClaimsPrincipal user)
+    {
+        if (user.Identity?.IsAuthenticated != true)
+        {
+            return null;
+        }
+
+        var userId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            userId = user.FindFirst("sub")?.Value;
+        }
+
+        if (!string.IsNullOrWhiteSpace(userId))
+        {
+            return userId;
+        }
+
+        var applicationUser = await UserManager.GetUserAsync(user);
+        return string.IsNullOrWhiteSpace(applicationUser?.Id) ? null : applicationUser.Id;
     }
 }
