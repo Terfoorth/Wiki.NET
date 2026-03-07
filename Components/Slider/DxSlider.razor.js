@@ -1,9 +1,6 @@
-﻿let updateInvokedByServer = false;
-let serverIsProcessing = false;
-let queuedValue = null;
-
-export async function initializeSlider(element, dotNet, sliderState) {
-    return new DevExpress.ui.dxSlider(element, {
+﻿export async function initializeSlider(element, dotNet, sliderState) {
+    let slider;
+    slider = new DevExpress.ui.dxSlider(element, {
         min: sliderState.minValue,
         max: sliderState.maxValue,
         value: sliderState.value,
@@ -14,28 +11,33 @@ export async function initializeSlider(element, dotNet, sliderState) {
         label: {
             visible: sliderState.labelVisible,
             format(value) {
-                return `${value}%`;
+                return `${value}`;
             },
             position: decapitalize(sliderState.labelPosition)
         },
         tooltip: {
             enabled: sliderState.tooltipEnabled,
             format(value) {
-                return `${value}%`;
+                return `${value}`;
             },
             showMode: decapitalize(sliderState.tooltipShowMode),
             position: decapitalize(sliderState.tooltipPosition)
         },
         onValueChanged({ value }) {
-            if(!updateInvokedByServer) {
-                scheduleServerValueUpdate(dotNet, value);
+            const state = getSliderInteropState(slider);
+            if(!state.updateInvokedByServer) {
+                scheduleServerValueUpdate(dotNet, value, state);
             }
         },
     });
+
+    getSliderInteropState(slider);
+    return slider;
 }
 
 export async function updateStateFromServer(slider, state) {
-    updateInvokedByServer = true;
+    const interopState = getSliderInteropState(slider);
+    interopState.updateInvokedByServer = true;
     slider.option("value", state.value);
     slider.option("min", state.minValue);
     slider.option("max", state.maxValue);
@@ -43,30 +45,42 @@ export async function updateStateFromServer(slider, state) {
     slider.option("showRange", state.showRange);
     slider.option("disabled", !state.enabled);
     slider.option("valueChangeMode", decapitalize(state.valueChangeMode));
-    updateInvokedByServer = false;
+    interopState.updateInvokedByServer = false;
 }
 
 function decapitalize(word) {
     return word[0].toLowerCase() + word.slice(1);
 }
 
-async function scheduleServerValueUpdate(dotNetRef, value) {
-    if(serverIsProcessing) {
-        queuedValue = value;
+async function scheduleServerValueUpdate(dotNetRef, value, state) {
+    if(state.serverIsProcessing) {
+        state.queuedValue = value;
         return;
     }
 
-    serverIsProcessing = true;
+    state.serverIsProcessing = true;
 
     try {
         await dotNetRef.invokeMethodAsync("UpdateValueFromClient", value);
     }
     finally {
-        serverIsProcessing = false;
-        if(queuedValue !== null) {
-            const v = queuedValue;
-            queuedValue = null;
-            scheduleServerValueUpdate(dotNetRef, v);
+        state.serverIsProcessing = false;
+        if(state.queuedValue !== null) {
+            const queuedValue = state.queuedValue;
+            state.queuedValue = null;
+            scheduleServerValueUpdate(dotNetRef, queuedValue, state);
         }
     }
+}
+
+function getSliderInteropState(slider) {
+    if(!slider.__wikiBlazeInteropState) {
+        slider.__wikiBlazeInteropState = {
+            updateInvokedByServer: false,
+            serverIsProcessing: false,
+            queuedValue: null
+        };
+    }
+
+    return slider.__wikiBlazeInteropState;
 }

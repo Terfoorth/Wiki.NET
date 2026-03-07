@@ -1,4 +1,5 @@
-﻿@inject IJSRuntime JS
+﻿@using Wiki_Blaze.Components.Slider
+@inject IJSRuntime JS
 @attribute [CascadingTypeParameter(nameof(T))]
 @typeparam T where T : struct
 @implements IAsyncDisposable
@@ -65,7 +66,6 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender) {
         if(firstRender) {
-            await JS.LoadDxResources();
             clientModule = await LoadSliderModule();
             clientSlider = await LoadClientInstance(clientModule);
         }

@@ -1,4 +1,5 @@
-﻿@typeparam T where T : struct
+﻿@using Wiki_Blaze.Components.Slider
+@typeparam T where T : struct
 @code {
     [CascadingParameter]
     private SliderState<T>? SliderState { get; set; }
@@ -17,3 +18,4 @@
         SliderState.LabelPosition = Position;
     }
 }
+

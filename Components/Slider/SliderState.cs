@@ -1,7 +1,7 @@
 ﻿using DevExpress.Blazor;
 using System.Text.Json.Serialization;
 
-namespace BlazorSlider.Components.Slider;
+namespace Wiki_Blaze.Components.Slider;
 
 public enum SliderValueChangeMode { OnHandleMove, OnHandleRelease }
 
@@ -25,3 +25,4 @@ public class SliderState<T> where T : struct {
     public TooltipShowMode TooltipShowMode { get; set; }
     public bool TooltipEnabled { get; set; }
 }
+
