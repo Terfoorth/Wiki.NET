@@ -1,0 +1,316 @@
+@rendermode InteractiveServer
+@implements IDisposable
+@inject NavigationManager NavigationManager
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject INotificationService NotificationService
+@inject IUserIdResolver UserIdResolver
+@inject ILogger<NotificationMenu> Logger
+@using Wiki_Blaze.Data.Entities
+@using Wiki_Blaze.Services
+
+<div class="notification-menu">
+    <DxButton Text="Status Updates"
+              RenderStyle="ButtonRenderStyle.Secondary"
+              RenderStyleMode="ButtonRenderStyleMode.Text"
+              IconCssClass="oi oi-bell"
+              Click="ToggleNotificationsAsync" />
+    @if (UnreadNotificationCount > 0)
+    {
+        <span class="notification-badge">@GetNotificationBadgeText()</span>
+    }
+    @if (IsNotificationDropdownOpen)
+    {
+        <div class="notification-dropdown shadow-sm">
+            <div class="notification-dropdown-header">
+                <span class="fw-semibold">Benachrichtigungen</span>
+                <button type="button"
+                        class="btn btn-link btn-sm p-0"
+                        @onclick="MarkAllNotificationsAsReadAsync"
+                        disabled="@(UnreadNotificationCount == 0)">
+                    Alle als gelesen
+                </button>
+            </div>
+            @if (VisibleNotifications.Count == 0)
+            {
+                <div class="notification-empty text-muted">Keine offenen Benachrichtigungen.</div>
+            }
+            else
+            {
+                foreach (var notification in VisibleNotifications)
+                {
+                    <button type="button"
+                            class="notification-item @(notification.IsRead ? "notification-item-read" : "notification-item-unread")"
+                            @onclick="() => OpenNotificationAsync(notification)">
+                        <div class="notification-item-title">@notification.Title</div>
+                        <div class="notification-item-message">@notification.Message</div>
+                        <div class="notification-item-date">@notification.DueDate.ToString("dd.MM.yyyy")</div>
+                    </button>
+                }
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private bool isDisposed;
+    private bool notificationsInitialized;
+    private string? currentNotificationUserId;
+    private string? pollingNotificationUserId;
+    private List<UserNotification> notifications = [];
+    private bool IsNotificationDropdownOpen;
+    private PeriodicTimer? notificationPollTimer;
+    private CancellationTokenSource? notificationPollCts;
+
+    protected override void OnInitialized()
+    {
+        NavigationManager.LocationChanged += OnLocationChanged;
+        AuthenticationStateProvider.AuthenticationStateChanged += OnAuthenticationStateChanged;
+        _ = InvokeAsync(InitializeNotificationsAsync);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        await InitializeNotificationsAsync();
+    }
+
+    public void Dispose()
+    {
+        isDisposed = true;
+        NavigationManager.LocationChanged -= OnLocationChanged;
+        AuthenticationStateProvider.AuthenticationStateChanged -= OnAuthenticationStateChanged;
+        StopNotificationPolling();
+    }
+
+    private int UnreadNotificationCount => notifications.Count(notification => !notification.IsRead);
+
+    private IReadOnlyList<UserNotification> VisibleNotifications => notifications.Take(20).ToList();
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        IsNotificationDropdownOpen = false;
+        _ = InvokeAsync(async () =>
+        {
+            if (!string.IsNullOrWhiteSpace(currentNotificationUserId))
+            {
+                await RefreshNotificationsForUserAsync(currentNotificationUserId);
+            }
+            else
+            {
+                await InvokeAsync(StateHasChanged);
+            }
+        });
+    }
+
+    private void OnAuthenticationStateChanged(Task<AuthenticationState> authenticationStateTask)
+    {
+        _ = InvokeAsync(async () =>
+        {
+            AuthenticationState authState;
+            try
+            {
+                authState = await authenticationStateTask;
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "AuthenticationStateChanged failed in NotificationMenu.");
+                return;
+            }
+
+            currentNotificationUserId = UserIdResolver.ResolveCurrentUserId(authState.User);
+            IsNotificationDropdownOpen = false;
+            await RefreshNotificationsForCurrentUserAsync(authState);
+            notificationsInitialized = !string.IsNullOrWhiteSpace(currentNotificationUserId);
+        });
+    }
+
+    private async Task ToggleNotificationsAsync()
+    {
+        var userId = await EnsureCurrentNotificationUserIdAsync();
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            return;
+        }
+
+        IsNotificationDropdownOpen = !IsNotificationDropdownOpen;
+        if (IsNotificationDropdownOpen)
+        {
+            await RefreshNotificationsForUserAsync(userId);
+        }
+        else
+        {
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task OpenNotificationAsync(UserNotification notification)
+    {
+        var userId = await EnsureCurrentNotificationUserIdAsync();
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            return;
+        }
+
+        await NotificationService.MarkAsReadAsync(userId, notification.Id);
+        IsNotificationDropdownOpen = false;
+
+        await RefreshNotificationsForUserAsync(userId);
+
+        if (!string.IsNullOrWhiteSpace(notification.TargetUrl))
+        {
+            NavigationManager.NavigateTo(notification.TargetUrl);
+        }
+    }
+
+    private async Task MarkAllNotificationsAsReadAsync()
+    {
+        var userId = await EnsureCurrentNotificationUserIdAsync();
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            return;
+        }
+
+        await NotificationService.MarkAllAsReadAsync(userId);
+        await RefreshNotificationsForUserAsync(userId);
+    }
+
+    private string GetNotificationBadgeText()
+    {
+        return UnreadNotificationCount > 99 ? "99+" : UnreadNotificationCount.ToString();
+    }
+
+    private async Task InitializeNotificationsAsync()
+    {
+        if (notificationsInitialized)
+        {
+            return;
+        }
+
+        await RefreshNotificationsForCurrentUserAsync();
+        notificationsInitialized = !string.IsNullOrWhiteSpace(currentNotificationUserId);
+    }
+
+    private async Task RefreshNotificationsForCurrentUserAsync(AuthenticationState? authState = null, CancellationToken cancellationToken = default)
+    {
+        var state = authState ?? await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var userId = UserIdResolver.ResolveCurrentUserId(state.User);
+
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            currentNotificationUserId = null;
+            notifications = [];
+            IsNotificationDropdownOpen = false;
+            StopNotificationPolling();
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        currentNotificationUserId = userId;
+        await RefreshNotificationsForUserAsync(userId, cancellationToken);
+        EnsureNotificationPolling(userId);
+    }
+
+    private async Task<string?> EnsureCurrentNotificationUserIdAsync()
+    {
+        if (!string.IsNullOrWhiteSpace(currentNotificationUserId))
+        {
+            return currentNotificationUserId;
+        }
+
+        var state = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var userId = UserIdResolver.ResolveCurrentUserId(state.User);
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            return null;
+        }
+
+        currentNotificationUserId = userId;
+        notificationsInitialized = true;
+        EnsureNotificationPolling(userId);
+        return userId;
+    }
+
+    private async Task RefreshNotificationsForUserAsync(string userId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var refreshedNotifications = await NotificationService.RefreshAndGetAsync(userId, cancellationToken);
+            notifications = refreshedNotifications.ToList();
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Failed to refresh notifications for user {UserId}.", userId);
+        }
+
+        if (!isDisposed)
+        {
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void EnsureNotificationPolling(string userId)
+    {
+        if (notificationPollTimer is not null
+            && string.Equals(pollingNotificationUserId, userId, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        StopNotificationPolling();
+
+        pollingNotificationUserId = userId;
+        notificationPollCts = new CancellationTokenSource();
+        notificationPollTimer = new PeriodicTimer(TimeSpan.FromSeconds(60));
+        var pollCts = notificationPollCts;
+        var pollTimer = notificationPollTimer;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                while (await pollTimer.WaitForNextTickAsync(pollCts.Token))
+                {
+                    if (string.IsNullOrWhiteSpace(currentNotificationUserId)
+                        || !string.Equals(currentNotificationUserId, userId, StringComparison.Ordinal))
+                    {
+                        break;
+                    }
+
+                    await RefreshNotificationsForUserAsync(userId, pollCts.Token);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "Notification polling loop stopped unexpectedly for user {UserId}.", userId);
+            }
+        });
+    }
+
+    private void StopNotificationPolling()
+    {
+        if (notificationPollCts is not null)
+        {
+            notificationPollCts.Cancel();
+            notificationPollCts.Dispose();
+            notificationPollCts = null;
+        }
+
+        notificationPollTimer?.Dispose();
+        notificationPollTimer = null;
+        pollingNotificationUserId = null;
+    }
+}
