@@ -90,6 +90,18 @@ builder.Services.AddScoped<IWikiFavoriteGroupService, WikiFavoriteGroupService>(
 builder.Services.AddScoped<IUserIdResolver, UserIdResolver>();
 builder.Services.AddScoped<IOnboardingService, OnboardingService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
+builder.Services.AddScoped<IReminderCandidateProvider, ReminderCandidateProvider>();
+builder.Services.AddSingleton<IReminderEmailSender, SmtpReminderEmailSender>();
+builder.Services.AddScoped<IReminderSettingsAdminService, ReminderSettingsAdminService>();
+builder.Services.AddHostedService<ReminderEmailDispatchBackgroundService>();
+
+builder.Services.AddOptions<ReminderEmailOptions>()
+    .Bind(builder.Configuration.GetSection(ReminderEmailOptions.SectionName))
+    .ValidateDataAnnotations();
+
+builder.Services.AddOptions<ReminderSmtpOptions>()
+    .Bind(builder.Configuration.GetSection(ReminderSmtpOptions.SectionName))
+    .ValidateDataAnnotations();
 
 builder.Services.AddSingleton<IEmailSender<ApplicationUser>, IdentityNoOpEmailSender>();
 

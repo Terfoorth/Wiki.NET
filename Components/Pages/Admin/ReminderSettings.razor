@@ -1,0 +1,232 @@
+@page "/admin/reminder-settings"
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Authorization
+@using System.Security.Claims
+@using Wiki_Blaze.Services
+@attribute [Authorize(Roles = "Admin")]
+@inject IReminderSettingsAdminService ReminderSettingsAdminService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<PageTitle>Reminder Settings</PageTitle>
+
+<div class="block-content block-content-wide">
+    <h2>Reminder and SMTP settings</h2>
+    <p class="text-muted">
+        Edit reminder delivery and SMTP settings stored in appsettings.json.
+        Password values remain masked by default.
+    </p>
+
+    @if (isLoading)
+    {
+        <p>Loading settings...</p>
+    }
+    else
+    {
+        <EditForm Model="Input" OnValidSubmit="SaveAsync">
+            <DataAnnotationsValidator />
+            <ValidationSummary class="text-danger" />
+
+            <div class="card p-3 mb-3">
+                <h5 class="mb-3">Reminder schedule</h5>
+                <div class="row g-2">
+                    <div class="col-md-4 d-flex align-items-center">
+                        <div class="form-check">
+                            <input id="enabled" class="form-check-input" type="checkbox" @bind="Input.Enabled" />
+                            <label class="form-check-label" for="enabled">Enable reminder emails</label>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Local send hour (0-23)</label>
+                        <input class="form-control" type="number" min="0" max="23" @bind="Input.SendHourLocal" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Base URL</label>
+                        <input class="form-control" @bind="Input.BaseUrl" />
+                    </div>
+                </div>
+            </div>
+
+            <div class="card p-3 mb-3">
+                <h5 class="mb-3">SMTP relay</h5>
+                <div class="row g-2">
+                    <div class="col-md-4">
+                        <label class="form-label">Host</label>
+                        <input class="form-control" @bind="Input.Host" />
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Port</label>
+                        <input class="form-control" type="number" min="1" max="65535" @bind="Input.Port" />
+                    </div>
+                    <div class="col-md-2 d-flex align-items-center">
+                        <div class="form-check mt-3">
+                            <input id="useSsl" class="form-check-input" type="checkbox" @bind="Input.UseSsl" />
+                            <label class="form-check-label" for="useSsl">Use SSL</label>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Username</label>
+                        <input class="form-control" @bind="Input.Username" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">From address</label>
+                        <input class="form-control" @bind="Input.FromAddress" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">From name</label>
+                        <input class="form-control" @bind="Input.FromName" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">SMTP password</label>
+                        @if (passwordConfigured && !showPasswordEditor)
+                        {
+                            <div class="d-flex gap-2 align-items-center">
+                                <input class="form-control" value="********" type="password" disabled />
+                                <button type="button" class="btn btn-outline-secondary" @onclick="() => showPasswordEditor = true">Change</button>
+                            </div>
+                        }
+                        else
+                        {
+                            <input class="form-control" type="password" @bind="Input.NewPassword" placeholder="Enter new password" />
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary" disabled="@isSaving">Save settings</button>
+                @if (isSaving)
+                {
+                    <span class="text-muted align-self-center">Saving...</span>
+                }
+            </div>
+        </EditForm>
+
+        @if (!string.IsNullOrWhiteSpace(message))
+        {
+            <div class="alert alert-info mt-3">@message</div>
+        }
+
+        @if (!string.IsNullOrWhiteSpace(errorMessage))
+        {
+            <div class="alert alert-danger mt-3">@errorMessage</div>
+        }
+    }
+</div>
+
+@code {
+    private bool isLoading = true;
+    private bool isSaving;
+    private bool passwordConfigured;
+    private bool showPasswordEditor;
+    private string? message;
+    private string? errorMessage;
+    private InputModel Input { get; set; } = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        isLoading = true;
+        message = null;
+        errorMessage = null;
+
+        try
+        {
+            var adminUserId = await GetCurrentUserIdAsync();
+            var settings = await ReminderSettingsAdminService.GetAsync(adminUserId);
+            Input = new InputModel
+            {
+                Enabled = settings.Enabled,
+                SendHourLocal = settings.SendHourLocal,
+                BaseUrl = settings.BaseUrl,
+                Host = settings.Host,
+                Port = settings.Port,
+                UseSsl = settings.UseSsl,
+                Username = settings.Username,
+                FromAddress = settings.FromAddress,
+                FromName = settings.FromName
+            };
+            passwordConfigured = settings.PasswordConfigured;
+            showPasswordEditor = !passwordConfigured;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        isSaving = true;
+        message = null;
+        errorMessage = null;
+
+        try
+        {
+            var adminUserId = await GetCurrentUserIdAsync();
+            await ReminderSettingsAdminService.SaveAsync(adminUserId, new ReminderAdminSettingsUpdate
+            {
+                Enabled = Input.Enabled,
+                SendHourLocal = Input.SendHourLocal,
+                BaseUrl = Input.BaseUrl,
+                Host = Input.Host,
+                Port = Input.Port,
+                UseSsl = Input.UseSsl,
+                Username = Input.Username,
+                NewPassword = Input.NewPassword,
+                FromAddress = Input.FromAddress,
+                FromName = Input.FromName
+            });
+
+            if (!string.IsNullOrWhiteSpace(Input.NewPassword))
+            {
+                passwordConfigured = true;
+                showPasswordEditor = false;
+                Input.NewPassword = string.Empty;
+            }
+
+            message = "Settings were saved.";
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task<string> GetCurrentUserIdAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var userId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            throw new InvalidOperationException("Current admin user could not be resolved.");
+        }
+
+        return userId;
+    }
+
+    private sealed class InputModel
+    {
+        public bool Enabled { get; set; }
+        public int SendHourLocal { get; set; } = 8;
+        public string BaseUrl { get; set; } = string.Empty;
+        public string Host { get; set; } = string.Empty;
+        public int Port { get; set; } = 587;
+        public bool UseSsl { get; set; } = true;
+        public string? Username { get; set; }
+        public string? NewPassword { get; set; }
+        public string FromAddress { get; set; } = string.Empty;
+        public string? FromName { get; set; }
+    }
+}

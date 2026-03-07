@@ -10,6 +10,7 @@
                     <AuthorizeView Roles="Admin" Context="adminContext">
                         <Authorized>
                             <DxMenuItem NavigateUrl="/admin/users" Text="User Management" CssClass="@MenuItemCssClass("/admin/users")" IconCssClass="icon icon-user"></DxMenuItem>
+                            <DxMenuItem NavigateUrl="/admin/reminder-settings" Text="Reminder Settings" CssClass="@MenuItemCssClass("/admin/reminder-settings")" IconCssClass="icon icon-settings"></DxMenuItem>
                         </Authorized>
                     </AuthorizeView>
                     <DxMenuItem NavigateUrl="Account/Logout" Text="Log out" CssClass="@MenuItemCssClass("/Account/Logout")" IconCssClass="icon icon-log-out"></DxMenuItem>
@@ -29,6 +30,7 @@
                     <AuthorizeView Roles="Admin" Context="adminContext">
                         <Authorized>
                             <DxMenuItem NavigateUrl="/admin/users" Text="User Management" CssClass="@MenuItemCssClass("/admin/users")" IconCssClass="icon icon-user"></DxMenuItem>
+                            <DxMenuItem NavigateUrl="/admin/reminder-settings" Text="Reminder Settings" CssClass="@MenuItemCssClass("/admin/reminder-settings")" IconCssClass="icon icon-settings"></DxMenuItem>
                         </Authorized>
                     </AuthorizeView>
                 </Authorized>
@@ -68,3 +70,4 @@
         NavigationManager.LocationChanged -= OnLocationChanged;
     }
 }
+

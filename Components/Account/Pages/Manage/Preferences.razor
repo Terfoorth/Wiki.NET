@@ -64,6 +64,9 @@
                 <DxFormLayoutItem ColSpanMd="6">
                     <InteractiveServerCheckbox Name="Input.ReceiveWeeklyDigest" @bind-Value="Input.ReceiveWeeklyDigest" LabelText="Weekly digest" />
                 </DxFormLayoutItem>
+                <DxFormLayoutItem ColSpanMd="6">
+                    <InteractiveServerCheckbox Name="Input.ReceiveReminderEmails" @bind-Value="Input.ReceiveReminderEmails" LabelText="Reminder emails" />
+                </DxFormLayoutItem>
             </DxFormLayoutGroup>
             <DxFormLayoutItem ColSpanMd="12" BeginRow="true">
                 <DxButton CssClass="w-100" SubmitFormOnClick="true" Text="Save"></DxButton>
@@ -192,6 +195,7 @@
         Input.StartPage = string.IsNullOrWhiteSpace(user.StartPage) ? "/" : user.StartPage;
         Input.ReceiveProductUpdates = user.ReceiveProductUpdates;
         Input.ReceiveWeeklyDigest = user.ReceiveWeeklyDigest;
+        Input.ReceiveReminderEmails = user.ReceiveReminderEmails;
     }
 
     private async Task OnValidSubmitAsync()
@@ -209,6 +213,7 @@
         user.StartPage = Input.StartPage;
         user.ReceiveProductUpdates = Input.ReceiveProductUpdates;
         user.ReceiveWeeklyDigest = Input.ReceiveWeeklyDigest;
+        user.ReceiveReminderEmails = Input.ReceiveReminderEmails;
 
         var updateResult = await UserManager.UpdateAsync(user);
         if (!updateResult.Succeeded)
@@ -246,6 +251,8 @@
         public bool ReceiveProductUpdates { get; set; }
 
         public bool ReceiveWeeklyDigest { get; set; }
+
+        public bool ReceiveReminderEmails { get; set; } = true;
     }
 }
 

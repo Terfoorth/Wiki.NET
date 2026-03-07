@@ -19,6 +19,8 @@ namespace Wiki_Blaze.Data
         public DbSet<WikiAssignment> WikiAssignments { get; set; }
         public DbSet<WikiChangeLog> WikiChangeLogs { get; set; }
         public DbSet<UserNotification> UserNotifications { get; set; }
+        public DbSet<ReminderEmailDispatch> ReminderEmailDispatches { get; set; }
+        public DbSet<AdminAuditLog> AdminAuditLogs { get; set; }
 
         public DbSet<OnboardingProfile> OnboardingProfiles { get; set; }
         public DbSet<OnboardingMeasureCatalogItem> OnboardingMeasureCatalogItems { get; set; }
@@ -58,6 +60,9 @@ namespace Wiki_Blaze.Data
 
                 user.Property(u => u.ReceiveWeeklyDigest)
                     .HasDefaultValue(false);
+
+                user.Property(u => u.ReceiveReminderEmails)
+                    .HasDefaultValue(true);
             });
 
             builder.Entity<UserNotification>(notification =>
@@ -92,6 +97,57 @@ namespace Wiki_Blaze.Data
                     .WithMany()
                     .HasForeignKey(item => item.UserId)
                     .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            builder.Entity<ReminderEmailDispatch>(dispatch =>
+            {
+                dispatch.Property(item => item.UserId)
+                    .HasMaxLength(450)
+                    .IsRequired();
+
+                dispatch.Property(item => item.LastError)
+                    .HasMaxLength(2000);
+
+                dispatch.HasIndex(item => new
+                {
+                    item.UserId,
+                    item.Type,
+                    item.SourceEntityId,
+                    item.StageDaysBefore,
+                    item.DueDate
+                }).IsUnique();
+
+                dispatch.HasIndex(item => new { item.SentAtUtc, item.LastAttemptAtUtc });
+
+                dispatch.HasOne(item => item.User)
+                    .WithMany()
+                    .HasForeignKey(item => item.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            builder.Entity<AdminAuditLog>(audit =>
+            {
+                audit.Property(item => item.AdminUserId)
+                    .HasMaxLength(450)
+                    .IsRequired();
+
+                audit.Property(item => item.Action)
+                    .HasMaxLength(120)
+                    .IsRequired();
+
+                audit.Property(item => item.Subject)
+                    .HasMaxLength(160)
+                    .IsRequired();
+
+                audit.Property(item => item.Details)
+                    .HasMaxLength(4000);
+
+                audit.HasIndex(item => item.CreatedAtUtc);
+
+                audit.HasOne(item => item.AdminUser)
+                    .WithMany()
+                    .HasForeignKey(item => item.AdminUserId)
+                    .OnDelete(DeleteBehavior.Restrict);
             });
 
             builder.Entity<WikiPage>()
