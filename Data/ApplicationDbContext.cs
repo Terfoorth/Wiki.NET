@@ -25,6 +25,7 @@ namespace Wiki_Blaze.Data
         public DbSet<OnboardingChecklistCatalogItem> OnboardingChecklistCatalogItems { get; set; }
         public DbSet<OnboardingChecklistEntry> OnboardingChecklistEntries { get; set; }
         public DbSet<OnboardingProfileAttachment> OnboardingProfileAttachments { get; set; }
+        public DbSet<AppNotification> AppNotifications { get; set; }
 
         protected override void OnModelCreating(ModelBuilder builder)
         {
@@ -267,6 +268,28 @@ namespace Wiki_Blaze.Data
                 .WithMany(item => item.Entries)
                 .HasForeignKey(entry => entry.CatalogItemId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            builder.Entity<AppNotification>()
+                .HasIndex(notification => new { notification.UserId, notification.Kind, notification.SourceId, notification.TriggerDate })
+                .IsUnique();
+
+            builder.Entity<AppNotification>()
+                .HasIndex(notification => new { notification.UserId, notification.IsRead, notification.CreatedAtUtc })
+                .IsDescending(false, false, true);
+
+            builder.Entity<AppNotification>()
+                .Property(notification => notification.DueDate)
+                .HasColumnType("date");
+
+            builder.Entity<AppNotification>()
+                .Property(notification => notification.TriggerDate)
+                .HasColumnType("date");
+
+            builder.Entity<AppNotification>()
+                .HasOne(notification => notification.User)
+                .WithMany()
+                .HasForeignKey(notification => notification.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
 
             var onboardingSeedDate = new DateTime(2026, 3, 4, 0, 0, 0, DateTimeKind.Utc);
 

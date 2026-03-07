@@ -3,6 +3,7 @@
 @inject NavigationManager NavigationManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject UserManager<Wiki_Blaze.Data.ApplicationUser> UserManager
+@inject INotificationService NotificationService
 @inject IJSRuntime JsRuntime
 @using Wiki_Blaze.Services
 
@@ -46,9 +47,71 @@
                     }
                     <AuthorizeView>
                         <Authorized>
-                            <NavLink href="@AddDrawerStateToUrl("Account/Manage")" class="button-link menu-button-float-end display-desktop">
-                                <DxButton Text="@context.User.Identity?.Name" RenderStyle="ButtonRenderStyle.Secondary" RenderStyleMode="ButtonRenderStyleMode.Text" IconCssClass="icon icon-user"></DxButton>
-                            </NavLink>
+                            <div class="menu-button-float-end display-desktop notification-header-actions">
+                                <div class="notification-dropdown-wrapper">
+                                    <DxButton Text=""
+                                              CssClass="notification-bell-button"
+                                              RenderStyle="ButtonRenderStyle.Secondary"
+                                              RenderStyleMode="ButtonRenderStyleMode.Text"
+                                              IconCssClass="oi oi-bell"
+                                              Click="ToggleNotificationsDropdownAsync" />
+                                    @if (NotificationInbox.UnreadCount > 0)
+                                    {
+                                        <span class="notification-badge">@NotificationInbox.UnreadCount</span>
+                                    }
+                                    @if (IsNotificationDropdownOpen)
+                                    {
+                                        <div class="notification-dropdown-menu card shadow">
+                                            <div class="card-body p-2">
+                                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                                    <strong class="small">Benachrichtigungen</strong>
+                                                    <button type="button"
+                                                            class="btn-close btn-sm"
+                                                            aria-label="Schließen"
+                                                            @onclick="CloseNotificationsDropdown"></button>
+                                                </div>
+                                                <div class="form-check form-switch mb-2">
+                                                    <input id="notificationsOnlyUnread"
+                                                           class="form-check-input"
+                                                           type="checkbox"
+                                                           role="switch"
+                                                           checked="@NotificationsOnlyUnread"
+                                                           @onchange="OnNotificationsOnlyUnreadChanged" />
+                                                    <label class="form-check-label small" for="notificationsOnlyUnread">Nur ungelesen</label>
+                                                </div>
+                                                @if (IsNotificationLoading)
+                                                {
+                                                    <div class="text-center p-2">
+                                                        <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                                                    </div>
+                                                }
+                                                else if (NotificationInbox.Items.Count == 0)
+                                                {
+                                                    <div class="small text-muted p-2">Keine Benachrichtigungen vorhanden.</div>
+                                                }
+                                                else
+                                                {
+                                                    <div class="notification-dropdown-list">
+                                                        @foreach (var notification in NotificationInbox.Items)
+                                                        {
+                                                            <button type="button"
+                                                                    class="notification-item @(notification.IsRead ? "is-read" : "is-unread")"
+                                                                    @onclick="() => OpenNotificationAsync(notification)">
+                                                                <div class="notification-item-title">@notification.Title</div>
+                                                                <div class="notification-item-body">@notification.Body</div>
+                                                                <div class="notification-item-meta">@FormatNotificationTimestamp(notification.CreatedAtUtc)</div>
+                                                            </button>
+                                                        }
+                                                    </div>
+                                                }
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                                <NavLink href="@AddDrawerStateToUrl("Account/Manage")" class="button-link">
+                                    <DxButton Text="@context.User.Identity?.Name" RenderStyle="ButtonRenderStyle.Secondary" RenderStyleMode="ButtonRenderStyleMode.Text" IconCssClass="icon icon-user"></DxButton>
+                                </NavLink>
+                            </div>
                             <form action="@AddDrawerStateToUrl("Account/Logout")" method="post" class="display-desktop">
                                 <AntiforgeryToken />
                                 <input type="hidden" name="ReturnUrl" value="@currentUrl" />
@@ -62,6 +125,10 @@
                         </NotAuthorized>
                     </AuthorizeView>
                 </div>
+                @if (IsNotificationDropdownOpen)
+                {
+                    <div class="notification-dropdown-backdrop" @onclick="CloseNotificationsDropdown"></div>
+                }
                 <div class="page-content-container">
                     @Body
                 </div>
@@ -76,13 +143,24 @@
 
     private string? currentUrl;
     private bool preferencesApplied;
+    private string? currentUserId;
+    private bool notificationsRefreshStarted;
+    private bool IsNotificationDropdownOpen;
+    private bool NotificationsOnlyUnread;
+    private bool IsNotificationLoading;
+    private NotificationInboxDto NotificationInbox { get; set; } = new();
+    private PeriodicTimer? notificationsTimer;
+    private CancellationTokenSource? notificationsCts;
+    private Task? notificationsRefreshTask;
+    private readonly SemaphoreSlim notificationsGate = new(1, 1);
 
-    private sealed record EffectivePreferences(string Theme, string Density, string StartPage);
+    private sealed record EffectivePreferences(string Theme, string Density, string StartPage, string? UserId);
 
     private static readonly EffectivePreferences DefaultPreferences = new(
         Wiki_Blaze.Data.ApplicationUser.DefaultThemePreference,
         Wiki_Blaze.Data.ApplicationUser.DefaultDensityPreference,
-        Wiki_Blaze.Data.ApplicationUser.DefaultStartPage);
+        Wiki_Blaze.Data.ApplicationUser.DefaultStartPage,
+        null);
 
     protected override void OnInitialized() {
         currentUrl = NavigationManager.ToBaseRelativePath(NavigationManager.Uri);
@@ -98,13 +176,15 @@
         }
 
         await ApplyUserPreferencesAsync();
+        StartNotificationsRefreshLoop();
     }
 
     private async Task ApplyUserPreferencesAsync(AuthenticationState? authState = null)
     {
         var effectivePreferences = await LoadEffectivePreferencesAsync(authState);
         await ApplyPreferencesToUiAsync(effectivePreferences);
-        preferencesApplied = false;
+        await RefreshNotificationsAsync();
+        preferencesApplied = true;
         StateHasChanged();
     }
 
@@ -122,13 +202,15 @@
                     new EffectivePreferences(
                         user.ThemePreference ?? Wiki_Blaze.Data.ApplicationUser.DefaultThemePreference,
                         user.DensityPreference ?? Wiki_Blaze.Data.ApplicationUser.DefaultDensityPreference,
-                        user.StartPage ?? Wiki_Blaze.Data.ApplicationUser.DefaultStartPage);
+                        user.StartPage ?? Wiki_Blaze.Data.ApplicationUser.DefaultStartPage,
+                        user.Id);
             }
         }
         return new EffectivePreferences(
                         Wiki_Blaze.Data.ApplicationUser.DefaultThemePreference,
                         Wiki_Blaze.Data.ApplicationUser.DefaultDensityPreference,
-                        Wiki_Blaze.Data.ApplicationUser.DefaultStartPage);
+                        Wiki_Blaze.Data.ApplicationUser.DefaultStartPage,
+                        null);
 
 
     }
@@ -136,6 +218,7 @@
     private async Task ApplyPreferencesToUiAsync(EffectivePreferences preferences)
     {
         UserStartPage = preferences.StartPage;
+        currentUserId = preferences.UserId;
         await JsRuntime.InvokeVoidAsync("wikiBlaze.setTheme", preferences.Theme);
         await JsRuntime.InvokeVoidAsync("wikiBlaze.setDensity", preferences.Density);
     }
@@ -152,11 +235,148 @@
 
     private void OnLocationChanged(object? sender, LocationChangedEventArgs e) {
         currentUrl = NavigationManager.ToBaseRelativePath(e.Location);
-        StateHasChanged();
+        _ = InvokeAsync(async () =>
+        {
+            await RefreshNotificationsAsync();
+            StateHasChanged();
+        });
+    }
+
+    private async Task ToggleNotificationsDropdownAsync()
+    {
+        if (IsNotificationDropdownOpen)
+        {
+            CloseNotificationsDropdown();
+            return;
+        }
+
+        IsNotificationDropdownOpen = true;
+        await RefreshNotificationsAsync();
+    }
+
+    private void CloseNotificationsDropdown()
+    {
+        IsNotificationDropdownOpen = false;
+    }
+
+    private async Task OnNotificationsOnlyUnreadChanged(ChangeEventArgs args)
+    {
+        NotificationsOnlyUnread = GetBoolValue(args.Value);
+        await RefreshNotificationsAsync();
+    }
+
+    private async Task OpenNotificationAsync(NotificationInboxItemDto notification)
+    {
+        if (string.IsNullOrWhiteSpace(currentUserId))
+        {
+            return;
+        }
+
+        await NotificationService.MarkAsReadAsync(currentUserId, notification.Id);
+        IsNotificationDropdownOpen = false;
+        await RefreshNotificationsAsync();
+
+        var target = NormalizeNavigationTarget(notification.TargetUrl);
+        NavigationManager.NavigateTo(AddDrawerStateToUrl(target));
+    }
+
+    private string FormatNotificationTimestamp(DateTime createdAtUtc)
+    {
+        return createdAtUtc.ToLocalTime().ToString("dd.MM.yyyy HH:mm");
+    }
+
+    private void StartNotificationsRefreshLoop()
+    {
+        if (notificationsRefreshStarted)
+        {
+            return;
+        }
+
+        notificationsRefreshStarted = true;
+        notificationsCts = new CancellationTokenSource();
+        notificationsTimer = new PeriodicTimer(TimeSpan.FromSeconds(60));
+        notificationsRefreshTask = Task.Run(() => NotificationsRefreshLoopAsync(notificationsCts.Token));
+    }
+
+    private async Task NotificationsRefreshLoopAsync(CancellationToken cancellationToken)
+    {
+        if (notificationsTimer is null)
+        {
+            return;
+        }
+
+        try
+        {
+            while (await notificationsTimer.WaitForNextTickAsync(cancellationToken))
+            {
+                await InvokeAsync(RefreshNotificationsAsync);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Layout is being disposed.
+        }
+    }
+
+    private async Task RefreshNotificationsAsync()
+    {
+        if (string.IsNullOrWhiteSpace(currentUserId))
+        {
+            NotificationInbox = new NotificationInboxDto();
+            IsNotificationDropdownOpen = false;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        await notificationsGate.WaitAsync();
+        try
+        {
+            IsNotificationLoading = true;
+            NotificationInbox = await NotificationService.GetInboxAsync(
+                currentUserId,
+                take: 20,
+                includeRead: !NotificationsOnlyUnread);
+        }
+        finally
+        {
+            IsNotificationLoading = false;
+            notificationsGate.Release();
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private static bool GetBoolValue(object? value)
+    {
+        if (value is bool boolValue)
+        {
+            return boolValue;
+        }
+
+        if (value is string textValue && bool.TryParse(textValue, out var parsedValue))
+        {
+            return parsedValue;
+        }
+
+        return false;
+    }
+
+    private static string NormalizeNavigationTarget(string? targetUrl)
+    {
+        if (string.IsNullOrWhiteSpace(targetUrl))
+        {
+            return "/";
+        }
+
+        return targetUrl.StartsWith("/", StringComparison.Ordinal) ? targetUrl : "/";
     }
 
     public void Dispose() {
         NavigationManager.LocationChanged -= OnLocationChanged;
         AuthenticationStateProvider.AuthenticationStateChanged -= OnAuthenticationStateChanged;
+        notificationsCts?.Cancel();
+        notificationsCts?.Dispose();
+        notificationsTimer?.Dispose();
+        notificationsGate.Dispose();
     }
 }

@@ -6,7 +6,7 @@
     <UserSecretsId>aspnet-Wiki_Blaze-adc61716-0a08-4a8a-9b63-7320dd731198</UserSecretsId>
     <RootNamespace>Wiki_Blaze</RootNamespace>
     <AssemblyName>$(AssemblyName.Replace(' ', '_'))</AssemblyName>
-    <DefaultItemExcludes>$(DefaultItemExcludes);Onboarding_modul\**\*</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);Onboarding_modul\**\*;Wiki-Blaze.Tests\**\*</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>

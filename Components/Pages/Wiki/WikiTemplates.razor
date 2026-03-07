@@ -2,7 +2,9 @@
 @using Microsoft.AspNetCore.Components.Web
 @using Wiki_Blaze.Data.Entities
 @using Wiki_Blaze.Services
+@using Wiki_Blaze.Components.Pages.Wiki.Components
 @inject IWikiService WikiService
+@inject INotificationService NotificationService
 @inject NavigationManager NavManager
 @inject IJSRuntime Js
 @inject AuthenticationStateProvider AuthenticationStateProvider
@@ -147,7 +149,7 @@
                     @foreach (var page in FilteredPages)
                     {
                         <div class="col">
-                            <div class="card h-100 shadow-sm border-0 hover-card wiki-card @(UseLargeCards ? "wiki-card--large" : "wiki-card--compact")"
+                            <div class="card h-100 shadow-sm border-0 hover-card wiki-card @(UseLargeCards ? "wiki-card--large" : "wiki-card--compact") @(GetReviewAlertCardCss(page.Id))"
                                  @oncontextmenu="(args) => OnContextMenuAsync(args, page)" @oncontextmenu:preventDefault>
                                 <div class="card-body d-flex flex-column">
                                     <div class="d-flex justify-content-between align-items-start mb-2">
@@ -189,6 +191,13 @@
                                         <p class="card-text text-muted small flex-grow-1 text-truncate-multiline">
                                             @(string.IsNullOrWhiteSpace(page.PreviewText) ? "Keine Vorschau verfügbar..." : page.PreviewText)
                                         </p>
+                                    }
+
+                                    @if (TryGetReviewAlertState(page.Id, out var reviewAlert))
+                                    {
+                                        <div class="wiki-review-alert-label @(reviewAlert.IsOverdue ? "is-overdue" : "is-due")">
+                                            @GetReviewAlertLabel(reviewAlert)
+                                        </div>
                                     }
 
                                     <div class="mt-3 pt-2 border-top d-flex align-items-center text-muted small">
@@ -253,6 +262,26 @@
     .wiki-preview .preview-rich-edit {
         background-color: transparent;
     }
+    .wiki-review-alert-card {
+        border: 2px solid #dc3545 !important;
+        box-shadow: 0 0 0 1px rgba(220, 53, 69, 0.3), 0 .5rem 1rem rgba(220, 53, 69, 0.15) !important;
+    }
+    .wiki-review-alert-label {
+        border-radius: 0.35rem;
+        font-size: 0.82rem;
+        font-weight: 700;
+        margin-top: 0.75rem;
+        padding: 0.35rem 0.5rem;
+        text-align: center;
+    }
+    .wiki-review-alert-label.is-due {
+        background: #fde2e1;
+        color: #9f1239;
+    }
+    .wiki-review-alert-label.is-overdue {
+        background: #dc3545;
+        color: #fff;
+    }
 </style>
 
 <DxContextMenu @ref="ContextMenu" ItemClick="OnContextMenuItemClick">
@@ -310,6 +339,7 @@
     private string? GroupActionError;
     private string? TemplateActionMessage;
     private const string AssignGroupNamePrefix = "assign-group-";
+    private Dictionary<int, WikiReviewAlertStateDto> ReviewAlertsByPageId = new();
 
     private bool CanShowTemplateGroupContextItems =>
         !string.IsNullOrWhiteSpace(CurrentUserId) && TemplateGroups is { Count: > 0 };
@@ -336,6 +366,7 @@
             AllPages = await pageTask;
             TemplateGroups = await groupTask;
 
+            await LoadReviewAlertsAsync();
             ApplyFilters();
         }
         finally
@@ -651,6 +682,7 @@
         if (AllPages != null)
         {
             AllPages = AllPages.Where(p => p.Id != page.Id).ToList();
+            await LoadReviewAlertsAsync();
             ApplyFilters();
         }
     }
@@ -674,10 +706,9 @@
         if (index >= 0)
         {
             AllPages[index] = page;
+            await LoadReviewAlertsAsync();
             ApplyFilters();
         }
-
-        await Task.CompletedTask;
     }
 
     private Task OnPropertiesDialogVisibilityChanged(bool isVisible)
@@ -823,5 +854,37 @@
                 StartCreateGroup();
                 break;
         }
+    }
+
+    private async Task LoadReviewAlertsAsync()
+    {
+        if (AllPages is null || AllPages.Count == 0 || string.IsNullOrWhiteSpace(CurrentUserId))
+        {
+            ReviewAlertsByPageId = new Dictionary<int, WikiReviewAlertStateDto>();
+            return;
+        }
+
+        var states = await NotificationService.GetWikiReviewAlertStatesAsync(
+            CurrentUserId,
+            AllPages.Select(page => page.Id));
+
+        ReviewAlertsByPageId = states.ToDictionary(state => state.PageId);
+    }
+
+    private bool TryGetReviewAlertState(int pageId, out WikiReviewAlertStateDto state)
+    {
+        return ReviewAlertsByPageId.TryGetValue(pageId, out state!);
+    }
+
+    private string GetReviewAlertCardCss(int pageId)
+    {
+        return ReviewAlertsByPageId.ContainsKey(pageId) ? "wiki-review-alert-card" : string.Empty;
+    }
+
+    private static string GetReviewAlertLabel(WikiReviewAlertStateDto state)
+    {
+        return state.IsOverdue
+            ? $"Review überfällig seit {state.DueDate:dd.MM.yyyy}"
+            : $"Review fällig am {state.DueDate:dd.MM.yyyy}";
     }
 }

@@ -170,6 +170,14 @@
                                 <input type="date" class="form-control" @bind="ActiveProfileDraft.ExitDate" readonly="@(!CanEdit)" />
                             </div>
                             <div class="col-md-6">
+                                <label class="form-label">Startdatum (Onboarding)</label>
+                                <input type="date" class="form-control" @bind="ActiveProfileDraft.StartDate" readonly="@(!CanEdit)" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Zieldatum (Onboarding)</label>
+                                <input type="date" class="form-control" @bind="ActiveProfileDraft.TargetDate" readonly="@(!CanEdit)" />
+                            </div>
+                            <div class="col-md-6">
                                 <label class="form-label">Abteilung</label>
                                 <input class="form-control" @bind="ActiveProfileDraft.Department" readonly="@(!CanEdit)" />
                             </div>
@@ -421,6 +429,14 @@
                 <div class="col-md-6">
                     <label class="form-label">Austrittsdatum (optional)</label>
                     <input type="date" class="form-control" @bind="CreateProfileModel.ExitDate" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Startdatum (Onboarding)</label>
+                    <input type="date" class="form-control" @bind="CreateProfileModel.StartDate" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Zieldatum (Onboarding)</label>
+                    <input type="date" class="form-control" @bind="CreateProfileModel.TargetDate" />
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">Benutzername</label>
