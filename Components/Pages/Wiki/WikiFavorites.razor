@@ -1,4 +1,4 @@
-@page "/wiki/favorites"
+﻿@page "/wiki/favorites"
 @using Microsoft.AspNetCore.Components.Web
 @using Microsoft.AspNetCore.Identity
 @using System.Security.Claims
@@ -22,7 +22,7 @@
             <h2 class="mb-0 fw-bold text-primary">
                 <span class="oi oi-star me-2"></span>Favoriten
             </h2>
-            <small class="text-muted">Schneller Zugriff auf deine gespeicherten Wiki-Einträge</small>
+            <small class="text-muted">Schneller Zugriff auf deine gespeicherten Wiki-EintrÃ¤ge</small>
         </div>
         <div class="col-auto">
             <DxButton RenderStyle="ButtonRenderStyle.Success"
@@ -58,7 +58,7 @@
                     <div class="list-group list-group-flush bg-transparent">
                         <button class="list-group-item list-group-item-action bg-transparent border-0 rounded px-2 py-2 @(SelectedGroupId == 0 ? "active-filter" : "")"
                                 @onclick="() => FilterGroup(0)">
-                            <span class="oi oi-grid-three-up me-2"></span> Alle Einträge
+                            <span class="oi oi-grid-three-up me-2"></span> Alle EintrÃ¤ge
                         </button>
                         @foreach (var group in FavoriteGroups)
                         {
@@ -74,7 +74,7 @@
                                     <span class="oi oi-pencil"></span>
                                 </button>
                                 <button class="btn btn-sm btn-link text-danger p-1"
-                                        title="Gruppe löschen"
+                                        title="Gruppe lÃ¶schen"
                                         disabled="@IsDefaultGroup(group)"
                                         @onclick="() => DeleteGroupAsync(group)">
                                     <span class="oi oi-trash"></span>
@@ -108,11 +108,15 @@
             }
             else if (FilteredPages != null && FilteredPages.Any())
             {
-                <div class="@CardGridCss">
+                <WikiCardSizeControls CardWidthPx="@CardWidthPx"
+                                      CardWidthPxChanged="OnCardWidthChanged"
+                                      CardHeightPx="@CardHeightPx"
+                                      CardHeightPxChanged="OnCardHeightChanged" />
+                <div class="wiki-card-grid" style="@CardGridStyle">
                     @foreach (var page in FilteredPages)
                     {
-                        <div class="col">
-                            <div class="card h-100 shadow-sm border-0 hover-card wiki-card @(UseLargeCards ? "wiki-card--large" : "wiki-card--compact") @(GetReviewAlertCardCss(page.Id))"
+                        <div class="wiki-card-grid-item">
+                            <div class="card h-100 shadow-sm border-0 hover-card wiki-card @(GetReviewAlertCardCss(page.Id))"
                                  @oncontextmenu="(args) => OnContextMenuAsync(args, page)" @oncontextmenu:preventDefault>
                                 <div class="card-body d-flex flex-column">
                                     <div class="d-flex justify-content-between align-items-start mb-2">
@@ -136,7 +140,7 @@
                                                     aria-pressed="@IsFavorite(page.Id)"
                                                     @onclick="() => ToggleFavoriteAsync(page)"
                                                     @onclick:stopPropagation>
-                                                <span class="wiki-favorite-icon" aria-hidden="true">@(IsFavorite(page.Id) ? "★" : "☆")</span>
+                                                <span class="wiki-favorite-icon" aria-hidden="true">@(IsFavorite(page.Id) ? "â˜…" : "â˜†")</span>
                                             </button>
                                             <div class="dropdown">
                                                 <button class="btn btn-sm btn-light border dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="Aktionen">
@@ -145,7 +149,7 @@
                                                 <ul class="dropdown-menu dropdown-menu-end">
                                                     <li>
                                                         <button class="dropdown-item" type="button" @onclick="() => OpenEntry(page)">
-                                                            <span class="oi oi-eye me-2"></span>Öffnen
+                                                            <span class="oi oi-eye me-2"></span>Ã–ffnen
                                                         </button>
                                                     </li>
                                                     <li>
@@ -163,15 +167,10 @@
                                                             <span class="oi oi-star me-2"></span>@GetFavoriteMenuText(page.Id)
                                                         </button>
                                                     </li>
-                                                    <li>
-                                                        <button class="dropdown-item" type="button" @onclick="ToggleEntryViewMode">
-                                                            <span class="oi oi-resize-height me-2"></span>@(UseLargeCards ? "Kompakte Ansicht" : "Große Ansicht")
-                                                        </button>
-                                                    </li>
                                                     <li><hr class="dropdown-divider"></li>
                                                     <li>
                                                         <button class="dropdown-item text-danger" type="button" @onclick="() => DeleteEntryAsync(page)">
-                                                            <span class="oi oi-trash me-2"></span>Löschen
+                                                            <span class="oi oi-trash me-2"></span>LÃ¶schen
                                                         </button>
                                                     </li>
                                                 </ul>
@@ -187,7 +186,7 @@
 
                                     @if (page.Content != null && page.Content.Length > 0)
                                     {
-                                        <div class="wiki-preview flex-grow-1 @(UseLargeCards ? "preview-large" : "preview-compact")">
+                                        <div class="wiki-preview flex-grow-1">
                                             <DxRichEdit DocumentContent="@(page.Content)"
                                                         ReadOnly="true"
                                                         ViewType="ViewType.Simple"
@@ -198,7 +197,7 @@
                                     else
                                     {
                                         <p class="card-text text-muted small flex-grow-1 text-truncate-multiline">
-                                            @(string.IsNullOrWhiteSpace(page.PreviewText) ? "Keine Vorschau verfügbar..." : page.PreviewText)
+                                            @(string.IsNullOrWhiteSpace(page.PreviewText) ? "Keine Vorschau verfÃ¼gbar..." : page.PreviewText)
                                         </p>
                                     }
 
@@ -225,7 +224,7 @@
                     <p>Keine Favoriten gefunden.</p>
                     @if (SelectedGroupId != 0 || !string.IsNullOrEmpty(SearchTerm))
                     {
-                        <button class="btn btn-link" @onclick="ResetFilters">Filter zurücksetzen</button>
+                        <button class="btn btn-link" @onclick="ResetFilters">Filter zurÃ¼cksetzen</button>
                     }
                 </div>
             }
@@ -252,21 +251,21 @@
         -webkit-box-orient: vertical;
         overflow: hidden;
     }
+    .wiki-card-grid {
+        display: grid;
+        gap: 1.5rem;
+        grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--wiki-card-width, 420px)), 1fr));
+    }
+    .wiki-card-grid-item {
+        min-width: 0;
+    }
+    .wiki-card .card-body {
+        min-height: var(--wiki-card-height, 420px);
+    }
     .wiki-preview {
+        max-height: var(--wiki-card-preview-height, 240px);
         overflow: hidden;
         pointer-events: none;
-    }
-    .wiki-card--large .wiki-preview.preview-large {
-        max-height: 240px;
-    }
-    .wiki-card--compact .wiki-preview.preview-compact {
-        max-height: 140px;
-    }
-    .wiki-card--large .card-body {
-        min-height: 420px;
-    }
-    .wiki-card--compact .card-body {
-        min-height: 320px;
     }
     .wiki-preview .preview-rich-edit {
         background-color: transparent;
@@ -321,12 +320,10 @@
 
 <DxContextMenu @ref="ContextMenu" ItemClick="OnContextMenuItemClick">
     <Items>
-        <DxContextMenuItem Text="Öffnen" IconCssClass="oi oi-eye" Name="open" />
+        <DxContextMenuItem Text="Ã–ffnen" IconCssClass="oi oi-eye" Name="open" />
         <DxContextMenuItem Text="Bearbeiten" IconCssClass="oi oi-pencil" Name="edit" />
         <DxContextMenuItem Text="Eigenschaften" IconCssClass="oi oi-info" Name="properties" />
-        <DxContextMenuItem Text="Favorit umschalten" IconCssClass="oi oi-star" Name="toggle-favorite" />
-        <DxContextMenuItem Text="Ansicht umschalten" IconCssClass="oi oi-resize-height" Name="toggle-view" />
-        <DxContextMenuItem Text="Löschen" IconCssClass="oi oi-trash" Name="delete" BeginGroup="true" />
+        <DxContextMenuItem Text="Favorit umschalten" IconCssClass="oi oi-star" Name="toggle-favorite" />        <DxContextMenuItem Text="LÃ¶schen" IconCssClass="oi oi-trash" Name="delete" BeginGroup="true" />
     </Items>
 </DxContextMenu>
 
@@ -345,7 +342,8 @@
     private int SelectedGroupId = 0;
     private string? SearchTerm;
     private bool IsLoading = true;
-    private bool UseLargeCards = true;
+    private int CardWidthPx = WikiCardSizeSettings.DefaultWidth;
+    private int CardHeightPx = WikiCardSizeSettings.DefaultHeight;
     private bool IsAuthenticated = true;
     private string? CurrentUserId;
     private HashSet<int> FavoritePageIds = new();
@@ -356,9 +354,9 @@
     private WikiPage? SelectedPropertiesPage;
     private string? GroupManagementError;
 
-    private string CardGridCss => UseLargeCards
-        ? "row row-cols-1 row-cols-lg-2 g-4"
-        : "row row-cols-1 row-cols-md-2 row-cols-xl-3 g-4";
+    private int CardPreviewHeightPx => Math.Max(140, CardHeightPx - 180);
+    private string CardGridStyle
+        => $"--wiki-card-width:{CardWidthPx}px;--wiki-card-height:{CardHeightPx}px;--wiki-card-preview-height:{CardPreviewHeightPx}px;";
 
     protected override async Task OnInitializedAsync()
     {
@@ -423,6 +421,17 @@
         {
             IsLoading = false;
         }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        await LoadCardSizeSettingsAsync();
+        StateHasChanged();
     }
 
     private static string? ResolveCurrentUserId(ClaimsPrincipal user)
@@ -554,7 +563,7 @@
 
     private async Task DeleteEntryAsync(WikiPage page)
     {
-        var confirmed = await Js.InvokeAsync<bool>("confirm", $"Eintrag \"{page.Title}\" wirklich löschen?");
+        var confirmed = await Js.InvokeAsync<bool>("confirm", $"Eintrag \"{page.Title}\" wirklich lÃ¶schen?");
         if (!confirmed)
         {
             return;
@@ -569,9 +578,46 @@
         }
     }
 
-    private void ToggleEntryViewMode()
+    private async Task OnCardWidthChanged(int value)
     {
-        UseLargeCards = !UseLargeCards;
+        var normalizedValue = WikiCardSizeSettings.Clamp(value);
+        if (CardWidthPx == normalizedValue)
+        {
+            return;
+        }
+
+        CardWidthPx = normalizedValue;
+        await SaveCardSizeSettingsAsync();
+    }
+
+    private async Task OnCardHeightChanged(int value)
+    {
+        var normalizedValue = WikiCardSizeSettings.Clamp(value);
+        if (CardHeightPx == normalizedValue)
+        {
+            return;
+        }
+
+        CardHeightPx = normalizedValue;
+        await SaveCardSizeSettingsAsync();
+    }
+
+    private async Task LoadCardSizeSettingsAsync()
+    {
+        var settings = await WikiCardSizeSettingsStore.LoadOrDefaultAsync(Js);
+        CardWidthPx = settings.CardWidthPx;
+        CardHeightPx = settings.CardHeightPx;
+    }
+
+    private Task SaveCardSizeSettingsAsync()
+    {
+        var settings = new WikiCardSizeSettings
+        {
+            CardWidthPx = CardWidthPx,
+            CardHeightPx = CardHeightPx
+        };
+
+        return WikiCardSizeSettingsStore.SaveAsync(Js, settings);
     }
 
     private async Task OnContextMenuAsync(MouseEventArgs args, WikiPage page)
@@ -604,9 +650,6 @@
             case "toggle-favorite":
                 await ToggleFavoriteAsync(ContextMenuPage);
                 break;
-            case "toggle-view":
-                ToggleEntryViewMode();
-                break;
             case "delete":
                 await DeleteEntryAsync(ContextMenuPage);
                 break;
@@ -616,7 +659,7 @@
     private bool IsFavorite(int pageId) => FavoritePageIds.Contains(pageId);
 
     private string GetFavoriteTooltip(int pageId)
-        => IsFavorite(pageId) ? "Aus Favoriten entfernen" : "Zu Favoriten hinzufügen";
+        => IsFavorite(pageId) ? "Aus Favoriten entfernen" : "Zu Favoriten hinzufÃ¼gen";
 
     private string GetFavoriteMenuText(int pageId)
         => IsFavorite(pageId) ? "Favorit entfernen" : "Als Favorit markieren";
@@ -749,7 +792,7 @@
         }
 
         GroupManagementError = null;
-        var confirmed = await Js.InvokeAsync<bool>("confirm", $"Gruppe \"{group.Name}\" wirklich löschen?");
+        var confirmed = await Js.InvokeAsync<bool>("confirm", $"Gruppe \"{group.Name}\" wirklich lÃ¶schen?");
         if (!confirmed)
         {
             return;
@@ -837,7 +880,9 @@
     private static string GetReviewAlertLabel(WikiReviewAlertStateDto state)
     {
         return state.IsOverdue
-            ? $"Review überfällig seit {state.DueDate:dd.MM.yyyy}"
-            : $"Review fällig am {state.DueDate:dd.MM.yyyy}";
+            ? $"Review Ã¼berfÃ¤llig seit {state.DueDate:dd.MM.yyyy}"
+            : $"Review fÃ¤llig am {state.DueDate:dd.MM.yyyy}";
     }
 }
+
+
