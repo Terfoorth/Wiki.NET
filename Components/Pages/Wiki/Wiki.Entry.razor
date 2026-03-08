@@ -65,6 +65,8 @@ else
             return;
         }
 
+        await WikiService.RecordWikiEntryViewAsync(userId, Page.Id);
+
         if (Page.EntryType == WikiEntryType.Form)
         {
             NavManager.NavigateTo($"/wiki/forms/view/{Page.Id}?returnUrl={Uri.EscapeDataString(ResolveReturnUrl())}");

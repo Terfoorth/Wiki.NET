@@ -26,6 +26,13 @@ namespace Wiki_Blaze.Data
         public DbSet<OnboardingChecklistEntry> OnboardingChecklistEntries { get; set; }
         public DbSet<OnboardingProfileAttachment> OnboardingProfileAttachments { get; set; }
         public DbSet<AppNotification> AppNotifications { get; set; }
+        public DbSet<HomeKanbanColumnState> HomeKanbanColumnStates { get; set; }
+        public DbSet<HomeKanbanCardState> HomeKanbanCardStates { get; set; }
+        public DbSet<HomeEntryComment> HomeEntryComments { get; set; }
+        public DbSet<HomeEntryCommentAttachment> HomeEntryCommentAttachments { get; set; }
+        public DbSet<WikiEntryViewEvent> WikiEntryViewEvents { get; set; }
+        public DbSet<WikiTemplateUsageEvent> WikiTemplateUsageEvents { get; set; }
+        public DbSet<WikiFavoriteUsageEvent> WikiFavoriteUsageEvents { get; set; }
 
         protected override void OnModelCreating(ModelBuilder builder)
         {
@@ -174,7 +181,7 @@ namespace Wiki_Blaze.Data
 
             builder.Entity<OnboardingProfile>()
                 .Property(profile => profile.Status)
-                .HasDefaultValue(OnboardingProfileStatus.InProgress)
+                .HasDefaultValue(OnboardingProfileStatus.NotStarted)
                 .HasSentinel((OnboardingProfileStatus)(-1));
 
             builder.Entity<OnboardingProfile>()
@@ -290,6 +297,95 @@ namespace Wiki_Blaze.Data
                 .WithMany()
                 .HasForeignKey(notification => notification.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
+
+            builder.Entity<HomeKanbanColumnState>()
+                .HasIndex(state => new { state.UserId, state.ViewType, state.ColumnKey })
+                .IsUnique();
+
+            builder.Entity<HomeKanbanColumnState>()
+                .HasIndex(state => new { state.UserId, state.ViewType, state.SortOrder });
+
+            builder.Entity<HomeKanbanColumnState>()
+                .HasOne(state => state.User)
+                .WithMany()
+                .HasForeignKey(state => state.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            builder.Entity<HomeKanbanCardState>()
+                .HasIndex(state => new { state.UserId, state.ViewType, state.EntityType, state.EntryId })
+                .IsUnique();
+
+            builder.Entity<HomeKanbanCardState>()
+                .HasIndex(state => new { state.UserId, state.ViewType, state.ColumnKey, state.SortOrder });
+
+            builder.Entity<HomeKanbanCardState>()
+                .HasOne(state => state.User)
+                .WithMany()
+                .HasForeignKey(state => state.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            builder.Entity<HomeEntryComment>()
+                .HasIndex(comment => new { comment.Scope, comment.EntryId, comment.CreatedAtUtc });
+
+            builder.Entity<HomeEntryComment>()
+                .HasOne(comment => comment.Author)
+                .WithMany()
+                .HasForeignKey(comment => comment.AuthorId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            builder.Entity<HomeEntryCommentAttachment>()
+                .HasIndex(attachment => attachment.CommentId);
+
+            builder.Entity<HomeEntryCommentAttachment>()
+                .HasOne(attachment => attachment.Comment)
+                .WithMany(comment => comment.Attachments)
+                .HasForeignKey(attachment => attachment.CommentId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            builder.Entity<WikiEntryViewEvent>()
+                .HasIndex(entry => new { entry.UserId, entry.WikiPageId, entry.ViewedAtUtc });
+
+            builder.Entity<WikiEntryViewEvent>()
+                .HasOne(entry => entry.WikiPage)
+                .WithMany()
+                .HasForeignKey(entry => entry.WikiPageId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            builder.Entity<WikiEntryViewEvent>()
+                .HasOne(entry => entry.User)
+                .WithMany()
+                .HasForeignKey(entry => entry.UserId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            builder.Entity<WikiTemplateUsageEvent>()
+                .HasIndex(entry => new { entry.UserId, entry.WikiPageId, entry.UsedAtUtc });
+
+            builder.Entity<WikiTemplateUsageEvent>()
+                .HasOne(entry => entry.WikiPage)
+                .WithMany()
+                .HasForeignKey(entry => entry.WikiPageId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            builder.Entity<WikiTemplateUsageEvent>()
+                .HasOne(entry => entry.User)
+                .WithMany()
+                .HasForeignKey(entry => entry.UserId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            builder.Entity<WikiFavoriteUsageEvent>()
+                .HasIndex(entry => new { entry.UserId, entry.WikiPageId, entry.UsedAtUtc });
+
+            builder.Entity<WikiFavoriteUsageEvent>()
+                .HasOne(entry => entry.WikiPage)
+                .WithMany()
+                .HasForeignKey(entry => entry.WikiPageId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            builder.Entity<WikiFavoriteUsageEvent>()
+                .HasOne(entry => entry.User)
+                .WithMany()
+                .HasForeignKey(entry => entry.UserId)
+                .OnDelete(DeleteBehavior.SetNull);
 
             var onboardingSeedDate = new DateTime(2026, 3, 4, 0, 0, 0, DateTimeKind.Utc);
 

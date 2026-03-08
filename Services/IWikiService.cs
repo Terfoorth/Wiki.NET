@@ -61,6 +61,21 @@ namespace Wiki_Blaze.Services
         Task SaveCommentAsync(WikiComment comment);
         Task DeleteCommentAsync(int id);
 
+        // --- Home Kanban --- 
+        Task<HomeKanbanBoardDto> GetHomeKanbanBoardAsync(string userId, int takePerColumn = 25);
+        Task<bool> MoveHomeKanbanCardAsync(string userId, MoveCardRequest request);
+        Task SaveHomeKanbanColumnOrderAsync(string userId, ReorderColumnsRequest request);
+
+        // --- Home Kommentare ---
+        Task<List<HomeEntryCommentDto>> GetHomeCommentsAsync(HomeCommentScope scope, int entryId, string? userId);
+        Task<HomeEntryCommentDto> AddHomeCommentAsync(string? userId, CreateCommentRequest request);
+        Task DeleteHomeCommentAsync(string? userId, int commentId);
+
+        // --- Home Tracking ---
+        Task RecordWikiEntryViewAsync(string? userId, int pageId);
+        Task RecordTemplateUsageAsync(string? userId, int pageId);
+        Task RecordFavoriteUsageAsync(string? userId, int pageId);
+
         // --- Zuweisungen ---
         Task<List<WikiAssignment>> GetAssignmentsAsync(int pageId);
         Task<List<WikiAssignment>> GetAssignmentsByAssigneeAsync(string assigneeId, WikiAssignmentStatus? status);

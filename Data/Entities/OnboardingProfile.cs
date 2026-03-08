@@ -70,7 +70,7 @@ public class OnboardingProfile
     [MaxLength(450)]
     public string? AssignedAgentUserId { get; set; }
 
-    public OnboardingProfileStatus Status { get; set; } = OnboardingProfileStatus.InProgress;
+    public OnboardingProfileStatus Status { get; set; } = OnboardingProfileStatus.NotStarted;
 
     public DateTime? StartDate { get; set; }
 
@@ -109,7 +109,8 @@ public enum OnboardingSalutation
 public enum OnboardingProfileStatus
 {
     Draft = 0,
-    InProgress = 1,
-    Completed = 2,
-    Archived = 3
+    NotStarted = 1,
+    InProgress = 2,
+    Completed = 3,
+    Archived = 4
 }

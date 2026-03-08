@@ -1,0 +1,14 @@
+﻿@namespace Wiki_Blaze.Components.DxKanban
+
+<DxGridDataColumn Caption="@GetCaption()"
+                  CaptionAlignment="GridTextAlignment.Center"
+                  Width="260px"
+                  VisibleIndex="@VisibleIndex"
+                  VisibleIndexChanged="@OnVisibleIndexChanged">
+    <CellDisplayTemplate>
+        <DxKanbanColumnGrid Kanban="Kanban"
+                            ColumnName="@ColumnName"
+                            AllowCardDrag="@AllowCardDrag"
+                            AllowCardDrop="@AllowCardDrop"></DxKanbanColumnGrid>
+    </CellDisplayTemplate>
+</DxGridDataColumn>

@@ -359,14 +359,15 @@
             <DxContextMenuItem Text="Offene To-Dos" IconCssClass="oi oi-check" Name="toggle-open-todos" />
             @if (CanEdit)
             {
-                <DxContextMenuItem Text="Status Ã¤ndern" IconCssClass="oi oi-loop-circular" Name="change-status-root">
-                    <Items>
-                        <DxContextMenuItem Text="Entwurf" Name="status-draft" />
-                        <DxContextMenuItem Text="In Bearbeitung" Name="status-in-progress" />
-                        <DxContextMenuItem Text="Abgeschlossen" Name="status-completed" />
-                        <DxContextMenuItem Text="Archiviert" Name="status-archived" />
-                    </Items>
-                </DxContextMenuItem>
+                    <DxContextMenuItem Text="Status Ã¤ndern" IconCssClass="oi oi-loop-circular" Name="change-status-root">
+                        <Items>
+                            <DxContextMenuItem Text="Entwurf" Name="status-draft" />
+                            <DxContextMenuItem Text="Noch nicht gestartet" Name="status-not-started" />
+                            <DxContextMenuItem Text="In Bearbeitung" Name="status-in-progress" />
+                            <DxContextMenuItem Text="Abgeschlossen" Name="status-completed" />
+                            <DxContextMenuItem Text="Archiviert" Name="status-archived" />
+                        </Items>
+                    </DxContextMenuItem>
                 <DxContextMenuItem Text="Duplizieren" IconCssClass="oi oi-copywriting" Name="duplicate" />
                 <DxContextMenuItem Text="Eintrag lÃ¶schen" IconCssClass="oi oi-trash" Name="delete" BeginGroup="true" />
             }
@@ -521,6 +522,7 @@
     private IReadOnlyList<OnboardingProfileStatus> ProfileStatuses { get; } =
     [
         OnboardingProfileStatus.Draft,
+        OnboardingProfileStatus.NotStarted,
         OnboardingProfileStatus.InProgress,
         OnboardingProfileStatus.Completed,
         OnboardingProfileStatus.Archived
@@ -538,6 +540,7 @@
     [
         new StatusFilterItem("Alle Stati", "all"),
         new StatusFilterItem("Entwurf", nameof(OnboardingProfileStatus.Draft)),
+        new StatusFilterItem("Noch nicht gestartet", nameof(OnboardingProfileStatus.NotStarted)),
         new StatusFilterItem("In Bearbeitung", nameof(OnboardingProfileStatus.InProgress)),
         new StatusFilterItem("Abgeschlossen", nameof(OnboardingProfileStatus.Completed)),
         new StatusFilterItem("Archiviert", nameof(OnboardingProfileStatus.Archived))
@@ -994,6 +997,9 @@
             case "status-draft":
                 status = OnboardingProfileStatus.Draft;
                 return true;
+            case "status-not-started":
+                status = OnboardingProfileStatus.NotStarted;
+                return true;
             case "status-in-progress":
                 status = OnboardingProfileStatus.InProgress;
                 return true;
@@ -1064,6 +1070,7 @@
         return status switch
         {
             OnboardingProfileStatus.Draft => "Entwurf",
+            OnboardingProfileStatus.NotStarted => "Noch nicht gestartet",
             OnboardingProfileStatus.InProgress => "In Bearbeitung",
             OnboardingProfileStatus.Completed => "Abgeschlossen",
             OnboardingProfileStatus.Archived => "Archiviert",
@@ -1076,6 +1083,7 @@
         return status switch
         {
             OnboardingProfileStatus.Draft => "bg-secondary",
+            OnboardingProfileStatus.NotStarted => "bg-info text-dark",
             OnboardingProfileStatus.InProgress => "bg-primary",
             OnboardingProfileStatus.Completed => "bg-success",
             OnboardingProfileStatus.Archived => "bg-dark",
@@ -1137,7 +1145,7 @@
         return new OnboardingProfile
         {
             Salutation = OnboardingSalutation.Unspecified,
-            Status = OnboardingProfileStatus.InProgress,
+            Status = OnboardingProfileStatus.NotStarted,
             EntryDate = DateTime.UtcNow.Date,
             StartDate = DateTime.UtcNow.Date,
             TargetDate = DateTime.UtcNow.Date.AddDays(7)

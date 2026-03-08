@@ -5,7 +5,7 @@ using Wiki_Blaze.Data.Entities;
 
 namespace Wiki_Blaze.Services;
 
-public class OnboardingService(IDbContextFactory<ApplicationDbContext> dbFactory) : IOnboardingService
+public partial class OnboardingService(IDbContextFactory<ApplicationDbContext> dbFactory) : IOnboardingService
 {
     private const int MaxAttachmentSizeBytes = 15 * 1024 * 1024;
 
@@ -24,6 +24,8 @@ public class OnboardingService(IDbContextFactory<ApplicationDbContext> dbFactory
         "application/x-msword",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     };
+
+    private IDbContextFactory<ApplicationDbContext> DbFactory => dbFactory;
 
     public async Task<List<OnboardingProfileListItem>> GetProfilesAsync(
         string? searchText = null,

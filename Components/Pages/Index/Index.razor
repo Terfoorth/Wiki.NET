@@ -1,62 +1,757 @@
 @page "/"
+@using System.Text.Json
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@using Wiki_Blaze.Components.DxKanban
+@using Wiki_Blaze.Data.Entities
+@using Wiki_Blaze.Services
+@attribute [Authorize]
+@rendermode InteractiveServer
+
 @inject NavigationManager NavigationManager
+@inject IWikiService WikiService
+@inject IOnboardingService OnboardingService
+@inject IUserIdResolver UserIdResolver
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IJSRuntime JsRuntime
 
-<PageTitle>Welcome</PageTitle>
+<PageTitle>Home Dashboard</PageTitle>
 
-<div id="overviewDemoDropZone" class="card custom-drop-zone rounded-3 w-100 m-0">
-    <span class="drop-file-icon mb-3"></span>
-    <span class="drop-file-label">Drag and Drop File Here</span><span class="m-1">or</span>
-    <DxButton Id="overviewDemoSelectButton"
-              CssClass="m-1"
-              RenderStyle="ButtonRenderStyle.Primary"
-              Text="Select File" />
+<div class="home-kanban-page">
+    <div class="home-header">
+        <h2 class="mb-1">Wiki.NET Home Dashboard</h2>
+        <p class="text-muted mb-0">Wiki und Onboarding in einer Kanban View.</p>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(ErrorMessage))
+    {
+        <div class="alert alert-danger">@ErrorMessage</div>
+    }
+
+    <div class="card home-toolbar-card">
+        <div class="d-flex gap-2 flex-wrap align-items-center justify-content-between">
+            <div class="d-flex gap-2 flex-wrap">
+                <DxButton Text="Wiki"
+                          RenderStyle="@(ActiveView == HomeKanbanViewType.Wiki ? ButtonRenderStyle.Primary : ButtonRenderStyle.Secondary)"
+                          Click="() => SetViewAsync(HomeKanbanViewType.Wiki)" />
+                <DxButton Text="Onboarding"
+                          RenderStyle="@(ActiveView == HomeKanbanViewType.Onboarding ? ButtonRenderStyle.Primary : ButtonRenderStyle.Secondary)"
+                          Click="() => SetViewAsync(HomeKanbanViewType.Onboarding)" />
+            </div>
+            <div class="d-flex gap-2 flex-wrap align-items-center">
+                <select class="form-select form-select-sm home-sort-select" value="@GetSortMode(ActiveView)" @onchange="OnSortChanged">
+                    <option value="@BoardSortMode.Manual">Manuell (DnD)</option>
+                    <option value="@BoardSortMode.LastActivity">Zuletzt aktiv</option>
+                    <option value="@BoardSortMode.Title">Titel</option>
+                </select>
+                <DxCheckBox Checked="@GetCompactCards(ActiveView)"
+                            CheckedChanged="@(async (bool value) => await OnCompactChanged(value))"
+                            LabelText="Kompakt" />
+                <DxButton Text="Reset Layout" RenderStyle="ButtonRenderStyle.Secondary" Click="ResetLayoutAsync" />
+                <DxButton Text="Reload" RenderStyle="ButtonRenderStyle.Secondary" Click="LoadBoardsAsync" />
+            </div>
+        </div>
+        <div class="home-toolbar-columns">
+            @foreach (var column in CurrentBoard.Columns.OrderBy(c => c.SortOrder))
+            {
+                <DxCheckBox Checked="@IsColumnVisible(ActiveView, column.Key)"
+                            CheckedChanged="@(async (bool value) => await OnColumnVisibilityChangedAsync(ActiveView, column.Key, value))"
+                            LabelText="@column.Title" />
+            }
+        </div>
+    </div>
+
+    @if (VisibleColumns.Count == 0)
+    {
+        <div class="alert alert-warning mb-0">Alle Spalten sind ausgeblendet. Aktiviere mindestens eine Spalte in der Toolbar.</div>
+    }
+    else
+    {
+        <DxKanban Data="@RenderCards"
+                  CardDropped="OnCardDroppedAsync"
+                  ColumnsReordered="OnColumnsReorderedAsync"
+                  CssClass="@GetKanbanCssClass()"
+                  ColumnNameFieldName="ColumnKey"
+                  AllowColumnReorder="true">
+            <Columns>
+                @for (var index = 0; index < VisibleColumns.Count; index++)
+                {
+                    var column = VisibleColumns[index];
+                    <DxKanbanColumn ColumnName="@column.Key"
+                                    Caption="@column.Title"
+                                    VisibleIndex="@index"
+                                    AllowCardDrag="@(column.CardsDraggable && GetSortMode(ActiveView) == BoardSortMode.Manual)"
+                                    AllowCardDrop="@(column.AcceptDrop && GetSortMode(ActiveView) == BoardSortMode.Manual)" />
+                }
+            </Columns>
+            <CardTemplate Context="ctx">
+                @{
+                    var card = (HomeKanbanCardDto)ctx;
+                }
+                <div class="home-kanban-card @(GetCompactCards(ActiveView) ? "is-compact" : string.Empty)">
+                    <div class="home-kanban-card-title">@card.Title</div>
+                    <div class="home-kanban-card-meta">
+                        <div><strong>Ersteller:</strong> @card.CreatorDisplayName</div>
+                        <div><strong>Besitzer/Bearbeiter:</strong> @(string.IsNullOrWhiteSpace(card.OwnerDisplayName) ? "-" : card.OwnerDisplayName)</div>
+                        <div><strong>Kategorie/Stellenbezeichnung:</strong> @card.CategoryOrRole</div>
+                    </div>
+                    <div class="home-kanban-card-links">
+                        @if (card.EntityType == HomeKanbanCardEntityType.WikiEntry)
+                        {
+                            <a href="@card.PrimaryLinkUrl" class="link-primary">Eintrag Ansicht</a>
+                        }
+                        else
+                        {
+                            <a href="#" class="link-primary" @onclick:preventDefault @onclick="() => OpenDetailsAsync(card)">Details</a>
+                        }
+                        <a href="#" class="link-secondary" @onclick:preventDefault @onclick="() => OpenCommentsAsync(card)">Kommentare (@card.CommentCount)</a>
+                    </div>
+                </div>
+            </CardTemplate>
+        </DxKanban>
+    }
+
+    <div id="overviewDemoDropZone" class="card custom-drop-zone rounded-3 w-100 m-0">
+        <span class="drop-file-icon mb-3"></span>
+        <span class="drop-file-label">Drag and Drop File Here</span><span class="m-1">or</span>
+        <DxButton Id="overviewDemoSelectButton" CssClass="m-1" RenderStyle="ButtonRenderStyle.Primary" Text="Select File" />
+    </div>
+    <DxUpload Name="myFile"
+              Visible="@UploadVisible"
+              ExternalSelectButtonCssSelector="#overviewDemoSelectButton"
+              ExternalDropZoneCssSelector="#overviewDemoDropZone"
+              ExternalDropZoneDragOverCssClass="custom-drop-zone-hover"
+              MaxFileSize="15000000"
+              UploadUrl="@GetUploadUrl("api/Upload/Upload/")"
+              SelectedFilesChanged="@SelectedFilesChanged" />
 </div>
-<DxUpload Name="myFile"
-          Visible="@UploadVisible"
-          ExternalSelectButtonCssSelector="#overviewDemoSelectButton"
-          ExternalDropZoneCssSelector="#overviewDemoDropZone"
-          ExternalDropZoneDragOverCssClass="custom-drop-zone-hover"
-          MaxFileSize="15000000"
-          UploadUrl="@GetUploadUrl("api/Upload/Upload/")"
-          SelectedFilesChanged="@SelectedFilesChanged">
-</DxUpload>
-<div class="upload-validation-text info-text">
-    Uploads are limited to a single file up to 15 MB.
-</div>
+
+<DxPopup HeaderText="@PopupTitle" Width="900px" Height="680px" @bind-Visible="CommentsVisible" CloseOnOutsideClick="true">
+    <BodyContentTemplate Context="commentPopupContext">
+        @if (CommentCard is null)
+        {
+            <div class="text-muted">Kein Eintrag ausgewaehlt.</div>
+        }
+        else
+        {
+            <div class="home-comment-list">
+                @foreach (var item in Comments)
+                {
+                    <div class="home-comment-item">
+                        <div><strong>@item.AuthorDisplayName</strong> <span class="text-muted">@item.CreatedAtUtc.ToLocalTime().ToString("dd.MM HH:mm")</span></div>
+                        <div>@item.Text</div>
+                        @if (item.Mentions.Count > 0)
+                        {
+                            <div class="small text-muted">Mentions: @string.Join(", ", item.Mentions.Select(x => x.Token))</div>
+                        }
+                        @if (item.Attachments.Count > 0)
+                        {
+                            <div class="d-flex flex-wrap gap-2 mt-1">
+                                @foreach (var attachment in item.Attachments)
+                                {
+                                    @if (attachment.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        <img src="@GetAttachmentPreview(attachment)"
+                                             alt="@attachment.FileName"
+                                             style="max-height:110px;max-width:160px;border-radius:6px;border:1px solid rgba(0,0,0,.1);" />
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-light text-dark border">@attachment.FileName</span>
+                                    }
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+            <DxMemo @bind-Text="NewCommentText" Rows="4" NullText="@CommentNullText" />
+            <div class="d-flex gap-2 mt-2">
+                <InputFile OnChange="OnCommentFilesChanged" multiple accept="image/*,.gif" />
+                <DxButton Text="Senden" RenderStyle="ButtonRenderStyle.Primary" Enabled="@CanSendComment" Click="SendCommentAsync" />
+            </div>
+        }
+    </BodyContentTemplate>
+</DxPopup>
+
+<DxPopup HeaderText="Onboarding Details" Width="840px" Height="600px" @bind-Visible="DetailsVisible" CloseOnOutsideClick="true">
+    <BodyContentTemplate Context="detailPopupContext">
+        @if (QuickDetail is null)
+        {
+            <div class="text-muted">Keine Daten verfuegbar.</div>
+        }
+        else
+        {
+            <DxFormLayout>
+                <DxFormLayoutItem Caption="Name">@QuickDetail.FullName</DxFormLayoutItem>
+                <DxFormLayoutItem Caption="Abteilung">@QuickDetail.Department</DxFormLayoutItem>
+                <DxFormLayoutItem Caption="Stellenbezeichnung">@QuickDetail.JobTitle</DxFormLayoutItem>
+                <DxFormLayoutItem Caption="Status">@GetStatusLabel(QuickDetail.Status)</DxFormLayoutItem>
+                <DxFormLayoutItem Caption="Massnahmen">@($"{QuickDetail.MeasureTotalCount - QuickDetail.MeasureOpenCount}/{QuickDetail.MeasureTotalCount} erledigt")</DxFormLayoutItem>
+                <DxFormLayoutItem Caption="Tests">@($"{QuickDetail.ChecklistTotalCount - QuickDetail.ChecklistOpenCount}/{QuickDetail.ChecklistTotalCount} erledigt")</DxFormLayoutItem>
+            </DxFormLayout>
+            <div class="d-flex justify-content-end mt-3">
+                <DxButton Text="Zur kompletten Detailseite" RenderStyle="ButtonRenderStyle.Primary" NavigateUrl="@($"/reportdesigner/details/{QuickDetail.ProfileId}")" />
+            </div>
+        }
+    </BodyContentTemplate>
+</DxPopup>
 
 @code {
-    bool UploadVisible { get; set; } = false;
+    private const string SettingsKeyPrefix = "wikiBlaze.homeKanban.settings";
+    private const int MaxCommentFileBytes = 8 * 1024 * 1024;
+    private const string CommentNullText = "Kommentar (Mentions: @USER, @ENTRY)";
+
+    private string? CurrentUserId { get; set; }
+    private HomeKanbanViewType ActiveView { get; set; } = HomeKanbanViewType.Wiki;
+    private readonly Dictionary<HomeKanbanViewType, BoardSortMode> SortModesByView = new()
+    {
+        [HomeKanbanViewType.Wiki] = BoardSortMode.Manual,
+        [HomeKanbanViewType.Onboarding] = BoardSortMode.Manual
+    };
+    private readonly Dictionary<HomeKanbanViewType, bool> CompactCardsByView = new()
+    {
+        [HomeKanbanViewType.Wiki] = false,
+        [HomeKanbanViewType.Onboarding] = false
+    };
+    private readonly Dictionary<HomeKanbanViewType, HashSet<string>> HiddenColumnsByView = new()
+    {
+        [HomeKanbanViewType.Wiki] = new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+        [HomeKanbanViewType.Onboarding] = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    };
+    private bool UploadVisible { get; set; }
+    private bool SettingsLoaded { get; set; }
+    private string? ErrorMessage { get; set; }
+
+    private HomeKanbanBoardDto WikiBoard { get; set; } = new() { ViewType = HomeKanbanViewType.Wiki };
+    private HomeKanbanBoardDto OnboardingBoard { get; set; } = new() { ViewType = HomeKanbanViewType.Onboarding };
+    private HomeKanbanBoardDto CurrentBoard => ActiveView == HomeKanbanViewType.Wiki ? WikiBoard : OnboardingBoard;
+
+    private List<HomeKanbanColumnDto> VisibleColumns => CurrentBoard.Columns
+        .OrderBy(column => column.SortOrder)
+        .Where(column => IsColumnVisible(ActiveView, column.Key))
+        .ToList();
+
+    private bool CommentsVisible { get; set; }
+    private HomeKanbanCardDto? CommentCard { get; set; }
+    private HomeCommentScope CommentScope { get; set; }
+    private List<HomeEntryCommentDto> Comments { get; set; } = new();
+    private string NewCommentText { get; set; } = string.Empty;
+    private List<CommentAttachmentInputDto> PendingCommentFiles { get; set; } = new();
+
+    private bool DetailsVisible { get; set; }
+    private OnboardingQuickDetailDto? QuickDetail { get; set; }
+
+    private string PopupTitle => CommentCard is null ? "Kommentare" : $"Kommentare - {CommentCard.Title}";
+    private bool CanSendComment => !string.IsNullOrWhiteSpace(NewCommentText) || PendingCommentFiles.Count > 0;
+
+    private List<HomeKanbanCardDto> RenderCards
+    {
+        get
+        {
+            var sortMode = GetSortMode(ActiveView);
+            var visibleColumnKeys = VisibleColumns
+                .Select(column => column.Key)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            return CurrentBoard.Cards
+                .Where(card => visibleColumnKeys.Contains(card.ColumnKey))
+                .OrderBy(card => CurrentBoard.Columns.FirstOrDefault(col => col.Key == card.ColumnKey)?.SortOrder ?? int.MaxValue)
+                .ThenBy(card => sortMode == BoardSortMode.Title ? 0 : 1)
+                .ThenBy(card => sortMode == BoardSortMode.Title ? card.Title : string.Empty, StringComparer.OrdinalIgnoreCase)
+                .ThenByDescending(card => sortMode == BoardSortMode.LastActivity ? card.LastActivityUtc : DateTime.MinValue)
+                .ThenBy(card => card.SortOrder)
+                .ToList();
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        CurrentUserId = UserIdResolver.ResolveCurrentUserId(authState.User);
+        if (string.IsNullOrWhiteSpace(CurrentUserId))
+        {
+            ErrorMessage = "Benutzer konnte nicht aufgeloest werden.";
+            return;
+        }
+
+        await LoadBoardsAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        await LoadSettingsAsync();
+        StateHasChanged();
+    }
+
+    private async Task LoadBoardsAsync()
+    {
+        if (string.IsNullOrWhiteSpace(CurrentUserId))
+        {
+            return;
+        }
+
+        var wikiTask = WikiService.GetHomeKanbanBoardAsync(CurrentUserId);
+        var onboardingTask = OnboardingService.GetHomeKanbanBoardAsync(CurrentUserId);
+        await Task.WhenAll(wikiTask, onboardingTask);
+        WikiBoard = await wikiTask;
+        OnboardingBoard = await onboardingTask;
+    }
+
+    private async Task SetViewAsync(HomeKanbanViewType view)
+    {
+        ActiveView = view;
+        await SaveSettingsAsync();
+    }
+
+    private async Task OnSortChanged(ChangeEventArgs args)
+    {
+        if (args.Value is not null && Enum.TryParse<BoardSortMode>(args.Value.ToString(), out var mode))
+        {
+            SetSortMode(ActiveView, mode);
+            await SaveSettingsAsync();
+        }
+    }
+
+    private async Task OnCompactChanged(bool value)
+    {
+        SetCompactCards(ActiveView, value);
+        await SaveSettingsAsync();
+    }
+
+    private async Task OnCardDroppedAsync(GridItemsDroppedEventArgs args)
+    {
+        if (GetSortMode(ActiveView) != BoardSortMode.Manual || args.DroppedItems.Count == 0 || args.DroppedItems[0] is not HomeKanbanCardDto dropped)
+        {
+            return;
+        }
+
+        var target = args.Grid.KeyFieldName;
+        if (string.IsNullOrWhiteSpace(target) || !CanMove(dropped.ColumnKey, target))
+        {
+            await LoadBoardsAsync();
+            return;
+        }
+
+        var source = dropped.ColumnKey;
+        var cards = CurrentBoard.Cards;
+        var targetCard = args.TargetItem as HomeKanbanCardDto;
+        cards.Remove(dropped);
+        dropped.ColumnKey = target;
+        if (targetCard is null)
+        {
+            cards.Add(dropped);
+        }
+        else
+        {
+            var idx = cards.IndexOf(targetCard);
+            cards.Insert(idx, dropped);
+        }
+
+        NormalizeOrder(CurrentBoard);
+        var targetIndex = cards.Where(c => c.ColumnKey == target).OrderBy(c => c.SortOrder).ToList().FindIndex(c => c.EntryId == dropped.EntryId);
+        var req = new MoveCardRequest
+        {
+            ViewType = ActiveView,
+            EntityType = dropped.EntityType,
+            EntryId = dropped.EntryId,
+            SourceColumnKey = source,
+            TargetColumnKey = target,
+            TargetIndex = Math.Max(targetIndex, 0)
+        };
+
+        var ok = ActiveView == HomeKanbanViewType.Wiki
+            ? await WikiService.MoveHomeKanbanCardAsync(CurrentUserId!, req)
+            : await OnboardingService.MoveHomeKanbanCardAsync(CurrentUserId!, req);
+
+        if (!ok)
+        {
+            await LoadBoardsAsync();
+        }
+    }
+
+    private async Task OnColumnsReorderedAsync(IReadOnlyList<string> orderedColumnKeys)
+    {
+        if (string.IsNullOrWhiteSpace(CurrentUserId) || orderedColumnKeys.Count == 0)
+        {
+            return;
+        }
+
+        var normalized = NormalizeColumnOrder(CurrentBoard.Columns, orderedColumnKeys);
+        var current = CurrentBoard.Columns
+            .OrderBy(column => column.SortOrder)
+            .Select(column => column.Key)
+            .ToList();
+
+        if (current.SequenceEqual(normalized, StringComparer.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        ApplyColumnOrder(CurrentBoard.Columns, normalized);
+        await SaveColumnOrderAsync(ActiveView, normalized);
+    }
+
+    private async Task OpenDetailsAsync(HomeKanbanCardDto card)
+    {
+        if (card.EntityType != HomeKanbanCardEntityType.OnboardingProfile)
+        {
+            return;
+        }
+
+        QuickDetail = await OnboardingService.GetQuickDetailAsync(card.EntryId);
+        DetailsVisible = QuickDetail is not null;
+    }
+
+    private async Task OpenCommentsAsync(HomeKanbanCardDto card)
+    {
+        CommentCard = card;
+        CommentScope = card.EntityType == HomeKanbanCardEntityType.WikiEntry ? HomeCommentScope.Wiki : HomeCommentScope.Onboarding;
+        CommentsVisible = true;
+        NewCommentText = string.Empty;
+        PendingCommentFiles.Clear();
+        await ReloadCommentsAsync();
+    }
+
+    private async Task ReloadCommentsAsync()
+    {
+        if (CommentCard is null)
+        {
+            Comments = new();
+            return;
+        }
+
+        Comments = CommentScope == HomeCommentScope.Wiki
+            ? await WikiService.GetHomeCommentsAsync(HomeCommentScope.Wiki, CommentCard.EntryId, CurrentUserId)
+            : await OnboardingService.GetHomeCommentsAsync(CommentCard.EntryId, CurrentUserId);
+    }
+
+    private async Task SendCommentAsync()
+    {
+        if (!CanSendComment || CommentCard is null)
+        {
+            return;
+        }
+
+        var req = new CreateCommentRequest
+        {
+            Scope = CommentScope,
+            EntryId = CommentCard.EntryId,
+            Text = NewCommentText.Trim(),
+            Attachments = PendingCommentFiles.ToList()
+        };
+
+        if (CommentScope == HomeCommentScope.Wiki)
+        {
+            await WikiService.AddHomeCommentAsync(CurrentUserId, req);
+        }
+        else
+        {
+            await OnboardingService.AddHomeCommentAsync(CurrentUserId, req);
+        }
+
+        NewCommentText = string.Empty;
+        PendingCommentFiles.Clear();
+        await ReloadCommentsAsync();
+        await LoadBoardsAsync();
+    }
+
+    private async Task OnCommentFilesChanged(InputFileChangeEventArgs args)
+    {
+        foreach (var file in args.GetMultipleFiles(4))
+        {
+            if (file.Size <= 0 || file.Size > MaxCommentFileBytes || !file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            await using var stream = file.OpenReadStream(MaxCommentFileBytes);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            PendingCommentFiles.Add(new CommentAttachmentInputDto
+            {
+                FileName = file.Name,
+                ContentType = file.ContentType,
+                Content = ms.ToArray()
+            });
+        }
+    }
+
+    private async Task OnColumnVisibilityChangedAsync(HomeKanbanViewType viewType, string columnKey, bool isVisible)
+    {
+        var hiddenColumns = GetHiddenColumns(viewType);
+        if (isVisible)
+        {
+            hiddenColumns.Remove(columnKey);
+        }
+        else
+        {
+            hiddenColumns.Add(columnKey);
+        }
+
+        await SaveSettingsAsync();
+    }
+
+    private async Task ResetLayoutAsync()
+    {
+        SetSortMode(ActiveView, BoardSortMode.Manual);
+        SetCompactCards(ActiveView, false);
+        GetHiddenColumns(ActiveView).Clear();
+
+        var defaultOrder = GetDefaultColumnOrder(ActiveView);
+        ApplyColumnOrder(CurrentBoard.Columns, defaultOrder);
+        await SaveColumnOrderAsync(ActiveView, defaultOrder);
+        await SaveSettingsAsync();
+        await LoadBoardsAsync();
+    }
+
+    private bool CanMove(string source, string target)
+    {
+        if (ActiveView == HomeKanbanViewType.Wiki)
+        {
+            return source is not HomeKanbanColumnKeys.WikiTemplateUsage and not HomeKanbanColumnKeys.WikiFavoriteUsage
+                && target is not HomeKanbanColumnKeys.WikiTemplateUsage and not HomeKanbanColumnKeys.WikiFavoriteUsage;
+        }
+
+        return source != HomeKanbanColumnKeys.OnboardingDrafts && target != HomeKanbanColumnKeys.OnboardingDrafts;
+    }
+
+    private static void NormalizeOrder(HomeKanbanBoardDto board)
+    {
+        foreach (var column in board.Columns.OrderBy(c => c.SortOrder))
+        {
+            var columnCards = board.Cards.Where(c => c.ColumnKey == column.Key).OrderBy(c => c.SortOrder).ToList();
+            for (var i = 0; i < columnCards.Count; i++)
+            {
+                columnCards[i].SortOrder = (i + 1) * 10;
+            }
+        }
+    }
+
+    private static List<string> NormalizeColumnOrder(IReadOnlyList<HomeKanbanColumnDto> columns, IReadOnlyList<string> orderedKeys)
+    {
+        var valid = columns.Select(column => column.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var normalized = orderedKeys
+            .Where(key => valid.Contains(key))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        foreach (var columnKey in columns.OrderBy(column => column.SortOrder).Select(column => column.Key))
+        {
+            if (!normalized.Contains(columnKey, StringComparer.OrdinalIgnoreCase))
+            {
+                normalized.Add(columnKey);
+            }
+        }
+
+        return normalized;
+    }
+
+    private static void ApplyColumnOrder(IReadOnlyList<HomeKanbanColumnDto> columns, IReadOnlyList<string> orderedKeys)
+    {
+        var sortOrder = 10;
+        foreach (var key in orderedKeys)
+        {
+            var column = columns.FirstOrDefault(entry => string.Equals(entry.Key, key, StringComparison.OrdinalIgnoreCase));
+            if (column is null)
+            {
+                continue;
+            }
+
+            column.SortOrder = sortOrder;
+            sortOrder += 10;
+        }
+    }
+
+    private async Task SaveColumnOrderAsync(HomeKanbanViewType viewType, IReadOnlyList<string> orderedKeys)
+    {
+        if (string.IsNullOrWhiteSpace(CurrentUserId))
+        {
+            return;
+        }
+
+        var request = new ReorderColumnsRequest
+        {
+            ViewType = viewType,
+            OrderedColumnKeys = orderedKeys.ToList()
+        };
+
+        if (viewType == HomeKanbanViewType.Wiki)
+        {
+            await WikiService.SaveHomeKanbanColumnOrderAsync(CurrentUserId, request);
+        }
+        else
+        {
+            await OnboardingService.SaveHomeKanbanColumnOrderAsync(CurrentUserId, request);
+        }
+    }
+
+    private static List<string> GetDefaultColumnOrder(HomeKanbanViewType viewType)
+    {
+        return viewType == HomeKanbanViewType.Wiki
+            ?
+            [
+                HomeKanbanColumnKeys.WikiDrafts,
+                HomeKanbanColumnKeys.WikiLastViews,
+                HomeKanbanColumnKeys.WikiTemplateUsage,
+                HomeKanbanColumnKeys.WikiFavoriteUsage
+            ]
+            :
+            [
+                HomeKanbanColumnKeys.OnboardingDrafts,
+                HomeKanbanColumnKeys.OnboardingNotStarted,
+                HomeKanbanColumnKeys.OnboardingInProgress,
+                HomeKanbanColumnKeys.OnboardingCompleted,
+                HomeKanbanColumnKeys.OnboardingArchived
+            ];
+    }
+
+    private string GetKanbanCssClass()
+    {
+        var viewCss = ActiveView == HomeKanbanViewType.Wiki ? "home-kanban-view-wiki" : "home-kanban-view-onboarding";
+        return $"{viewCss} {(GetCompactCards(ActiveView) ? "home-kanban-compact" : string.Empty)}";
+    }
+
+    private async Task LoadSettingsAsync()
+    {
+        try
+        {
+            var raw = await JsRuntime.InvokeAsync<string?>("wikiBlaze.loadDashboardSettings", GetSettingsKey());
+            if (!string.IsNullOrWhiteSpace(raw))
+            {
+                var settings = JsonSerializer.Deserialize<HomeIndexSettings>(raw);
+                if (settings is not null)
+                {
+                    ActiveView = settings.ActiveView;
+                    SetSortMode(HomeKanbanViewType.Wiki, settings.WikiSortMode);
+                    SetSortMode(HomeKanbanViewType.Onboarding, settings.OnboardingSortMode);
+                    SetCompactCards(HomeKanbanViewType.Wiki, settings.WikiCompactCards);
+                    SetCompactCards(HomeKanbanViewType.Onboarding, settings.OnboardingCompactCards);
+
+                    HiddenColumnsByView[HomeKanbanViewType.Wiki] = new HashSet<string>(settings.HiddenWikiColumns, StringComparer.OrdinalIgnoreCase);
+                    HiddenColumnsByView[HomeKanbanViewType.Onboarding] = new HashSet<string>(settings.HiddenOnboardingColumns, StringComparer.OrdinalIgnoreCase);
+                }
+            }
+        }
+        catch
+        {
+            // ignore invalid settings
+        }
+        finally
+        {
+            SettingsLoaded = true;
+        }
+    }
+
+    private async Task SaveSettingsAsync()
+    {
+        if (!SettingsLoaded)
+        {
+            return;
+        }
+
+        var raw = JsonSerializer.Serialize(new HomeIndexSettings
+        {
+            ActiveView = ActiveView,
+            WikiSortMode = GetSortMode(HomeKanbanViewType.Wiki),
+            OnboardingSortMode = GetSortMode(HomeKanbanViewType.Onboarding),
+            WikiCompactCards = GetCompactCards(HomeKanbanViewType.Wiki),
+            OnboardingCompactCards = GetCompactCards(HomeKanbanViewType.Onboarding),
+            HiddenWikiColumns = GetHiddenColumns(HomeKanbanViewType.Wiki).OrderBy(value => value).ToList(),
+            HiddenOnboardingColumns = GetHiddenColumns(HomeKanbanViewType.Onboarding).OrderBy(value => value).ToList()
+        });
+        await JsRuntime.InvokeVoidAsync("wikiBlaze.saveDashboardSettings", GetSettingsKey(), raw);
+    }
+
     protected void SelectedFilesChanged(IEnumerable<UploadFileInfo> files)
     {
-        UploadVisible = files.ToList().Count > 0;
+        UploadVisible = files.Any();
         InvokeAsync(StateHasChanged);
     }
+
     protected string GetUploadUrl(string url)
     {
         return NavigationManager.ToAbsoluteUri(url).AbsoluteUri;
     }
-}
 
-<div class="main-content">
-    <DxGridLayout CssClass="index-gridlayout">
-        <Rows>
-            <DxGridLayoutRow Height="auto" Areas="header"></DxGridLayoutRow>
-            <DxGridLayoutRow Height="auto" Areas="tiles"></DxGridLayoutRow>
-        </Rows>
-        <Items>
-            <DxGridLayoutItem Area="header" CssClass="title">
-                <Template>
-                    <div class="title-header-text">Wiki-Dashboard</div>
-                    <div class="title-content-text">Welcome to your new Wiki-Dash Blazor Application</div>
-                </Template>
-            </DxGridLayoutItem>
-            <DxGridLayoutItem Area="tiles" CssClass="tiles">
-                <Template>
-                    <IndexTile NavigateUrl="/wiki" Title="Wiki Dashboard" Description="Main Wiki-Entry-View" IconCssClass="icon-tree-list" />
-                    <IndexTile NavigateUrl="/wiki/favorites" Title="Wiki Favorites" Description="Load bookmarkt views show in the web browser." IconCssClass="icon-pdf-viewer" />
-                    <IndexTile NavigateUrl="/reportdesigner" Title="Onboarding" Description="Mitarbeiter-Onboarding mit Maßnahmen, Checklisten und Settings." IconCssClass="icon-report-designer" />
-                </Template>
-            </DxGridLayoutItem>
-        </Items>
-    </DxGridLayout>
-</div>
+    private string GetSettingsKey()
+    {
+        return string.IsNullOrWhiteSpace(CurrentUserId)
+            ? SettingsKeyPrefix
+            : $"{SettingsKeyPrefix}:{CurrentUserId}";
+    }
+
+    private BoardSortMode GetSortMode(HomeKanbanViewType viewType)
+    {
+        return SortModesByView.TryGetValue(viewType, out var mode) ? mode : BoardSortMode.Manual;
+    }
+
+    private void SetSortMode(HomeKanbanViewType viewType, BoardSortMode mode)
+    {
+        SortModesByView[viewType] = mode;
+    }
+
+    private bool GetCompactCards(HomeKanbanViewType viewType)
+    {
+        return CompactCardsByView.TryGetValue(viewType, out var compact) && compact;
+    }
+
+    private void SetCompactCards(HomeKanbanViewType viewType, bool compact)
+    {
+        CompactCardsByView[viewType] = compact;
+    }
+
+    private HashSet<string> GetHiddenColumns(HomeKanbanViewType viewType)
+    {
+        if (!HiddenColumnsByView.TryGetValue(viewType, out var hiddenColumns))
+        {
+            hiddenColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            HiddenColumnsByView[viewType] = hiddenColumns;
+        }
+
+        return hiddenColumns;
+    }
+
+    private bool IsColumnVisible(HomeKanbanViewType viewType, string columnKey)
+    {
+        return !GetHiddenColumns(viewType).Contains(columnKey);
+    }
+
+    private static string GetStatusLabel(OnboardingProfileStatus status) => status switch
+    {
+        OnboardingProfileStatus.Draft => "Entwurf",
+        OnboardingProfileStatus.NotStarted => "Noch nicht gestartet",
+        OnboardingProfileStatus.InProgress => "In Bearbeitung",
+        OnboardingProfileStatus.Completed => "Abgeschlossen",
+        OnboardingProfileStatus.Archived => "Archiviert",
+        _ => status.ToString()
+    };
+
+    private static string GetAttachmentPreview(CommentAttachmentDto attachment)
+    {
+        return $"data:{attachment.ContentType};base64,{Convert.ToBase64String(attachment.Content)}";
+    }
+
+    private sealed class HomeIndexSettings
+    {
+        public HomeKanbanViewType ActiveView { get; set; } = HomeKanbanViewType.Wiki;
+        public BoardSortMode WikiSortMode { get; set; } = BoardSortMode.Manual;
+        public BoardSortMode OnboardingSortMode { get; set; } = BoardSortMode.Manual;
+        public bool WikiCompactCards { get; set; }
+        public bool OnboardingCompactCards { get; set; }
+        public List<string> HiddenWikiColumns { get; set; } = new();
+        public List<string> HiddenOnboardingColumns { get; set; } = new();
+    }
+
+    private enum BoardSortMode
+    {
+        Manual,
+        LastActivity,
+        Title
+    }
+}

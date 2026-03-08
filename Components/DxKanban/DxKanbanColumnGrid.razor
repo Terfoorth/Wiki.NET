@@ -1,0 +1,25 @@
+﻿@namespace Wiki_Blaze.Components.DxKanban
+
+<DxGrid AllowDragRows="@AllowCardDrag"
+        AllowedDropTarget="@(AllowCardDrop ? GridAllowedDropTarget.All : GridAllowedDropTarget.None)"
+        ItemsDropped="Kanban.CardDropped"
+        Data="GetDataFilteredByColumnName(ColumnName)"
+        KeyFieldName="@ColumnName"
+        ShowAllRows="true"
+        CssClass="kanban-column-grid"
+        CustomizeElement="ApplyCssClassesToDragAnchorsAndHints">
+    <DragHintTextTemplate Context="ctx">
+        <div class="dx-card">
+            @Kanban.CardTemplate?.Invoke(ctx.DataItems.First())
+        </div>
+    </DragHintTextTemplate>
+    <Columns>
+        <DxGridDataColumn>
+            <CellDisplayTemplate Context="ctx">
+                <div class="dx-card">
+                    @Kanban.CardTemplate?.Invoke(ctx.DataItem)
+                </div>
+            </CellDisplayTemplate>
+        </DxGridDataColumn>
+    </Columns>
+</DxGrid>

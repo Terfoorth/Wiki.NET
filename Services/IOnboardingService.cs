@@ -61,6 +61,20 @@ public interface IOnboardingService
     Task<bool> SetChecklistEntryCompletedAsync(int checklistEntryId, bool isCompleted, CancellationToken cancellationToken = default);
 
     Task<bool> SetChecklistEntryResultAsync(int checklistEntryId, OnboardingChecklistResult result, CancellationToken cancellationToken = default);
+
+    Task<HomeKanbanBoardDto> GetHomeKanbanBoardAsync(string userId, int takePerColumn = 25, CancellationToken cancellationToken = default);
+
+    Task<bool> MoveHomeKanbanCardAsync(string userId, MoveCardRequest request, CancellationToken cancellationToken = default);
+
+    Task SaveHomeKanbanColumnOrderAsync(string userId, ReorderColumnsRequest request, CancellationToken cancellationToken = default);
+
+    Task<OnboardingQuickDetailDto?> GetQuickDetailAsync(int profileId, CancellationToken cancellationToken = default);
+
+    Task<List<HomeEntryCommentDto>> GetHomeCommentsAsync(int profileId, string? userId, CancellationToken cancellationToken = default);
+
+    Task<HomeEntryCommentDto> AddHomeCommentAsync(string? userId, CreateCommentRequest request, CancellationToken cancellationToken = default);
+
+    Task DeleteHomeCommentAsync(string? userId, int commentId, CancellationToken cancellationToken = default);
 }
 
 public sealed class OnboardingProfileListItem

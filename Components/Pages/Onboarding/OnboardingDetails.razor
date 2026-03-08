@@ -508,6 +508,7 @@
     private IReadOnlyList<OnboardingProfileStatus> ProfileStatuses { get; } =
     [
         OnboardingProfileStatus.Draft,
+        OnboardingProfileStatus.NotStarted,
         OnboardingProfileStatus.InProgress,
         OnboardingProfileStatus.Completed,
         OnboardingProfileStatus.Archived
@@ -899,6 +900,7 @@
         return status switch
         {
             OnboardingProfileStatus.Draft => "Entwurf",
+            OnboardingProfileStatus.NotStarted => "Noch nicht gestartet",
             OnboardingProfileStatus.InProgress => "In Bearbeitung",
             OnboardingProfileStatus.Completed => "Abgeschlossen",
             OnboardingProfileStatus.Archived => "Archiviert",
@@ -911,6 +913,7 @@
         return status switch
         {
             OnboardingProfileStatus.Draft => "bg-secondary",
+            OnboardingProfileStatus.NotStarted => "bg-info text-dark",
             OnboardingProfileStatus.InProgress => "bg-primary",
             OnboardingProfileStatus.Completed => "bg-success",
             OnboardingProfileStatus.Archived => "bg-dark",

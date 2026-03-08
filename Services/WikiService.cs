@@ -18,7 +18,7 @@ namespace Wiki_Blaze.Services
     /// Implementierung des Wiki-Services mittels Entity Framework Core.
     /// Nutzt DbContextFactory für Thread-Sicherheit in Blazor Server.
     /// </summary>
-    public class WikiService : IWikiService
+    public partial class WikiService : IWikiService
     {
         private readonly IDbContextFactory<ApplicationDbContext> _dbFactory;
 
@@ -382,6 +382,7 @@ namespace Wiki_Blaze.Services
             }
 
             await SavePageAsync(clonedPage);
+            await RecordTemplateUsageAsync(userId, templatePageId);
             return await GetPageByIdAsync(clonedPage.Id);
         }
 
@@ -520,6 +521,7 @@ namespace Wiki_Blaze.Services
                     await context.SaveChangesAsync();
                 }
 
+                await RecordFavoriteUsageAsync(userId, pageId);
                 return;
             }
 
@@ -532,6 +534,7 @@ namespace Wiki_Blaze.Services
             });
 
             await context.SaveChangesAsync();
+            await RecordFavoriteUsageAsync(userId, pageId);
         }
 
         public async Task AddFavoriteAsync(string userId, int pageId, int? groupId = null)
