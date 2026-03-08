@@ -11,6 +11,15 @@
     background: none;
 }
 
+::deep .menu .dxbl-menu-item,
+::deep .menu .dxbl-menu-item * {
+    color: var(--bs-white) !important;
+}
+
+::deep .menu .dxbl-menu-item:hover {
+    background-color: rgb(from var(--bs-white) r g b / 0.2);
+}
+
 ::deep .menu.display-mobile {
     margin-bottom: 2rem;
 }

@@ -2,6 +2,7 @@
 @using System.Text.Json
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.AspNetCore.Components.Web
 @using Wiki_Blaze.Components.DxKanban
 @using Wiki_Blaze.Data.Entities
 @using Wiki_Blaze.Services
@@ -54,9 +55,17 @@
         <div class="home-toolbar-columns">
             @foreach (var column in CurrentBoard.Columns.OrderBy(c => c.SortOrder))
             {
-                <DxCheckBox Checked="@IsColumnVisible(ActiveView, column.Key)"
-                            CheckedChanged="@(async (bool value) => await OnColumnVisibilityChangedAsync(ActiveView, column.Key, value))"
-                            LabelText="@column.Title" />
+                var toggleId = BuildColumnToggleId(ActiveView, column.Key);
+                var toggleKey = $"toggle:{ActiveView}:{column.Key}";
+                <div class="form-check form-check-inline home-toolbar-column-toggle"
+                     @key="toggleKey">
+                    <input id="@toggleId"
+                           type="checkbox"
+                           class="form-check-input"
+                           checked="@IsColumnVisible(ActiveView, column.Key)"
+                           @onchange="@(async (ChangeEventArgs args) => await OnColumnVisibilityInputChangedAsync(ActiveView, column.Key, args))" />
+                    <label class="form-check-label" for="@toggleId">@column.Title</label>
+                </div>
             }
         </div>
     </div>
@@ -88,7 +97,9 @@
                 @{
                     var card = (HomeKanbanCardDto)ctx;
                 }
-                <div class="home-kanban-card @(GetCompactCards(ActiveView) ? "is-compact" : string.Empty)">
+                <div class="home-kanban-card @(GetCompactCards(ActiveView) ? "is-compact" : string.Empty)"
+                     @oncontextmenu="(args) => OpenCardContextMenuAsync(args, card)"
+                     @oncontextmenu:preventDefault>
                     <div class="home-kanban-card-title">@card.Title</div>
                     <div class="home-kanban-card-meta">
                         <div><strong>Ersteller:</strong> @card.CreatorDisplayName</div>
@@ -110,6 +121,39 @@
             </CardTemplate>
         </DxKanban>
     }
+
+    <DxContextMenu @ref="WikiCardContextMenu" ItemClick="OnWikiCardContextMenuItemClick">
+        <Items>
+            <DxContextMenuItem Text="Eintrag Ansicht" IconCssClass="oi oi-eye" Name="open-entry" />
+            <DxContextMenuItem Text="Kommentare" IconCssClass="oi oi-chat" Name="open-comments" />
+        </Items>
+    </DxContextMenu>
+
+    <DxContextMenu @ref="OnboardingCardContextMenu" ItemClick="OnOnboardingCardContextMenuItemClick">
+        <Items>
+            <DxContextMenuItem Text="Details" IconCssClass="oi oi-info" Name="open-details" />
+            <DxContextMenuItem Text="Kommentare" IconCssClass="oi oi-chat" Name="open-comments" />
+            <DxContextMenuItem Text="Zur kompletten Detailseite" IconCssClass="oi oi-external-link" Name="open-full-details" />
+            <DxContextMenuItem Text="Status setzen" IconCssClass="oi oi-loop-circular" Name="set-status-root" BeginGroup="true">
+                <Items>
+                    <DxContextMenuItem Text="Noch nicht gestartet" Name="status-not-started" />
+                    <DxContextMenuItem Text="In Bearbeitung" Name="status-in-progress" />
+                    <DxContextMenuItem Text="Abgeschlossen" Name="status-completed" />
+                    <DxContextMenuItem Text="Archiviert" Name="status-archived" />
+                </Items>
+            </DxContextMenuItem>
+            <DxContextMenuItem Text="Bearbeiter zuweisen" IconCssClass="oi oi-person" Name="assign-root" BeginGroup="true">
+                <Items>
+                    <DxContextMenuItem Text="Nicht zugewiesen" Name="assign:__none__" />
+                    @foreach (var assignee in AssigneeLookup)
+                    {
+                        <DxContextMenuItem Text="@assignee.DisplayName"
+                                           Name="@GetAssigneeMenuItemName(assignee.UserId)" />
+                    }
+                </Items>
+            </DxContextMenuItem>
+        </Items>
+    </DxContextMenu>
 
     <div id="overviewDemoDropZone" class="card custom-drop-zone rounded-3 w-100 m-0">
         <span class="drop-file-icon mb-3"></span>
@@ -241,6 +285,10 @@
 
     private bool DetailsVisible { get; set; }
     private OnboardingQuickDetailDto? QuickDetail { get; set; }
+    private DxContextMenu? WikiCardContextMenu { get; set; }
+    private DxContextMenu? OnboardingCardContextMenu { get; set; }
+    private HomeKanbanCardDto? ContextMenuCard { get; set; }
+    private List<OnboardingAssigneeLookupItem> AssigneeLookup { get; set; } = new();
 
     private string PopupTitle => CommentCard is null ? "Kommentare" : $"Kommentare - {CommentCard.Title}";
     private bool CanSendComment => !string.IsNullOrWhiteSpace(NewCommentText) || PendingCommentFiles.Count > 0;
@@ -418,6 +466,105 @@
         await ReloadCommentsAsync();
     }
 
+    private async Task OpenCardContextMenuAsync(MouseEventArgs args, HomeKanbanCardDto card)
+    {
+        ContextMenuCard = card;
+
+        if (card.EntityType == HomeKanbanCardEntityType.WikiEntry)
+        {
+            if (WikiCardContextMenu is not null)
+            {
+                await WikiCardContextMenu.ShowAsync(args);
+            }
+
+            return;
+        }
+
+        var lookupLoaded = await EnsureAssigneeLookupAsync();
+        if (lookupLoaded)
+        {
+            await InvokeAsync(StateHasChanged);
+        }
+
+        if (OnboardingCardContextMenu is not null)
+        {
+            await OnboardingCardContextMenu.ShowAsync(args);
+        }
+    }
+
+    private async Task OnWikiCardContextMenuItemClick(ContextMenuItemClickEventArgs args)
+    {
+        var card = ContextMenuCard;
+        if (card is null || card.EntityType != HomeKanbanCardEntityType.WikiEntry)
+        {
+            return;
+        }
+
+        switch (args.ItemInfo.Name)
+        {
+            case "open-entry":
+                NavigationManager.NavigateTo(card.PrimaryLinkUrl ?? $"/wiki/view/{card.EntryId}");
+                break;
+            case "open-comments":
+                await OpenCommentsAsync(card);
+                break;
+        }
+    }
+
+    private async Task OnOnboardingCardContextMenuItemClick(ContextMenuItemClickEventArgs args)
+    {
+        var card = ContextMenuCard;
+        if (card is null || card.EntityType != HomeKanbanCardEntityType.OnboardingProfile)
+        {
+            return;
+        }
+
+        var action = args.ItemInfo.Name ?? string.Empty;
+        if (string.Equals(action, "open-details", StringComparison.Ordinal))
+        {
+            await OpenDetailsAsync(card);
+            return;
+        }
+
+        if (string.Equals(action, "open-comments", StringComparison.Ordinal))
+        {
+            await OpenCommentsAsync(card);
+            return;
+        }
+
+        if (string.Equals(action, "open-full-details", StringComparison.Ordinal))
+        {
+            NavigationManager.NavigateTo($"/reportdesigner/details/{card.EntryId}");
+            return;
+        }
+
+        var targetColumn = action switch
+        {
+            "status-not-started" => HomeKanbanColumnKeys.OnboardingNotStarted,
+            "status-in-progress" => HomeKanbanColumnKeys.OnboardingInProgress,
+            "status-completed" => HomeKanbanColumnKeys.OnboardingCompleted,
+            "status-archived" => HomeKanbanColumnKeys.OnboardingArchived,
+            _ => null
+        };
+
+        if (!string.IsNullOrWhiteSpace(targetColumn))
+        {
+            await MoveOnboardingCardToColumnAsync(card, targetColumn);
+            return;
+        }
+
+        if (action.StartsWith("assign:", StringComparison.Ordinal))
+        {
+            var assigneeUserId = action["assign:".Length..];
+            if (string.Equals(assigneeUserId, "__none__", StringComparison.Ordinal))
+            {
+                assigneeUserId = null;
+            }
+
+            await AssignOnboardingCardAsync(card, assigneeUserId);
+        }
+    }
+
     private async Task ReloadCommentsAsync()
     {
         if (CommentCard is null)
@@ -482,6 +629,11 @@
         }
     }
 
+    private async Task OnColumnVisibilityInputChangedAsync(HomeKanbanViewType viewType, string columnKey, ChangeEventArgs args)
+    {
+        await OnColumnVisibilityChangedAsync(viewType, columnKey, GetBoolValue(args.Value));
+    }
+
     private async Task OnColumnVisibilityChangedAsync(HomeKanbanViewType viewType, string columnKey, bool isVisible)
     {
         var hiddenColumns = GetHiddenColumns(viewType);
@@ -495,6 +647,77 @@
         }
 
         await SaveSettingsAsync();
+    }
+
+    private async Task MoveOnboardingCardToColumnAsync(HomeKanbanCardDto card, string targetColumnKey)
+    {
+        if (string.IsNullOrWhiteSpace(CurrentUserId))
+        {
+            return;
+        }
+
+        if (string.Equals(card.ColumnKey, targetColumnKey, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        if (string.Equals(card.ColumnKey, HomeKanbanColumnKeys.OnboardingDrafts, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(targetColumnKey, HomeKanbanColumnKeys.OnboardingDrafts, StringComparison.OrdinalIgnoreCase))
+        {
+            await LoadBoardsAsync();
+            return;
+        }
+
+        var request = new MoveCardRequest
+        {
+            ViewType = HomeKanbanViewType.Onboarding,
+            EntityType = HomeKanbanCardEntityType.OnboardingProfile,
+            EntryId = card.EntryId,
+            SourceColumnKey = card.ColumnKey,
+            TargetColumnKey = targetColumnKey,
+            TargetIndex = int.MaxValue
+        };
+
+        var ok = await OnboardingService.MoveHomeKanbanCardAsync(CurrentUserId, request);
+        if (!ok)
+        {
+            ErrorMessage = "Statuswechsel wurde durch die Serverregeln abgelehnt.";
+            await LoadBoardsAsync();
+            return;
+        }
+
+        ErrorMessage = null;
+        await LoadBoardsAsync();
+    }
+
+    private async Task AssignOnboardingCardAsync(HomeKanbanCardDto card, string? assigneeUserId)
+    {
+        if (string.IsNullOrWhiteSpace(CurrentUserId))
+        {
+            return;
+        }
+
+        var ok = await OnboardingService.SetAssignedAgentAsync(card.EntryId, assigneeUserId, CurrentUserId);
+        if (!ok)
+        {
+            ErrorMessage = "Bearbeiter konnte nicht zugewiesen werden (Berechtigung oder Validierung).";
+            await LoadBoardsAsync();
+            return;
+        }
+
+        ErrorMessage = null;
+        await LoadBoardsAsync();
+    }
+
+    private async Task<bool> EnsureAssigneeLookupAsync()
+    {
+        if (AssigneeLookup.Count > 0)
+        {
+            return false;
+        }
+
+        AssigneeLookup = await OnboardingService.GetAssigneeLookupAsync();
+        return true;
     }
 
     private async Task ResetLayoutAsync()
@@ -686,6 +909,14 @@
             : $"{SettingsKeyPrefix}:{CurrentUserId}";
     }
 
+    private static string BuildColumnToggleId(HomeKanbanViewType viewType, string columnKey)
+    {
+        var safeColumn = new string(columnKey.Select(ch => char.IsLetterOrDigit(ch) ? char.ToLowerInvariant(ch) : '-').ToArray());
+        return $"home-column-toggle-{viewType.ToString().ToLowerInvariant()}-{safeColumn}";
+    }
+
+    private static string GetAssigneeMenuItemName(string userId) => $"assign:{userId}";
+
     private BoardSortMode GetSortMode(HomeKanbanViewType viewType)
     {
         return SortModesByView.TryGetValue(viewType, out var mode) ? mode : BoardSortMode.Manual;
@@ -720,6 +951,21 @@
     private bool IsColumnVisible(HomeKanbanViewType viewType, string columnKey)
     {
         return !GetHiddenColumns(viewType).Contains(columnKey);
+    }
+
+    private static bool GetBoolValue(object? value)
+    {
+        if (value is bool boolValue)
+        {
+            return boolValue;
+        }
+
+        if (value is string textValue && bool.TryParse(textValue, out var parsedValue))
+        {
+            return parsedValue;
+        }
+
+        return false;
     }
 
     private static string GetStatusLabel(OnboardingProfileStatus status) => status switch

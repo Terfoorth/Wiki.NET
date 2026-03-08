@@ -17,6 +17,7 @@ public partial class OnboardingService
         "image/jpeg",
         "image/webp"
     };
+    private const string AdminRoleName = "Admin";
 
     public async Task<HomeKanbanBoardDto> GetHomeKanbanBoardAsync(string userId, int takePerColumn = 25, CancellationToken cancellationToken = default)
     {
@@ -225,6 +226,54 @@ public partial class OnboardingService
         }
 
         await context.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task<bool> SetAssignedAgentAsync(int profileId, string? assigneeUserId, string actorUserId, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(actorUserId))
+        {
+            return false;
+        }
+
+        var normalizedAssigneeUserId = string.IsNullOrWhiteSpace(assigneeUserId) ? null : assigneeUserId.Trim();
+
+        await using var context = await DbFactory.CreateDbContextAsync(cancellationToken);
+        var profile = await context.OnboardingProfiles
+            .FirstOrDefaultAsync(entry => entry.Id == profileId, cancellationToken);
+
+        if (profile is null)
+        {
+            return false;
+        }
+
+        var isAdmin = await IsUserInRoleAsync(context, actorUserId, AdminRoleName, cancellationToken);
+        var isCurrentAgent = string.Equals(profile.AssignedAgentUserId, actorUserId, StringComparison.Ordinal);
+        if (!isAdmin && !isCurrentAgent)
+        {
+            return false;
+        }
+
+        if (!string.IsNullOrWhiteSpace(normalizedAssigneeUserId))
+        {
+            var assigneeExists = await context.Users
+                .AsNoTracking()
+                .AnyAsync(entry => entry.Id == normalizedAssigneeUserId, cancellationToken);
+
+            if (!assigneeExists)
+            {
+                return false;
+            }
+        }
+
+        if (string.Equals(profile.AssignedAgentUserId, normalizedAssigneeUserId, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        profile.AssignedAgentUserId = normalizedAssigneeUserId;
+        profile.LastModifiedAt = DateTime.UtcNow;
+        await context.SaveChangesAsync(cancellationToken);
+        return true;
     }
 
     public async Task<OnboardingQuickDetailDto?> GetQuickDetailAsync(int profileId, CancellationToken cancellationToken = default)
@@ -599,6 +648,21 @@ public partial class OnboardingService
             state.SortOrder = card.SortOrder;
             state.UpdatedAtUtc = DateTime.UtcNow;
         }
+    }
+
+    private static async Task<bool> IsUserInRoleAsync(
+        ApplicationDbContext context,
+        string userId,
+        string roleName,
+        CancellationToken cancellationToken)
+    {
+        var normalizedRoleName = roleName.ToUpperInvariant();
+        return await (
+            from userRole in context.UserRoles
+            join role in context.Roles on userRole.RoleId equals role.Id
+            where userRole.UserId == userId && role.NormalizedName == normalizedRoleName
+            select role.Id
+        ).AnyAsync(cancellationToken);
     }
 
     private static List<MentionToken> ExtractHomeMentionTokens(string text)

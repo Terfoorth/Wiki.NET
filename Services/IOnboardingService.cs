@@ -22,6 +22,8 @@ public interface IOnboardingService
 
     Task<List<OnboardingAssigneeLookupItem>> GetAssigneeLookupAsync(CancellationToken cancellationToken = default);
 
+    Task<bool> SetAssignedAgentAsync(int profileId, string? assigneeUserId, string actorUserId, CancellationToken cancellationToken = default);
+
     Task<OnboardingProfileAttachmentInfo?> GetAttachmentInfoAsync(int profileId, CancellationToken cancellationToken = default);
 
     Task<OnboardingProfileAttachmentData?> GetAttachmentContentAsync(int profileId, CancellationToken cancellationToken = default);

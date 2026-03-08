@@ -6,6 +6,7 @@
 
 ::deep .home-toolbar-card {
     padding: 0.9rem;
+    border-color: rgba(21, 65, 124, 0.22);
 }
 
 ::deep .home-toolbar-columns {
@@ -15,18 +16,49 @@
     gap: 0.55rem 1rem;
 }
 
+::deep .home-toolbar-column-toggle {
+    margin: 0;
+    padding: 0.15rem 0.5rem 0.15rem 0.2rem;
+    border-radius: 0.45rem;
+    background-color: rgba(13, 110, 253, 0.06);
+}
+
+::deep .home-toolbar-column-toggle .form-check-input {
+    cursor: pointer;
+    box-shadow: none;
+}
+
+::deep .home-toolbar-column-toggle .form-check-label {
+    color: #1f2a37;
+    font-weight: 600;
+    cursor: pointer;
+}
+
 ::deep .home-sort-select {
     min-width: 12rem;
 }
 
-::deep .home-kanban-view-wiki .kanban-header-cell,
-::deep .home-kanban-view-wiki .kanban-data-cell {
-    background-color: rgba(59, 130, 92, 0.16) !important;
+::deep .home-kanban-page .home-kanban-view-wiki .kanban-header-cell,
+::deep .home-kanban-page .home-kanban-view-wiki .kanban-data-cell {
+    background-color: #d8f1e1 !important;
 }
 
-::deep .home-kanban-view-onboarding .kanban-header-cell,
-::deep .home-kanban-view-onboarding .kanban-data-cell {
-    background-color: rgba(47, 114, 186, 0.18) !important;
+::deep .home-kanban-page .home-kanban-view-onboarding .kanban-header-cell,
+::deep .home-kanban-page .home-kanban-view-onboarding .kanban-data-cell {
+    background-color: #d9eaff !important;
+}
+
+::deep .home-kanban-page .home-kanban-view-wiki .kanban-header-cell {
+    background: linear-gradient(180deg, #1f9f58 0%, #15803d 100%) !important;
+}
+
+::deep .home-kanban-page .home-kanban-view-onboarding .kanban-header-cell {
+    background: linear-gradient(180deg, #1f6fd6 0%, #0f4fa9 100%) !important;
+}
+
+::deep .home-kanban-page .home-kanban-view-wiki .kanban-header-cell *,
+::deep .home-kanban-page .home-kanban-view-onboarding .kanban-header-cell * {
+    color: #fff !important;
 }
 
 ::deep .home-kanban-card {
@@ -61,6 +93,16 @@
     justify-content: space-between;
     gap: 0.55rem;
     font-size: 0.84rem;
+    align-items: center;
+}
+
+::deep .home-kanban-card-links a {
+    font-weight: 600;
+    text-decoration: none;
+}
+
+::deep .home-kanban-card-links a:hover {
+    text-decoration: underline;
 }
 
 ::deep .home-comment-list {

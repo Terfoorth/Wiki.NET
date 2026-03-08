@@ -9,18 +9,13 @@
     <base href="/" />
     <link href=@AppendVersion("css/bootstrap/bootstrap.min.css") rel="stylesheet" id="bootstrap-theme" />
     @DxResourceManager.RegisterTheme(Themes.BootstrapExternal)
-
-    @DxResourceManager.RegisterTheme(Themes.Fluent.Clone(properties => {
-        properties.AddFilePaths("css/kanban.css");
-    }))
-
     @DxResourceManager.RegisterScripts()
     <link href=@AppendVersion("_content/DevExpress.Blazor.RichEdit/dx-blazor-richedit.css") rel="stylesheet" />
     <link href=@AppendVersion("_content/DevExpress.Blazor.Viewer/css/dx-blazor-viewer-components.bs5.css") rel="stylesheet" />
     <link href=@AppendVersion("_content/DevExpress.Blazor.Reporting.Viewer/css/dx-blazor-reporting-components.bs5.css") rel="stylesheet" />
     <link href=@AppendVersion("css/site.css") rel="stylesheet" />
+    <link href=@AppendVersion("css/kanban.css") rel="stylesheet" />
     <link href=@AppendVersion("Wiki-Blaze.styles.css") rel="stylesheet" />
-    <link href=@AppendVersion("css/dx.fluent.blue.light.css") rel="stylesheet" />
 
     <HeadOutlet />
 </head>

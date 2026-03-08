@@ -1,19 +1,12 @@
-﻿using DevExpress.Blazor;
+using DevExpress.Blazor;
 using Microsoft.AspNetCore.Components;
-using Microsoft.JSInterop;
 using System.Collections;
 
-namespace Wiki_Blaze.Components.DxKanban { 
-    public partial class DxKanban : ComponentBase, IAsyncDisposable {
+namespace Wiki_Blaze.Components.DxKanban {
+    public partial class DxKanban : ComponentBase {
         #region Fields
         private IEnumerable sampleSingleCellData = Enumerable.Range(0, 1);
-        private IJSObjectReference? jsModule;
         private readonly Dictionary<string, int> columnVisibleIndexMap = new(StringComparer.OrdinalIgnoreCase);
-        #endregion
-
-        #region Services
-        [Inject]
-        private IJSRuntime JS { get; set; } = default!;
         #endregion
 
         #region Parameters
@@ -52,24 +45,6 @@ namespace Wiki_Blaze.Components.DxKanban {
                     e.CssClass = "kanban-data-cell";
                     break;
             }
-        }
-        #endregion
-
-        #region Lifecycle Methods
-        protected override async Task OnAfterRenderAsync(bool firstRender) {
-            if(jsModule is null) {
-                jsModule = await JS.InvokeAsync<IJSObjectReference>("import", "/Components/DxKanban/DxKanban.razor.js");
-            }
-            await jsModule.InvokeVoidAsync("moveGridDataCellContentToAnchors");
-        }
-
-        public async ValueTask DisposeAsync() {
-            try {
-                if(jsModule != null) {
-                    await jsModule.DisposeAsync();
-                }
-            }
-            catch(JSDisconnectedException) { }
         }
         #endregion
 
