@@ -70,72 +70,80 @@
     }
     else
     {
-        <DxKanban Data="@RenderCards"
-                  CardDropped="OnCardDroppedAsync"
-                  ColumnsReordered="OnColumnsReorderedAsync"
-                  CssClass="@GetKanbanCssClass()"
-                  ColumnNameFieldName="ColumnKey"
-                  AllowColumnReorder="true">
-            <Columns>
-                @for (var index = 0; index < VisibleColumns.Count; index++)
-                {
-                    var column = VisibleColumns[index];
-                    var columnRenderKey = GetColumnRenderKey(ActiveView, column.Key);
-                    <DxKanbanColumn @key="columnRenderKey"
-                                    ColumnName="@column.Key"
-                                    Caption="@column.Title"
-                                    VisibleIndex="@index"
-                                    AllowCardDrag="@(column.CardsDraggable && GetSortMode(ActiveView) == BoardSortMode.Manual)"
-                                    AllowCardDrop="@(column.AcceptDrop && GetSortMode(ActiveView) == BoardSortMode.Manual)" />
-                }
-            </Columns>
-            <CardTemplate Context="ctx">
-                @{
-                    var card = (HomeKanbanCardDto)ctx;
-                }
-                <div class="home-kanban-card @(GetCompactCards(ActiveView) ? "is-compact" : string.Empty)"
-                     @oncontextmenu="(args) => OnCardContextMenuAsync(args, card)"
-                     @oncontextmenu:preventDefault>
-                    <div class="home-kanban-card-header">
-                        <div class="home-kanban-card-title">@card.Title</div>
-                        @if (!string.IsNullOrWhiteSpace(card.Subtitle))
-                        {
-                            <div class="home-kanban-card-subtitle">@card.Subtitle</div>
-                        }
-                    </div>
-                    <div class="home-kanban-card-meta">
-                        <div class="home-meta-row">
-                            <span class="home-meta-label">Ersteller</span>
-                            <span class="home-meta-value">@card.CreatorDisplayName</span>
-                        </div>
-                        <div class="home-meta-row">
-                            <span class="home-meta-label">Besitzer/Bearbeiter</span>
-                            <span class="home-meta-value">@(string.IsNullOrWhiteSpace(card.OwnerDisplayName) ? "-" : card.OwnerDisplayName)</span>
-                        </div>
-                        <div class="home-meta-row">
-                            <span class="home-meta-label">Kategorie/Rolle</span>
-                            <span class="home-meta-value">@card.CategoryOrRole</span>
-                        </div>
-                    </div>
-                    <div class="home-kanban-card-footer">
-                        <div class="home-kanban-card-activity">
-                            Aktivitaet: @card.LastActivityUtc.ToLocalTime().ToString("dd.MM.yyyy HH:mm")
-                        </div>
-                        <div class="home-kanban-card-links">
-                            @if (card.EntityType == HomeKanbanCardEntityType.WikiEntry)
+        <div class="home-kanban-board-shell">
+            <DxKanban Data="@RenderCards"
+                      CardDropped="OnCardDroppedAsync"
+                      ColumnsReordered="OnColumnsReorderedAsync"
+                      CssClass="@GetKanbanCssClass()"
+                      ColumnNameFieldName="ColumnKey"
+                      AllowColumnReorder="true">
+                <Columns>
+                    @for (var index = 0; index < VisibleColumns.Count; index++)
+                    {
+                        var column = VisibleColumns[index];
+                        var columnRenderKey = GetColumnRenderKey(ActiveView, column.Key);
+                        <DxKanbanColumn @key="columnRenderKey"
+                                        ColumnName="@column.Key"
+                                        Caption="@column.Title"
+                                        VisibleIndex="@index"
+                                        AllowCardDrag="@(column.CardsDraggable && GetSortMode(ActiveView) == BoardSortMode.Manual)"
+                                        AllowCardDrop="@(column.AcceptDrop && GetSortMode(ActiveView) == BoardSortMode.Manual)" />
+                    }
+                </Columns>
+                <CardTemplate Context="ctx">
+                    @{
+                        var card = (HomeKanbanCardDto)ctx;
+                    }
+                    <div class="home-kanban-card @(GetCompactCards(ActiveView) ? "is-compact" : string.Empty)"
+                         @oncontextmenu="(args) => OnCardContextMenuAsync(args, card)"
+                         @oncontextmenu:preventDefault>
+                        <div class="home-kanban-card-header">
+                            <div class="home-kanban-card-header-row">
+                                <div class="home-kanban-card-title">@card.Title</div>
+                                @if (ShowCardDragHint(card))
+                                {
+                                    <span class="home-kanban-drag-hint" title="Zum Verschieben den Drag-Handle links an der Karte verwenden.">⋮⋮</span>
+                                }
+                            </div>
+                            @if (!string.IsNullOrWhiteSpace(card.Subtitle))
                             {
-                                <a href="@card.PrimaryLinkUrl" class="link-primary">Eintrag Ansicht</a>
+                                <div class="home-kanban-card-subtitle">@card.Subtitle</div>
                             }
-                            else
-                            {
-                                <a href="#" class="link-primary" @onclick:preventDefault @onclick="() => OpenDetailsAsync(card)">Details</a>
-                            }
-                            <a href="#" class="link-secondary" @onclick:preventDefault @onclick="() => OpenCommentsAsync(card)">Kommentare (@card.CommentCount)</a>
+                        </div>
+                        <div class="home-kanban-card-meta">
+                            <div class="home-meta-row">
+                                <span class="home-meta-label">Ersteller</span>
+                                <span class="home-meta-value">@card.CreatorDisplayName</span>
+                            </div>
+                            <div class="home-meta-row">
+                                <span class="home-meta-label">Besitzer/Bearbeiter</span>
+                                <span class="home-meta-value">@(string.IsNullOrWhiteSpace(card.OwnerDisplayName) ? "-" : card.OwnerDisplayName)</span>
+                            </div>
+                            <div class="home-meta-row">
+                                <span class="home-meta-label">Kategorie/Rolle</span>
+                                <span class="home-meta-value">@card.CategoryOrRole</span>
+                            </div>
+                        </div>
+                        <div class="home-kanban-card-footer">
+                            <div class="home-kanban-card-activity">
+                                Aktivitaet: @card.LastActivityUtc.ToLocalTime().ToString("dd.MM.yyyy HH:mm")
+                            </div>
+                            <div class="home-kanban-card-links">
+                                @if (card.EntityType == HomeKanbanCardEntityType.WikiEntry)
+                                {
+                                    <a href="@card.PrimaryLinkUrl" class="link-primary">Eintrag Ansicht</a>
+                                }
+                                else
+                                {
+                                    <a href="#" class="link-primary" @onclick:preventDefault @onclick="() => OpenDetailsAsync(card)">Details</a>
+                                }
+                                <a href="#" class="link-secondary" @onclick:preventDefault @onclick="() => OpenCommentsAsync(card)">Kommentare (@card.CommentCount)</a>
+                            </div>
                         </div>
                     </div>
-                </div>
-            </CardTemplate>
-        </DxKanban>
+                </CardTemplate>
+            </DxKanban>
+        </div>
     }
 
     <div id="overviewDemoDropZone" class="card custom-drop-zone rounded-3 w-100 m-0">
@@ -443,6 +451,7 @@
 
         ApplyColumnOrder(CurrentBoard.Columns, normalized);
         await SaveColumnOrderAsync(ActiveView, normalized);
+        await LoadBoardsAsync();
     }
 
     private async Task OpenDetailsAsync(HomeKanbanCardDto card)
@@ -458,6 +467,13 @@
 
     private async Task OpenCommentsAsync(HomeKanbanCardDto card)
     {
+        if (CommentsVisible)
+        {
+            CommentsVisible = false;
+            await InvokeAsync(StateHasChanged);
+        }
+
+        ErrorMessage = null;
         CommentCard = card;
         CommentScope = card.EntityType == HomeKanbanCardEntityType.WikiEntry ? HomeCommentScope.Wiki : HomeCommentScope.Onboarding;
         CommentsVisible = true;
@@ -871,6 +887,18 @@
     private static string GetAttachmentPreview(CommentAttachmentDto attachment)
     {
         return $"data:{attachment.ContentType};base64,{Convert.ToBase64String(attachment.Content)}";
+    }
+
+    private bool ShowCardDragHint(HomeKanbanCardDto card)
+    {
+        if (GetSortMode(ActiveView) != BoardSortMode.Manual)
+        {
+            return false;
+        }
+
+        var column = CurrentBoard.Columns.FirstOrDefault(entry =>
+            string.Equals(entry.Key, card.ColumnKey, StringComparison.OrdinalIgnoreCase));
+        return column?.CardsDraggable == true;
     }
 
     private static string GetColumnRenderKey(HomeKanbanViewType viewType, string columnKey)

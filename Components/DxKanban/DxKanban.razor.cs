@@ -62,10 +62,9 @@ namespace Wiki_Blaze.Components.DxKanban {
         }
 
         protected override async Task OnAfterRenderAsync(bool firstRender) {
-            if(jsModule is null) {
+            if(firstRender && jsModule is null) {
                 jsModule = await JS.InvokeAsync<IJSObjectReference>("import", "/Components/DxKanban/DxKanban.razor.js");
             }
-            await jsModule.InvokeVoidAsync("moveGridDataCellContentToAnchors");
         }
 
         public async ValueTask DisposeAsync() {
