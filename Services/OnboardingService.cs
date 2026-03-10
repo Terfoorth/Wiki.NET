@@ -158,7 +158,7 @@ public partial class OnboardingService(IDbContextFactory<ApplicationDbContext> d
         return profile;
     }
 
-    public async Task<OnboardingProfile> CreateProfileAsync(OnboardingProfile profile, CancellationToken cancellationToken = default)
+    public async Task<OnboardingProfile> CreateProfileAsync(OnboardingProfile profile, string? createdByUserId = null, CancellationToken cancellationToken = default)
     {
         await using var context = await dbFactory.CreateDbContextAsync(cancellationToken);
 
@@ -168,6 +168,7 @@ public partial class OnboardingService(IDbContextFactory<ApplicationDbContext> d
         NormalizeAndSyncProfile(profile);
         profile.CreatedAt = now;
         profile.LastModifiedAt = now;
+        profile.CreatedByUserId = NormalizeOptional(createdByUserId);
 
         if (profile.Status == OnboardingProfileStatus.Completed)
         {

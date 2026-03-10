@@ -763,6 +763,10 @@ namespace Wiki_Blaze.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("CreatedByUserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
                     b.Property<string>("Department")
                         .HasMaxLength(150)
                         .HasColumnType("nvarchar(150)");
@@ -866,6 +870,8 @@ namespace Wiki_Blaze.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("AssignedAgentUserId");
+
+                    b.HasIndex("CreatedByUserId");
 
                     b.HasIndex("LinkedUserId");
 
@@ -1674,12 +1680,19 @@ namespace Wiki_Blaze.Migrations
                         .HasForeignKey("AssignedAgentUserId")
                         .OnDelete(DeleteBehavior.SetNull);
 
+                    b.HasOne("Wiki_Blaze.Data.ApplicationUser", "CreatedByUser")
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("Wiki_Blaze.Data.ApplicationUser", "LinkedUser")
                         .WithMany()
                         .HasForeignKey("LinkedUserId")
                         .OnDelete(DeleteBehavior.NoAction);
 
                     b.Navigation("AssignedAgentUser");
+
+                    b.Navigation("CreatedByUser");
 
                     b.Navigation("LinkedUser");
                 });

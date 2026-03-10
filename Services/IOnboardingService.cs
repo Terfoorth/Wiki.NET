@@ -12,7 +12,7 @@ public interface IOnboardingService
 
     Task<OnboardingProfile?> GetProfileAsync(int profileId, CancellationToken cancellationToken = default);
 
-    Task<OnboardingProfile> CreateProfileAsync(OnboardingProfile profile, CancellationToken cancellationToken = default);
+    Task<OnboardingProfile> CreateProfileAsync(OnboardingProfile profile, string? createdByUserId = null, CancellationToken cancellationToken = default);
 
     Task<OnboardingProfile> UpdateProfileAsync(OnboardingProfile profile, CancellationToken cancellationToken = default);
 

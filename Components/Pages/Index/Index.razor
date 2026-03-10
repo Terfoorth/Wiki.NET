@@ -100,7 +100,7 @@
                     @{
                         var card = (HomeKanbanCardDto)ctx;
                     }
-                    <div class="home-kanban-card @(GetCompactCards(ActiveView) ? "is-compact" : string.Empty)"
+                    <div class="home-kanban-card @(GetCompactCards(ActiveView) ? "is-compact" : string.Empty) @(card.IsReminderActive ? (card.IsReminderOverdue ? "is-reminder-overdue" : "is-reminder-active") : string.Empty)"
                          @oncontextmenu="(args) => OnCardContextMenuAsync(args, card)"
                          @oncontextmenu:preventDefault>
                         <div class="home-kanban-card-header">
@@ -114,6 +114,10 @@
                             @if (!string.IsNullOrWhiteSpace(card.Subtitle))
                             {
                                 <div class="home-kanban-card-subtitle">@card.Subtitle</div>
+                            }
+                            @if (card.IsReminderActive && !string.IsNullOrWhiteSpace(card.ReminderLabel))
+                            {
+                                <div class="home-kanban-reminder-badge @(card.IsReminderOverdue ? "is-overdue" : "is-due")">@card.ReminderLabel</div>
                             }
                         </div>
                         <div class="home-kanban-card-meta">

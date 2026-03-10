@@ -4,6 +4,7 @@ using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using Wiki_Blaze.Data;
 using Wiki_Blaze.Data.Entities;
+using Wiki_Blaze.Services.Notifications;
 
 namespace Wiki_Blaze.Services;
 
@@ -30,15 +31,18 @@ public partial class OnboardingService
             .AsNoTracking()
             .Include(profile => profile.AssignedAgentUser)
             .Include(profile => profile.LinkedUser)
+            .Include(profile => profile.CreatedByUser)
             .OrderByDescending(profile => profile.LastModifiedAt)
             .ToListAsync(cancellationToken);
 
+        var localDate = await ResolveHomeLocalDateAsync(context, userId, cancellationToken);
+
         var cards = new List<HomeKanbanCardDto>(profiles.Count);
-        cards.AddRange(BuildCardsForStatus(profiles, OnboardingProfileStatus.Draft, HomeKanbanColumnKeys.OnboardingDrafts, takePerColumn));
-        cards.AddRange(BuildCardsForStatus(profiles, OnboardingProfileStatus.NotStarted, HomeKanbanColumnKeys.OnboardingNotStarted, takePerColumn));
-        cards.AddRange(BuildCardsForStatus(profiles, OnboardingProfileStatus.InProgress, HomeKanbanColumnKeys.OnboardingInProgress, takePerColumn));
-        cards.AddRange(BuildCardsForStatus(profiles, OnboardingProfileStatus.Completed, HomeKanbanColumnKeys.OnboardingCompleted, takePerColumn));
-        cards.AddRange(BuildCardsForStatus(profiles, OnboardingProfileStatus.Archived, HomeKanbanColumnKeys.OnboardingArchived, takePerColumn));
+        cards.AddRange(BuildCardsForStatus(profiles, OnboardingProfileStatus.Draft, HomeKanbanColumnKeys.OnboardingDrafts, takePerColumn, localDate));
+        cards.AddRange(BuildCardsForStatus(profiles, OnboardingProfileStatus.NotStarted, HomeKanbanColumnKeys.OnboardingNotStarted, takePerColumn, localDate));
+        cards.AddRange(BuildCardsForStatus(profiles, OnboardingProfileStatus.InProgress, HomeKanbanColumnKeys.OnboardingInProgress, takePerColumn, localDate));
+        cards.AddRange(BuildCardsForStatus(profiles, OnboardingProfileStatus.Completed, HomeKanbanColumnKeys.OnboardingCompleted, takePerColumn, localDate));
+        cards.AddRange(BuildCardsForStatus(profiles, OnboardingProfileStatus.Archived, HomeKanbanColumnKeys.OnboardingArchived, takePerColumn, localDate));
 
         var defaultColumns = GetDefaultOnboardingColumns();
 
@@ -415,40 +419,50 @@ public partial class OnboardingService
         List<OnboardingProfile> profiles,
         OnboardingProfileStatus status,
         string columnKey,
-        int takePerColumn)
+        int takePerColumn,
+        DateTime localDate)
     {
         return profiles
             .Where(profile => profile.Status == status)
             .OrderByDescending(profile => profile.LastModifiedAt)
             .Take(takePerColumn)
-            .Select((profile, index) => new HomeKanbanCardDto
+            .Select((profile, index) =>
             {
-                EntryId = profile.Id,
-                EntityType = HomeKanbanCardEntityType.OnboardingProfile,
-                ColumnKey = columnKey,
-                SortOrder = (index + 1) * 10,
-                Title = BuildProfileDisplayName(profile.FirstName, profile.LastName, profile.FullName),
-                CreatorDisplayName = profile.LinkedUser is null
-                    ? "-"
-                    : ResolveUserDisplayName(
-                        profile.LinkedUser.DisplayName,
-                        profile.LinkedUser.FirstName,
-                        profile.LinkedUser.LastName,
-                        profile.LinkedUser.UserName,
-                        profile.LinkedUser.Email),
-                OwnerDisplayName = profile.AssignedAgentUser is null
-                    ? "-"
-                    : ResolveUserDisplayName(
-                        profile.AssignedAgentUser.DisplayName,
-                        profile.AssignedAgentUser.FirstName,
-                        profile.AssignedAgentUser.LastName,
-                        profile.AssignedAgentUser.UserName,
-                        profile.AssignedAgentUser.Email),
-                CategoryOrRole = !string.IsNullOrWhiteSpace(profile.JobTitle) ? profile.JobTitle! : "-",
-                Subtitle = profile.Department,
-                PrimaryLinkText = "Details",
-                PrimaryLinkUrl = $"/reportdesigner/details/{profile.Id}",
-                LastActivityUtc = profile.LastModifiedAt
+                var reminderState = BuildOnboardingReminderState(profile.TargetDate, localDate);
+                return new HomeKanbanCardDto
+                {
+                    EntryId = profile.Id,
+                    EntityType = HomeKanbanCardEntityType.OnboardingProfile,
+                    ColumnKey = columnKey,
+                    SortOrder = (index + 1) * 10,
+                    Title = BuildProfileDisplayName(profile.FirstName, profile.LastName, profile.FullName),
+                    CreatorDisplayName = profile.CreatedByUser is null
+                        ? "-"
+                        : ResolveUserDisplayName(
+                            profile.CreatedByUser.DisplayName,
+                            profile.CreatedByUser.FirstName,
+                            profile.CreatedByUser.LastName,
+                            profile.CreatedByUser.UserName,
+                            profile.CreatedByUser.Email),
+                    OwnerDisplayName = profile.AssignedAgentUser is null
+                        ? "-"
+                        : ResolveUserDisplayName(
+                            profile.AssignedAgentUser.DisplayName,
+                            profile.AssignedAgentUser.FirstName,
+                            profile.AssignedAgentUser.LastName,
+                            profile.AssignedAgentUser.UserName,
+                            profile.AssignedAgentUser.Email),
+                    CategoryOrRole = !string.IsNullOrWhiteSpace(profile.JobTitle) ? profile.JobTitle! : "-",
+                    Subtitle = profile.Department,
+                    PrimaryLinkText = "Details",
+                    PrimaryLinkUrl = $"/reportdesigner/details/{profile.Id}",
+                    LastActivityUtc = profile.LastModifiedAt,
+                    IsReminderActive = reminderState.IsActive,
+                    IsReminderOverdue = reminderState.IsOverdue,
+                    ReminderDueDate = reminderState.DueDate,
+                    ReminderLabel = reminderState.Label,
+                    ReminderKind = reminderState.IsActive ? HomeKanbanReminderKind.OnboardingTargetDate : null
+                };
             })
             .ToList();
     }
@@ -498,6 +512,90 @@ public partial class OnboardingService
                 AcceptDrop = true
             }
         ];
+    }
+
+    private static HomeReminderState BuildOnboardingReminderState(DateTime? dueDate, DateTime localDate)
+    {
+        if (!dueDate.HasValue)
+        {
+            return HomeReminderState.None;
+        }
+
+        var normalizedDueDate = dueDate.Value.Date;
+        var firstReminderDate = NotificationScheduleCalculator.GetFirstReminderDate(normalizedDueDate);
+        if (localDate < firstReminderDate)
+        {
+            return HomeReminderState.None;
+        }
+
+        var isOverdue = normalizedDueDate < localDate;
+        var label = isOverdue
+            ? $"Onboarding-Zieldatum ueberfaellig seit {normalizedDueDate:dd.MM.yyyy}"
+            : $"Onboarding-Zieldatum faellig am {normalizedDueDate:dd.MM.yyyy}";
+
+        return new HomeReminderState(true, isOverdue, normalizedDueDate, label);
+    }
+
+    private static async Task<DateTime> ResolveHomeLocalDateAsync(
+        ApplicationDbContext context,
+        string userId,
+        CancellationToken cancellationToken)
+    {
+        var timeZoneId = await context.Users
+            .AsNoTracking()
+            .Where(user => user.Id == userId)
+            .Select(user => user.TimeZone)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var timeZone = ResolveHomeTimeZoneInfo(timeZoneId);
+        return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, timeZone).Date;
+    }
+
+    private static TimeZoneInfo ResolveHomeTimeZoneInfo(string? timeZoneId)
+    {
+        if (string.IsNullOrWhiteSpace(timeZoneId))
+        {
+            return TimeZoneInfo.Utc;
+        }
+
+        var normalizedTimeZoneId = timeZoneId.Trim();
+        if (TryFindHomeTimeZoneInfo(normalizedTimeZoneId, out var resolvedTimeZone))
+        {
+            return resolvedTimeZone;
+        }
+
+        if (TimeZoneInfo.TryConvertIanaIdToWindowsId(normalizedTimeZoneId, out var windowsTimeZoneId)
+            && TryFindHomeTimeZoneInfo(windowsTimeZoneId, out resolvedTimeZone))
+        {
+            return resolvedTimeZone;
+        }
+
+        if (TimeZoneInfo.TryConvertWindowsIdToIanaId(normalizedTimeZoneId, out var ianaTimeZoneId)
+            && TryFindHomeTimeZoneInfo(ianaTimeZoneId, out resolvedTimeZone))
+        {
+            return resolvedTimeZone;
+        }
+
+        return TimeZoneInfo.Utc;
+    }
+
+    private static bool TryFindHomeTimeZoneInfo(string timeZoneId, out TimeZoneInfo timeZoneInfo)
+    {
+        try
+        {
+            timeZoneInfo = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
+            return true;
+        }
+        catch (TimeZoneNotFoundException)
+        {
+            timeZoneInfo = TimeZoneInfo.Utc;
+            return false;
+        }
+        catch (InvalidTimeZoneException)
+        {
+            timeZoneInfo = TimeZoneInfo.Utc;
+            return false;
+        }
     }
 
     private static bool CanMoveOnboardingCard(string sourceColumnKey, string targetColumnKey)
@@ -738,6 +836,7 @@ public partial class OnboardingService
                 profile.FirstName,
                 profile.LastName,
                 profile.FullName,
+                profile.CreatedByUserId,
                 profile.AssignedAgentUserId,
                 profile.LinkedUserId
             })
@@ -749,11 +848,13 @@ public partial class OnboardingService
         }
 
         var recipientKinds = new Dictionary<string, NotificationKind>(StringComparer.Ordinal);
-        var ownerCandidate = TryNormalizeHomeUserId(profileInfo.AssignedAgentUserId, out var assignedAgentUserId)
-            ? assignedAgentUserId
-            : TryNormalizeHomeUserId(profileInfo.LinkedUserId, out var linkedUserId)
-                ? linkedUserId
-                : null;
+        var ownerCandidate = TryNormalizeHomeUserId(profileInfo.CreatedByUserId, out var createdByUserId)
+            ? createdByUserId
+            : TryNormalizeHomeUserId(profileInfo.AssignedAgentUserId, out var assignedAgentUserId)
+                ? assignedAgentUserId
+                : TryNormalizeHomeUserId(profileInfo.LinkedUserId, out var linkedUserId)
+                    ? linkedUserId
+                    : null;
 
         if (!string.IsNullOrWhiteSpace(ownerCandidate) && !IsSameHomeUser(ownerCandidate, authorId))
         {
@@ -901,6 +1002,15 @@ public partial class OnboardingService
 
         const int maxLength = 260;
         return value.Length <= maxLength ? value : value[..maxLength];
+    }
+
+    private readonly record struct HomeReminderState(
+        bool IsActive,
+        bool IsOverdue,
+        DateTime? DueDate,
+        string? Label)
+    {
+        public static HomeReminderState None => new(false, false, null, null);
     }
 
     private static HomeEntryCommentDto MapHomeCommentToDto(HomeEntryComment comment)

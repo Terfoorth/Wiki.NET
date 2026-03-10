@@ -4,6 +4,7 @@ using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using Wiki_Blaze.Data;
 using Wiki_Blaze.Data.Entities;
+using Wiki_Blaze.Services.Notifications;
 
 namespace Wiki_Blaze.Services;
 
@@ -26,6 +27,7 @@ public partial class WikiService
         takePerColumn = Math.Clamp(takePerColumn, 5, 100);
 
         using var context = await _dbFactory.CreateDbContextAsync();
+        var localDate = await ResolveHomeLocalDateAsync(context, userId);
 
         var defaultColumns = GetDefaultWikiColumns();
         var visibleQuery = ApplyVisibilityFilter(BuildPageQuery(context), context, userId)
@@ -108,34 +110,59 @@ public partial class WikiService
             .ToList();
 
         await MapWikiPageUserDisplayNamesAsync(context, allPages);
+        var reviewDueDatesByPageId = await LoadWikiReviewDueDatesAsync(context, allPages.Select(page => page.Id).ToList());
 
         var pageById = allPages.ToDictionary(page => page.Id);
 
         var cards = new List<HomeKanbanCardDto>(allPages.Count);
         cards.AddRange(
             drafts.Select((page, index) =>
-                BuildWikiCard(page, HomeKanbanColumnKeys.WikiDrafts, (index + 1) * 10)));
+                BuildWikiCard(
+                    page,
+                    HomeKanbanColumnKeys.WikiDrafts,
+                    (index + 1) * 10,
+                    null,
+                    GetReviewDueDate(reviewDueDatesByPageId, page.Id),
+                    localDate)));
 
         cards.AddRange(
             recentViewEvents
                 .Where(entry => pageById.ContainsKey(entry.PageId))
                 .Take(takePerColumn)
                 .Select((entry, index) =>
-                    BuildWikiCard(pageById[entry.PageId], HomeKanbanColumnKeys.WikiLastViews, (index + 1) * 10, entry.LastViewedAt)));
+                    BuildWikiCard(
+                        pageById[entry.PageId],
+                        HomeKanbanColumnKeys.WikiLastViews,
+                        (index + 1) * 10,
+                        entry.LastViewedAt,
+                        GetReviewDueDate(reviewDueDatesByPageId, entry.PageId),
+                        localDate)));
 
         cards.AddRange(
             templateUsageEvents
                 .Where(entry => pageById.ContainsKey(entry.PageId))
                 .Take(takePerColumn)
                 .Select((entry, index) =>
-                    BuildWikiCard(pageById[entry.PageId], HomeKanbanColumnKeys.WikiTemplateUsage, (index + 1) * 10, entry.LastUsedAt)));
+                    BuildWikiCard(
+                        pageById[entry.PageId],
+                        HomeKanbanColumnKeys.WikiTemplateUsage,
+                        (index + 1) * 10,
+                        entry.LastUsedAt,
+                        GetReviewDueDate(reviewDueDatesByPageId, entry.PageId),
+                        localDate)));
 
         cards.AddRange(
             favoriteUsageEvents
                 .Where(entry => pageById.ContainsKey(entry.PageId))
                 .Take(takePerColumn)
                 .Select((entry, index) =>
-                    BuildWikiCard(pageById[entry.PageId], HomeKanbanColumnKeys.WikiFavoriteUsage, (index + 1) * 10, entry.LastUsedAt)));
+                    BuildWikiCard(
+                        pageById[entry.PageId],
+                        HomeKanbanColumnKeys.WikiFavoriteUsage,
+                        (index + 1) * 10,
+                        entry.LastUsedAt,
+                        GetReviewDueDate(reviewDueDatesByPageId, entry.PageId),
+                        localDate)));
 
         var cardStates = await context.HomeKanbanCardStates
             .AsNoTracking()
@@ -518,6 +545,136 @@ public partial class WikiService
         ];
     }
 
+    private static HomeReminderState BuildWikiReminderState(DateTime? dueDate, DateTime localDate)
+    {
+        if (!dueDate.HasValue)
+        {
+            return HomeReminderState.None;
+        }
+
+        var normalizedDueDate = dueDate.Value.Date;
+        var firstReminderDate = NotificationScheduleCalculator.GetFirstReminderDate(normalizedDueDate);
+        if (localDate < firstReminderDate)
+        {
+            return HomeReminderState.None;
+        }
+
+        var isOverdue = normalizedDueDate < localDate;
+        var label = isOverdue
+            ? $"Review ueberfaellig seit {normalizedDueDate:dd.MM.yyyy}"
+            : $"Review faellig am {normalizedDueDate:dd.MM.yyyy}";
+
+        return new HomeReminderState(true, isOverdue, normalizedDueDate, label);
+    }
+
+    private static async Task<Dictionary<int, DateTime>> LoadWikiReviewDueDatesAsync(
+        ApplicationDbContext context,
+        IReadOnlyCollection<int> pageIds)
+    {
+        if (pageIds.Count == 0)
+        {
+            return new Dictionary<int, DateTime>();
+        }
+
+        var reviewDefinitionId = await context.WikiAttributeDefinitions
+            .AsNoTracking()
+            .Where(definition => definition.Name == "ReviewDate")
+            .Select(definition => definition.Id)
+            .FirstOrDefaultAsync();
+
+        if (reviewDefinitionId == 0)
+        {
+            return new Dictionary<int, DateTime>();
+        }
+
+        var rows = await context.WikiPageAttributeValues
+            .AsNoTracking()
+            .Where(value => value.AttributeDefinitionId == reviewDefinitionId && pageIds.Contains(value.WikiPageId))
+            .Select(value => new
+            {
+                value.WikiPageId,
+                value.Value
+            })
+            .ToListAsync();
+
+        var reviewDatesByPageId = new Dictionary<int, DateTime>();
+        foreach (var row in rows)
+        {
+            if (NotificationDateParser.TryParseToDate(row.Value, out var dueDate))
+            {
+                reviewDatesByPageId[row.WikiPageId] = dueDate.Date;
+            }
+        }
+
+        return reviewDatesByPageId;
+    }
+
+    private static DateTime? GetReviewDueDate(IReadOnlyDictionary<int, DateTime> reviewDueDatesByPageId, int pageId)
+    {
+        return reviewDueDatesByPageId.TryGetValue(pageId, out var dueDate)
+            ? dueDate
+            : null;
+    }
+
+    private static async Task<DateTime> ResolveHomeLocalDateAsync(ApplicationDbContext context, string userId)
+    {
+        var timeZoneId = await context.Users
+            .AsNoTracking()
+            .Where(user => user.Id == userId)
+            .Select(user => user.TimeZone)
+            .FirstOrDefaultAsync();
+
+        var timeZone = ResolveHomeTimeZoneInfo(timeZoneId);
+        return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, timeZone).Date;
+    }
+
+    private static TimeZoneInfo ResolveHomeTimeZoneInfo(string? timeZoneId)
+    {
+        if (string.IsNullOrWhiteSpace(timeZoneId))
+        {
+            return TimeZoneInfo.Utc;
+        }
+
+        var normalizedTimeZoneId = timeZoneId.Trim();
+        if (TryFindHomeTimeZoneInfo(normalizedTimeZoneId, out var resolvedTimeZone))
+        {
+            return resolvedTimeZone;
+        }
+
+        if (TimeZoneInfo.TryConvertIanaIdToWindowsId(normalizedTimeZoneId, out var windowsTimeZoneId)
+            && TryFindHomeTimeZoneInfo(windowsTimeZoneId, out resolvedTimeZone))
+        {
+            return resolvedTimeZone;
+        }
+
+        if (TimeZoneInfo.TryConvertWindowsIdToIanaId(normalizedTimeZoneId, out var ianaTimeZoneId)
+            && TryFindHomeTimeZoneInfo(ianaTimeZoneId, out resolvedTimeZone))
+        {
+            return resolvedTimeZone;
+        }
+
+        return TimeZoneInfo.Utc;
+    }
+
+    private static bool TryFindHomeTimeZoneInfo(string timeZoneId, out TimeZoneInfo timeZoneInfo)
+    {
+        try
+        {
+            timeZoneInfo = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
+            return true;
+        }
+        catch (TimeZoneNotFoundException)
+        {
+            timeZoneInfo = TimeZoneInfo.Utc;
+            return false;
+        }
+        catch (InvalidTimeZoneException)
+        {
+            timeZoneInfo = TimeZoneInfo.Utc;
+            return false;
+        }
+    }
+
     private static bool CanMoveWikiCard(string sourceColumnKey, string targetColumnKey)
     {
         if (string.Equals(sourceColumnKey, HomeKanbanColumnKeys.WikiTemplateUsage, StringComparison.OrdinalIgnoreCase)
@@ -535,8 +692,15 @@ public partial class WikiService
         return true;
     }
 
-    private static HomeKanbanCardDto BuildWikiCard(WikiPage page, string columnKey, int sortOrder, DateTime? activityOverride = null)
+    private static HomeKanbanCardDto BuildWikiCard(
+        WikiPage page,
+        string columnKey,
+        int sortOrder,
+        DateTime? activityOverride,
+        DateTime? reviewDueDate,
+        DateTime localDate)
     {
+        var reminderState = BuildWikiReminderState(reviewDueDate, localDate);
         return new HomeKanbanCardDto
         {
             EntryId = page.Id,
@@ -550,7 +714,12 @@ public partial class WikiService
             Subtitle = page.Status == WikiPageStatus.Template ? "Vorlage" : null,
             PrimaryLinkText = "Eintrag Ansicht",
             PrimaryLinkUrl = $"/wiki/view/{page.Id}?returnUrl=%2F",
-            LastActivityUtc = activityOverride ?? page.LastModified
+            LastActivityUtc = activityOverride ?? page.LastModified,
+            IsReminderActive = reminderState.IsActive,
+            IsReminderOverdue = reminderState.IsOverdue,
+            ReminderDueDate = reminderState.DueDate,
+            ReminderLabel = reminderState.Label,
+            ReminderKind = reminderState.IsActive ? HomeKanbanReminderKind.WikiReviewDate : null
         };
     }
 
@@ -902,6 +1071,15 @@ public partial class WikiService
 
         const int maxLength = 260;
         return value.Length <= maxLength ? value : value[..maxLength];
+    }
+
+    private readonly record struct HomeReminderState(
+        bool IsActive,
+        bool IsOverdue,
+        DateTime? DueDate,
+        string? Label)
+    {
+        public static HomeReminderState None => new(false, false, null, null);
     }
 
     private static HomeEntryCommentDto MapCommentToDto(HomeEntryComment comment)

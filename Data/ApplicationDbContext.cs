@@ -194,6 +194,9 @@ namespace Wiki_Blaze.Data
                 .HasIndex(profile => profile.AssignedAgentUserId);
 
             builder.Entity<OnboardingProfile>()
+                .HasIndex(profile => profile.CreatedByUserId);
+
+            builder.Entity<OnboardingProfile>()
                 .HasIndex(profile => new { profile.LastName, profile.FirstName });
 
             builder.Entity<OnboardingProfile>()
@@ -206,6 +209,12 @@ namespace Wiki_Blaze.Data
                 .HasOne(profile => profile.AssignedAgentUser)
                 .WithMany()
                 .HasForeignKey(profile => profile.AssignedAgentUserId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            builder.Entity<OnboardingProfile>()
+                .HasOne(profile => profile.CreatedByUser)
+                .WithMany()
+                .HasForeignKey(profile => profile.CreatedByUserId)
                 .OnDelete(DeleteBehavior.SetNull);
 
             builder.Entity<OnboardingProfileAttachment>()

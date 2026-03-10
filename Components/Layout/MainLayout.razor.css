@@ -108,9 +108,8 @@
     outline-offset: 2px;
 }
 
-.notification-dropdown-wrapper {
+.notification-bell-wrap {
     position: relative;
-    z-index: 1101;
 }
 
 .notification-badge {
@@ -131,43 +130,31 @@
     top: -0.3rem;
 }
 
-.notification-dropdown-menu {
-    position: absolute;
-    right: 0;
-    top: calc(100% + 0.35rem);
-    width: min(26rem, 90vw);
-    z-index: 1102;
+.notification-popup-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+    height: 100%;
+}
+
+.notification-filter-row {
+    align-items: center;
+    display: flex;
+    gap: 0.55rem;
+    justify-content: space-between;
+}
+
+.notification-kind-filter {
+    max-width: 11.25rem;
 }
 
 .notification-dropdown-list {
     display: flex;
     flex-direction: column;
-    gap: 0.6rem;
-    max-height: 22rem;
+    flex: 1 1 auto;
+    gap: 0.45rem;
+    min-height: 0;
     overflow-y: auto;
-}
-
-.notification-group {
-    display: flex;
-    flex-direction: column;
-    gap: 0.35rem;
-}
-
-.notification-group-title {
-    align-items: center;
-    color: #4b5563;
-    display: inline-flex;
-    font-size: 0.74rem;
-    font-weight: 700;
-    gap: 0.35rem;
-    letter-spacing: 0.01rem;
-    text-transform: uppercase;
-}
-
-.notification-group-items {
-    display: flex;
-    flex-direction: column;
-    gap: 0.35rem;
 }
 
 .notification-item {
@@ -188,6 +175,21 @@
 .notification-item.is-unread {
     background: #f8fbff;
     border-left: 3px solid #0d6efd;
+}
+
+.notification-item-head {
+    align-items: center;
+    display: flex;
+    justify-content: space-between;
+    gap: 0.4rem;
+}
+
+.notification-item-kind {
+    color: #475569;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.01rem;
+    text-transform: uppercase;
 }
 
 .notification-item-title {
@@ -212,14 +214,4 @@
     border: 1px solid #f1aeb5;
     border-radius: 0.4rem;
     color: #842029;
-}
-
-.notification-dropdown-backdrop {
-    background: transparent;
-    bottom: 0;
-    left: 0;
-    position: fixed;
-    right: 0;
-    top: 0;
-    z-index: 1100;
 }
