@@ -10,6 +10,7 @@ namespace Wiki_Blaze.Services;
 public partial class WikiService
 {
     private static readonly Regex MentionRegex = new(@"@\w+", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    private const int MaxMentionsPerComment = 10;
     private static readonly HashSet<string> AllowedCommentImageTypes = new(StringComparer.OrdinalIgnoreCase)
     {
         "image/gif",
@@ -336,7 +337,8 @@ public partial class WikiService
             throw new InvalidOperationException("Kommentartext oder mindestens ein Anhang ist erforderlich.");
         }
 
-        var mentions = ExtractMentionTokens(normalizedText);
+        var mentions = ClampMentionPayload(BuildMentionTokens(normalizedText, request.Mentions));
+        var nowUtc = DateTime.UtcNow;
 
         var entity = new HomeEntryComment
         {
@@ -345,7 +347,7 @@ public partial class WikiService
             AuthorId = string.IsNullOrWhiteSpace(userId) ? null : userId,
             Text = normalizedText,
             MentionTokensJson = mentions.Count == 0 ? null : JsonSerializer.Serialize(mentions),
-            CreatedAtUtc = DateTime.UtcNow
+            CreatedAtUtc = nowUtc
         };
 
         foreach (var attachment in request.Attachments)
@@ -366,11 +368,13 @@ public partial class WikiService
                 ContentType = attachment.ContentType,
                 Content = attachment.Content.ToArray(),
                 SizeBytes = attachment.Content.LongLength,
-                UploadedAtUtc = DateTime.UtcNow
+                UploadedAtUtc = nowUtc
             });
         }
 
         context.HomeEntryComments.Add(entity);
+        await context.SaveChangesAsync();
+        await CreateWikiCommentNotificationsAsync(context, request.EntryId, entity.Id, entity.AuthorId, mentions);
         await context.SaveChangesAsync();
 
         var saved = await context.HomeEntryComments
@@ -622,6 +626,77 @@ public partial class WikiService
         };
     }
 
+    private static List<MentionToken> BuildMentionTokens(string text, IReadOnlyList<CommentMentionInputDto>? mentionInputs)
+    {
+        var structuredMentions = NormalizeStructuredMentions(mentionInputs);
+        return structuredMentions.Count > 0
+            ? structuredMentions
+            : ExtractMentionTokens(text);
+    }
+
+    private static List<MentionToken> NormalizeStructuredMentions(IReadOnlyList<CommentMentionInputDto>? mentionInputs)
+    {
+        if (mentionInputs is null || mentionInputs.Count == 0)
+        {
+            return new List<MentionToken>();
+        }
+
+        var mentions = new List<MentionToken>(Math.Min(mentionInputs.Count, MaxMentionsPerComment));
+        var seenUserIds = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var mention in mentionInputs)
+        {
+            if (!TryNormalizeUserId(mention.UserId, out var userId))
+            {
+                continue;
+            }
+
+            if (!seenUserIds.Add(userId))
+            {
+                continue;
+            }
+
+            var displayText = NormalizeText(mention.DisplayName) ?? userId;
+            var email = NormalizeText(mention.Email);
+            mentions.Add(new MentionToken
+            {
+                Type = MentionType.User,
+                Token = $"@{displayText}",
+                ReferenceId = userId,
+                DisplayText = displayText,
+                TargetUrl = string.IsNullOrWhiteSpace(email) ? null : $"mailto:{email}"
+            });
+
+            if (mentions.Count >= MaxMentionsPerComment)
+            {
+                break;
+            }
+        }
+
+        return mentions;
+    }
+
+    private static List<MentionToken> ClampMentionPayload(IReadOnlyList<MentionToken> mentions)
+    {
+        if (mentions.Count == 0)
+        {
+            return new List<MentionToken>();
+        }
+
+        var boundedMentions = mentions.ToList();
+        while (boundedMentions.Count > 0)
+        {
+            if (JsonSerializer.Serialize(boundedMentions).Length <= 2000)
+            {
+                return boundedMentions;
+            }
+
+            boundedMentions.RemoveAt(boundedMentions.Count - 1);
+        }
+
+        return new List<MentionToken>();
+    }
+
     private static List<MentionToken> ExtractMentionTokens(string text)
     {
         if (string.IsNullOrWhiteSpace(text))
@@ -642,11 +717,146 @@ public partial class WikiService
             mentions.Add(new MentionToken
             {
                 Type = type,
-                Token = token
+                Token = token,
+                DisplayText = token
             });
         }
 
         return mentions;
+    }
+
+    private async Task CreateWikiCommentNotificationsAsync(
+        ApplicationDbContext context,
+        int entryId,
+        int commentId,
+        string? authorId,
+        IReadOnlyList<MentionToken> mentions)
+    {
+        var pageInfo = await context.WikiPages
+            .AsNoTracking()
+            .Where(page => page.Id == entryId)
+            .Select(page => new { page.OwnerId, page.Title })
+            .FirstOrDefaultAsync();
+
+        if (pageInfo is null)
+        {
+            return;
+        }
+
+        var recipientKinds = new Dictionary<string, NotificationKind>(StringComparer.Ordinal);
+        if (TryNormalizeUserId(pageInfo.OwnerId, out var ownerId) && !IsSameUser(ownerId, authorId))
+        {
+            recipientKinds[ownerId] = NotificationKind.HomeCommentOwner;
+        }
+
+        foreach (var mentionUserId in mentions
+                     .Where(mention => mention.Type == MentionType.User && TryNormalizeUserId(mention.ReferenceId, out _))
+                     .Select(mention => mention.ReferenceId!.Trim())
+                     .Distinct(StringComparer.Ordinal))
+        {
+            if (IsSameUser(mentionUserId, authorId))
+            {
+                continue;
+            }
+
+            recipientKinds[mentionUserId] = NotificationKind.HomeCommentMention;
+        }
+
+        if (recipientKinds.Count == 0)
+        {
+            return;
+        }
+
+        var recipientUserIds = recipientKinds.Keys.ToList();
+        var recipients = await context.Users
+            .AsNoTracking()
+            .Where(user => recipientUserIds.Contains(user.Id))
+            .Select(user => user.Id)
+            .ToListAsync();
+
+        if (recipients.Count == 0)
+        {
+            return;
+        }
+
+        var authorDisplayName = await ResolveCommentAuthorDisplayNameAsync(context, authorId);
+        var createdAtUtc = DateTime.UtcNow;
+        var targetUrl = $"/wiki/view/{entryId}?returnUrl=%2F";
+        var pageTitle = string.IsNullOrWhiteSpace(pageInfo.Title) ? $"Wiki #{entryId}" : pageInfo.Title.Trim();
+
+        foreach (var recipientUserId in recipients)
+        {
+            var kind = recipientKinds[recipientUserId];
+            var title = kind == NotificationKind.HomeCommentMention
+                ? $"Erwaehnung in Kommentar: {pageTitle}"
+                : $"Neuer Kommentar: {pageTitle}";
+            var body = kind == NotificationKind.HomeCommentMention
+                ? $"{authorDisplayName} hat dich in einem Kommentar erwaehnt."
+                : $"{authorDisplayName} hat einen neuen Kommentar hinterlassen.";
+
+            context.AppNotifications.Add(new AppNotification
+            {
+                UserId = recipientUserId,
+                Kind = kind,
+                SourceId = commentId,
+                DueDate = createdAtUtc.Date,
+                TriggerDate = createdAtUtc.Date,
+                CreatedAtUtc = createdAtUtc,
+                IsRead = false,
+                ReadAtUtc = null,
+                Title = title,
+                Body = body,
+                TargetUrl = targetUrl
+            });
+        }
+    }
+
+    private async Task<string> ResolveCommentAuthorDisplayNameAsync(ApplicationDbContext context, string? authorId)
+    {
+        if (!TryNormalizeUserId(authorId, out var normalizedAuthorId))
+        {
+            return "Jemand";
+        }
+
+        var user = await context.Users
+            .AsNoTracking()
+            .FirstOrDefaultAsync(entry => entry.Id == normalizedAuthorId);
+
+        if (user is null)
+        {
+            return "Jemand";
+        }
+
+        return ResolveDisplayName(user);
+    }
+
+    private static bool IsSameUser(string? leftUserId, string? rightUserId)
+    {
+        return TryNormalizeUserId(leftUserId, out var left)
+               && TryNormalizeUserId(rightUserId, out var right)
+               && string.Equals(left, right, StringComparison.Ordinal);
+    }
+
+    private static bool TryNormalizeUserId(string? userId, out string normalizedUserId)
+    {
+        normalizedUserId = string.Empty;
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            return false;
+        }
+
+        normalizedUserId = userId.Trim();
+        return normalizedUserId.Length > 0;
+    }
+
+    private static string? NormalizeText(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        return value.Trim();
     }
 
     private static List<MentionToken> ReadMentionTokens(string? payload)

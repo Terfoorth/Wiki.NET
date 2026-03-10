@@ -1,13 +1,18 @@
 @page "/"
 @using System.Text.Json
+@using System.Text
+@using System.Text.Encodings.Web
+@using System.Text.RegularExpressions
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Forms
 @using Microsoft.AspNetCore.Components.Web
+@using Microsoft.JSInterop
 @using Wiki_Blaze.Components.DxKanban
 @using Wiki_Blaze.Data.Entities
 @using Wiki_Blaze.Services
 @attribute [Authorize]
 @rendermode InteractiveServer
+@implements IAsyncDisposable
 
 @inject NavigationManager NavigationManager
 @inject IWikiService WikiService
@@ -192,15 +197,34 @@
                 @foreach (var item in Comments)
                 {
                     <div class="home-comment-item">
-                        <div><strong>@item.AuthorDisplayName</strong> <span class="text-muted">@item.CreatedAtUtc.ToLocalTime().ToString("dd.MM HH:mm")</span></div>
-                        <div>@item.Text</div>
+                        <div class="home-comment-header-row">
+                            <strong>@item.AuthorDisplayName</strong>
+                            <span class="text-muted">@item.CreatedAtUtc.ToLocalTime().ToString("dd.MM HH:mm")</span>
+                        </div>
+                        <div class="home-comment-text">@RenderFormattedComment(item.Text)</div>
                         @if (item.Mentions.Count > 0)
                         {
-                            <div class="small text-muted">Mentions: @string.Join(", ", item.Mentions.Select(x => x.Token))</div>
+                            <div class="home-comment-mentions">
+                                @foreach (var mention in item.Mentions)
+                                {
+                                    var mentionLabel = GetMentionLabel(mention);
+                                    @if (!string.IsNullOrWhiteSpace(mention.TargetUrl))
+                                    {
+                                        <a href="@mention.TargetUrl"
+                                           class="home-comment-mention-tag"
+                                           target="_blank"
+                                           rel="noopener noreferrer">@mentionLabel</a>
+                                    }
+                                    else
+                                    {
+                                        <span class="home-comment-mention-tag">@mentionLabel</span>
+                                    }
+                                }
+                            </div>
                         }
                         @if (item.Attachments.Count > 0)
                         {
-                            <div class="d-flex flex-wrap gap-2 mt-1">
+                            <div class="d-flex flex-wrap gap-2 mt-2">
                                 @foreach (var attachment in item.Attachments)
                                 {
                                     @if (attachment.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
@@ -219,10 +243,123 @@
                     </div>
                 }
             </div>
-            <DxMemo @bind-Text="NewCommentText" Rows="4" NullText="@CommentNullText" />
-            <div class="d-flex gap-2 mt-2">
-                <InputFile OnChange="OnCommentFilesChanged" multiple accept="image/*,.gif" />
-                <DxButton Text="Senden" RenderStyle="ButtonRenderStyle.Primary" Enabled="@CanSendComment" Click="SendCommentAsync" />
+            <div class="home-comment-composer" @ref="CommentComposerDropZoneElement">
+                <div class="home-comment-toolbar" role="toolbar" aria-label="Kommentar Werkzeuge">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" aria-label="Fett" @onclick='() => ApplyFormattingToken("bold")'><strong>B</strong></button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" aria-label="Kursiv" @onclick='() => ApplyFormattingToken("italic")'><em>I</em></button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" aria-label="Code" @onclick='() => ApplyFormattingToken("code")'>Code</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" aria-label="Liste" @onclick='() => ApplyFormattingToken("list")'>Liste</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" aria-label="Emoji einfuegen" @onclick="ToggleEmojiPicker">Emoji</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" aria-label="Benutzer erwaehnen" @onclick="ToggleMentionPickerAsync">@("@")</button>
+                </div>
+
+                @if (ShowEmojiPicker)
+                {
+                    <div class="home-comment-emoji-panel">
+                        @foreach (var emoji in EmojiPalette)
+                        {
+                            <button type="button" class="home-comment-emoji-btn" @onclick="() => AddEmoji(emoji)">@emoji</button>
+                        }
+                    </div>
+                }
+
+                @if (ShowMentionPicker)
+                {
+                    <div class="home-comment-mention-panel">
+                        <input class="form-control form-control-sm"
+                               placeholder="Benutzer suchen"
+                               aria-label="Benutzer suchen"
+                               @bind="MentionSearchText"
+                               @bind:event="oninput" />
+                        @if (!MentionLookupLoaded)
+                        {
+                            <div class="small text-muted mt-2">Benutzer werden geladen...</div>
+                        }
+                        else if (FilteredMentionLookup.Count == 0)
+                        {
+                            <div class="small text-muted mt-2">Keine passenden Benutzer gefunden.</div>
+                        }
+                        else
+                        {
+                            <div class="home-comment-mention-results">
+                                @foreach (var user in FilteredMentionLookup)
+                                {
+                                    <button type="button"
+                                            class="home-comment-mention-option"
+                                            @onclick="() => SelectMention(user)">
+                                        <span class="home-comment-mention-name">@user.DisplayName</span>
+                                        @if (!string.IsNullOrWhiteSpace(user.Email))
+                                        {
+                                            <span class="home-comment-mention-mail">@user.Email</span>
+                                        }
+                                    </button>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+
+                <textarea class="form-control home-comment-input"
+                          rows="4"
+                          placeholder="@CommentNullText"
+                          aria-label="Kommentar Eingabe"
+                          @bind="NewCommentText"
+                          @bind:event="oninput"
+                          @onkeydown="OnCommentInputKeyDown"></textarea>
+
+                @if (SelectedMentions.Count > 0)
+                {
+                    <div class="home-comment-chip-list">
+                        @foreach (var mention in SelectedMentions)
+                        {
+                            <span class="home-comment-chip">
+                                @($"@{mention.DisplayName}")
+                                <button type="button"
+                                        class="home-comment-chip-remove"
+                                        aria-label="@($"{mention.DisplayName} entfernen")"
+                                        @onclick="() => RemoveMention(mention.UserId)">x</button>
+                            </span>
+                        }
+                    </div>
+                }
+
+                @if (PendingAttachmentPreviews.Count > 0)
+                {
+                    <div class="home-comment-attachment-grid">
+                        @for (var index = 0; index < PendingAttachmentPreviews.Count; index++)
+                        {
+                            var preview = PendingAttachmentPreviews[index];
+                            <div class="home-comment-attachment-card">
+                                <img src="@preview.PreviewUrl"
+                                     alt="@preview.FileName"
+                                     class="home-comment-attachment-image" />
+                                <div class="home-comment-attachment-meta">
+                                    <span class="home-comment-attachment-name">@preview.FileName</span>
+                                    <button type="button"
+                                            class="btn btn-sm btn-link text-danger p-0"
+                                            aria-label="@($"{preview.FileName} entfernen")"
+                                            @onclick="() => RemovePendingAttachment(index)">Entfernen</button>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+
+                @if (!string.IsNullOrWhiteSpace(CommentValidationMessage))
+                {
+                    <div class="alert alert-warning py-1 px-2 mt-2 mb-0" role="alert">@CommentValidationMessage</div>
+                }
+
+                <div class="d-flex gap-2 mt-2 flex-wrap align-items-center">
+                    <InputFile OnChange="OnCommentFilesChanged"
+                               multiple
+                               accept="image/gif,image/png,image/jpeg,image/webp" />
+                    <span class="small text-muted">Drag &amp; Drop oder Paste ist ebenfalls aktiv (max 4 Dateien, je 8 MB).</span>
+                    <DxButton Text="@(IsSendingComment ? "Senden..." : "Senden")"
+                              RenderStyle="ButtonRenderStyle.Primary"
+                              Enabled="@CanSendComment"
+                              Click="SendCommentAsync" />
+                </div>
             </div>
         }
     </BodyContentTemplate>
@@ -254,7 +391,31 @@
 @code {
     private const string SettingsKeyPrefix = "wikiBlaze.homeKanban.settings";
     private const int MaxCommentFileBytes = 8 * 1024 * 1024;
-    private const string CommentNullText = "Kommentar (Mentions: @USER, @ENTRY)";
+    private const int MaxCommentAttachmentCount = 4;
+    private const int MaxCommentMentions = 10;
+    private const string CommentNullText = "Kommentar schreiben";
+    private static readonly HashSet<string> AllowedCommentImageTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "image/gif",
+        "image/png",
+        "image/jpeg",
+        "image/webp"
+    };
+    private static readonly Regex BoldPattern = new(@"\*\*(.+?)\*\*", RegexOptions.Singleline | RegexOptions.Compiled);
+    private static readonly Regex ItalicPattern = new(@"_(.+?)_", RegexOptions.Singleline | RegexOptions.Compiled);
+    private static readonly Regex CodePattern = new(@"`([^`]+)`", RegexOptions.Singleline | RegexOptions.Compiled);
+    private static readonly Regex UrlPattern = new(@"(https?://[^\s]+|www\.[^\s]+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly IReadOnlyList<string> EmojiPalette =
+    [
+        "😀",
+        "🙂",
+        "😉",
+        "🎉",
+        "✅",
+        "🚀",
+        "💡",
+        "👀"
+    ];
 
     private string? CurrentUserId { get; set; }
     private HomeKanbanViewType ActiveView { get; set; } = HomeKanbanViewType.Wiki;
@@ -292,6 +453,19 @@
     private List<HomeEntryCommentDto> Comments { get; set; } = new();
     private string NewCommentText { get; set; } = string.Empty;
     private List<CommentAttachmentInputDto> PendingCommentFiles { get; set; } = new();
+    private List<PendingCommentPreview> PendingAttachmentPreviews { get; set; } = new();
+    private List<CommentMentionInputDto> SelectedMentions { get; set; } = new();
+    private List<OnboardingAssigneeLookupItem> MentionLookup { get; set; } = new();
+    private string MentionSearchText { get; set; } = string.Empty;
+    private bool MentionLookupLoaded { get; set; }
+    private bool ShowMentionPicker { get; set; }
+    private bool ShowEmojiPicker { get; set; }
+    private bool IsSendingComment { get; set; }
+    private string? CommentValidationMessage { get; set; }
+    private ElementReference CommentComposerDropZoneElement { get; set; }
+    private IJSObjectReference? CommentComposerModule { get; set; }
+    private IJSObjectReference? CommentComposerInteropHandle { get; set; }
+    private DotNetObjectReference<Index>? CommentComposerDotNetRef { get; set; }
     private DxContextMenu? WikiCardContextMenu { get; set; }
     private DxContextMenu? OnboardingCardContextMenu { get; set; }
     private HomeKanbanCardDto? ContextMenuCard { get; set; }
@@ -300,7 +474,8 @@
     private OnboardingQuickDetailDto? QuickDetail { get; set; }
 
     private string PopupTitle => CommentCard is null ? "Kommentare" : $"Kommentare - {CommentCard.Title}";
-    private bool CanSendComment => !string.IsNullOrWhiteSpace(NewCommentText) || PendingCommentFiles.Count > 0;
+    private bool CanSendComment => (!string.IsNullOrWhiteSpace(NewCommentText) || PendingCommentFiles.Count > 0) && !IsSendingComment;
+    private List<OnboardingAssigneeLookupItem> FilteredMentionLookup => BuildFilteredMentionLookup();
     private List<HomeKanbanCardDto> RenderCards
     {
         get
@@ -336,13 +511,38 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender)
+        if (firstRender)
         {
-            return;
+            await LoadSettingsAsync();
+            StateHasChanged();
         }
 
-        await LoadSettingsAsync();
-        StateHasChanged();
+        if (CommentsVisible && CommentCard is not null)
+        {
+            await EnsureCommentComposerInteropAsync();
+        }
+        else
+        {
+            await DisposeCommentComposerInteropAsync();
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await DisposeCommentComposerInteropAsync();
+        if (CommentComposerModule is not null)
+        {
+            try
+            {
+                await CommentComposerModule.DisposeAsync();
+            }
+            catch (JSDisconnectedException)
+            {
+                // Ignore disconnect race during shutdown.
+            }
+        }
+
+        CommentComposerDotNetRef?.Dispose();
     }
 
     private async Task LoadBoardsAsync()
@@ -477,8 +677,8 @@
         CommentCard = card;
         CommentScope = card.EntityType == HomeKanbanCardEntityType.WikiEntry ? HomeCommentScope.Wiki : HomeCommentScope.Onboarding;
         CommentsVisible = true;
-        NewCommentText = string.Empty;
-        PendingCommentFiles.Clear();
+        ResetCommentComposerState();
+        await EnsureMentionLookupAsync();
         await ReloadCommentsAsync();
     }
 
@@ -590,47 +790,379 @@
             return;
         }
 
-        var req = new CreateCommentRequest
-        {
-            Scope = CommentScope,
-            EntryId = CommentCard.EntryId,
-            Text = NewCommentText.Trim(),
-            Attachments = PendingCommentFiles.ToList()
-        };
+        IsSendingComment = true;
+        CommentValidationMessage = null;
 
-        if (CommentScope == HomeCommentScope.Wiki)
+        try
         {
-            await WikiService.AddHomeCommentAsync(CurrentUserId, req);
-        }
-        else
-        {
-            await OnboardingService.AddHomeCommentAsync(CurrentUserId, req);
-        }
+            var req = new CreateCommentRequest
+            {
+                Scope = CommentScope,
+                EntryId = CommentCard.EntryId,
+                Text = NewCommentText.Trim(),
+                Mentions = SelectedMentions.Take(MaxCommentMentions).ToList(),
+                Attachments = PendingCommentFiles.ToList()
+            };
 
-        NewCommentText = string.Empty;
-        PendingCommentFiles.Clear();
-        await ReloadCommentsAsync();
-        await LoadBoardsAsync();
+            if (CommentScope == HomeCommentScope.Wiki)
+            {
+                await WikiService.AddHomeCommentAsync(CurrentUserId, req);
+            }
+            else
+            {
+                await OnboardingService.AddHomeCommentAsync(CurrentUserId, req);
+            }
+
+            ResetCommentComposerState();
+            await ReloadCommentsAsync();
+            await LoadBoardsAsync();
+        }
+        catch (Exception ex)
+        {
+            CommentValidationMessage = $"Kommentar konnte nicht gesendet werden: {ex.Message}";
+        }
+        finally
+        {
+            IsSendingComment = false;
+        }
     }
 
     private async Task OnCommentFilesChanged(InputFileChangeEventArgs args)
     {
-        foreach (var file in args.GetMultipleFiles(4))
+        await AddCommentFilesAsync(args.GetMultipleFiles(MaxCommentAttachmentCount));
+    }
+
+    private async Task OnCommentInputKeyDown(KeyboardEventArgs args)
+    {
+        if (args.CtrlKey && string.Equals(args.Key, "Enter", StringComparison.OrdinalIgnoreCase))
         {
-            if (file.Size <= 0 || file.Size > MaxCommentFileBytes || !file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+            await SendCommentAsync();
+        }
+    }
+
+    private async Task ToggleMentionPickerAsync()
+    {
+        ShowMentionPicker = !ShowMentionPicker;
+        ShowEmojiPicker = false;
+        CommentValidationMessage = null;
+        if (ShowMentionPicker)
+        {
+            await EnsureMentionLookupAsync();
+        }
+    }
+
+    private void ToggleEmojiPicker()
+    {
+        ShowEmojiPicker = !ShowEmojiPicker;
+        ShowMentionPicker = false;
+    }
+
+    private void AddEmoji(string emoji)
+    {
+        if (string.IsNullOrWhiteSpace(emoji))
+        {
+            return;
+        }
+
+        NewCommentText = $"{NewCommentText}{emoji}";
+    }
+
+    private void ApplyFormattingToken(string mode)
+    {
+        var token = mode switch
+        {
+            "bold" => "**Fett**",
+            "italic" => "_Kursiv_",
+            "code" => "`Code`",
+            "list" => "\n- Punkt",
+            _ => string.Empty
+        };
+
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(NewCommentText) && !char.IsWhiteSpace(NewCommentText[^1]))
+        {
+            NewCommentText += " ";
+        }
+
+        NewCommentText += token;
+    }
+
+    private void SelectMention(OnboardingAssigneeLookupItem user)
+    {
+        if (SelectedMentions.Any(mention => string.Equals(mention.UserId, user.UserId, StringComparison.Ordinal)))
+        {
+            return;
+        }
+
+        if (SelectedMentions.Count >= MaxCommentMentions)
+        {
+            CommentValidationMessage = $"Maximal {MaxCommentMentions} Mentions pro Kommentar sind erlaubt.";
+            return;
+        }
+
+        var displayName = string.IsNullOrWhiteSpace(user.DisplayName) ? user.UserName ?? user.UserId : user.DisplayName;
+        SelectedMentions.Add(new CommentMentionInputDto
+        {
+            UserId = user.UserId,
+            DisplayName = displayName,
+            Email = user.Email
+        });
+
+        if (!string.IsNullOrWhiteSpace(NewCommentText) && !char.IsWhiteSpace(NewCommentText[^1]))
+        {
+            NewCommentText += " ";
+        }
+
+        NewCommentText += $"@{displayName} ";
+        MentionSearchText = string.Empty;
+        CommentValidationMessage = null;
+    }
+
+    private void RemoveMention(string userId)
+    {
+        SelectedMentions.RemoveAll(mention => string.Equals(mention.UserId, userId, StringComparison.Ordinal));
+    }
+
+    private void RemovePendingAttachment(int index)
+    {
+        if (index < 0 || index >= PendingCommentFiles.Count)
+        {
+            return;
+        }
+
+        PendingCommentFiles.RemoveAt(index);
+        PendingAttachmentPreviews.RemoveAt(index);
+        CommentValidationMessage = null;
+    }
+
+    private async Task EnsureMentionLookupAsync()
+    {
+        if (MentionLookupLoaded)
+        {
+            return;
+        }
+
+        try
+        {
+            MentionLookup = await OnboardingService.GetAssigneeLookupAsync();
+            MentionLookupLoaded = true;
+        }
+        catch (Exception ex)
+        {
+            CommentValidationMessage = $"Benutzerliste konnte nicht geladen werden: {ex.Message}";
+            MentionLookupLoaded = false;
+        }
+    }
+
+    private List<OnboardingAssigneeLookupItem> BuildFilteredMentionLookup()
+    {
+        if (!MentionLookupLoaded)
+        {
+            return new List<OnboardingAssigneeLookupItem>();
+        }
+
+        var selectedIds = SelectedMentions
+            .Select(mention => mention.UserId)
+            .Where(userId => !string.IsNullOrWhiteSpace(userId))
+            .ToHashSet(StringComparer.Ordinal);
+
+        var query = MentionLookup.Where(user => !selectedIds.Contains(user.UserId));
+        if (!string.IsNullOrWhiteSpace(MentionSearchText))
+        {
+            var search = MentionSearchText.Trim();
+            query = query.Where(user =>
+                user.DisplayName.Contains(search, StringComparison.CurrentCultureIgnoreCase)
+                || (!string.IsNullOrWhiteSpace(user.Email) && user.Email.Contains(search, StringComparison.CurrentCultureIgnoreCase))
+                || (!string.IsNullOrWhiteSpace(user.UserName) && user.UserName.Contains(search, StringComparison.CurrentCultureIgnoreCase)));
+        }
+
+        return query
+            .OrderBy(user => user.DisplayName, StringComparer.CurrentCultureIgnoreCase)
+            .Take(12)
+            .ToList();
+    }
+
+    private void ResetCommentComposerState()
+    {
+        NewCommentText = string.Empty;
+        PendingCommentFiles.Clear();
+        PendingAttachmentPreviews.Clear();
+        SelectedMentions.Clear();
+        MentionSearchText = string.Empty;
+        ShowMentionPicker = false;
+        ShowEmojiPicker = false;
+        IsSendingComment = false;
+        CommentValidationMessage = null;
+    }
+
+    private async Task AddCommentFilesAsync(IReadOnlyList<IBrowserFile> files)
+    {
+        foreach (var file in files)
+        {
+            if (PendingCommentFiles.Count >= MaxCommentAttachmentCount)
             {
-                continue;
+                CommentValidationMessage = $"Maximal {MaxCommentAttachmentCount} Dateien sind erlaubt.";
+                break;
             }
 
-            await using var stream = file.OpenReadStream(MaxCommentFileBytes);
-            using var ms = new MemoryStream();
-            await stream.CopyToAsync(ms);
-            PendingCommentFiles.Add(new CommentAttachmentInputDto
+            try
             {
-                FileName = file.Name,
-                ContentType = file.ContentType,
-                Content = ms.ToArray()
-            });
+                await using var stream = file.OpenReadStream(MaxCommentFileBytes);
+                using var ms = new MemoryStream();
+                await stream.CopyToAsync(ms);
+                TryAddPendingAttachment(file.Name, file.ContentType, ms.ToArray());
+            }
+            catch
+            {
+                CommentValidationMessage = $"Datei {file.Name} konnte nicht gelesen werden.";
+            }
+        }
+    }
+
+    [JSInvokable]
+    public async Task HandleCommentPastedOrDroppedFile(string fileName, string contentType, string base64Content, long sizeBytes)
+    {
+        if (string.IsNullOrWhiteSpace(base64Content))
+        {
+            return;
+        }
+
+        if (sizeBytes <= 0 || sizeBytes > MaxCommentFileBytes)
+        {
+            CommentValidationMessage = $"Datei {fileName} ist zu gross oder leer (max. 8 MB).";
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        try
+        {
+            var content = Convert.FromBase64String(base64Content);
+            TryAddPendingAttachment(fileName, contentType, content);
+        }
+        catch
+        {
+            CommentValidationMessage = $"Datei {fileName} konnte nicht verarbeitet werden.";
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private bool TryAddPendingAttachment(string fileName, string contentType, byte[] content)
+    {
+        if (PendingCommentFiles.Count >= MaxCommentAttachmentCount)
+        {
+            CommentValidationMessage = $"Maximal {MaxCommentAttachmentCount} Dateien sind erlaubt.";
+            return false;
+        }
+
+        if (content.Length == 0 || content.Length > MaxCommentFileBytes)
+        {
+            CommentValidationMessage = $"Datei {fileName} ist zu gross oder leer (max. 8 MB).";
+            return false;
+        }
+
+        var normalizedContentType = string.IsNullOrWhiteSpace(contentType)
+            ? "application/octet-stream"
+            : contentType.Trim();
+        if (!AllowedCommentImageTypes.Contains(normalizedContentType))
+        {
+            CommentValidationMessage = $"Dateityp {normalizedContentType} wird nicht unterstuetzt.";
+            return false;
+        }
+
+        PendingCommentFiles.Add(new CommentAttachmentInputDto
+        {
+            FileName = fileName,
+            ContentType = normalizedContentType,
+            Content = content
+        });
+        PendingAttachmentPreviews.Add(new PendingCommentPreview
+        {
+            FileName = fileName,
+            PreviewUrl = $"data:{normalizedContentType};base64,{Convert.ToBase64String(content)}"
+        });
+
+        CommentValidationMessage = null;
+        return true;
+    }
+
+    private MarkupString RenderFormattedComment(string text)
+    {
+        return new MarkupString(FormatCommentTextAsHtml(text));
+    }
+
+    private static string FormatCommentTextAsHtml(string? text)
+    {
+        var encoded = HtmlEncoder.Default.Encode(text ?? string.Empty);
+        encoded = BoldPattern.Replace(encoded, "<strong>$1</strong>");
+        encoded = ItalicPattern.Replace(encoded, "<em>$1</em>");
+        encoded = CodePattern.Replace(encoded, "<code>$1</code>");
+        encoded = UrlPattern.Replace(encoded, match =>
+        {
+            var value = match.Value;
+            var href = value.StartsWith("www.", StringComparison.OrdinalIgnoreCase)
+                ? $"https://{value}"
+                : value;
+            return $"<a href=\"{href}\" target=\"_blank\" rel=\"noopener noreferrer\">{value}</a>";
+        });
+
+        var normalizedLineBreaks = encoded.Replace("\r\n", "\n", StringComparison.Ordinal);
+        return normalizedLineBreaks.Replace("\n", "<br />", StringComparison.Ordinal);
+    }
+
+    private static string GetMentionLabel(MentionToken mention)
+    {
+        var label = string.IsNullOrWhiteSpace(mention.DisplayText)
+            ? mention.Token
+            : mention.DisplayText;
+        if (string.IsNullOrWhiteSpace(label))
+        {
+            return "@Mention";
+        }
+
+        return label.StartsWith("@", StringComparison.Ordinal)
+            ? label
+            : $"@{label}";
+    }
+
+    private async Task EnsureCommentComposerInteropAsync()
+    {
+        if (CommentComposerInteropHandle is not null)
+        {
+            return;
+        }
+
+        CommentComposerModule ??= await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./Components/Pages/Index/Index.razor.js");
+        CommentComposerDotNetRef ??= DotNetObjectReference.Create(this);
+        CommentComposerInteropHandle = await CommentComposerModule.InvokeAsync<IJSObjectReference>(
+            "attachCommentComposerDropPaste",
+            CommentComposerDropZoneElement,
+            CommentComposerDotNetRef);
+    }
+
+    private async Task DisposeCommentComposerInteropAsync()
+    {
+        if (CommentComposerInteropHandle is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await CommentComposerInteropHandle.InvokeVoidAsync("dispose");
+            await CommentComposerInteropHandle.DisposeAsync();
+        }
+        catch (JSDisconnectedException)
+        {
+            // Ignore disconnect race during shutdown.
+        }
+        finally
+        {
+            CommentComposerInteropHandle = null;
         }
     }
 
@@ -904,6 +1436,12 @@
     private static string GetColumnRenderKey(HomeKanbanViewType viewType, string columnKey)
     {
         return $"{viewType}:{columnKey}";
+    }
+
+    private sealed class PendingCommentPreview
+    {
+        public string FileName { get; set; } = string.Empty;
+        public string PreviewUrl { get; set; } = string.Empty;
     }
 
     private sealed class HomeIndexSettings

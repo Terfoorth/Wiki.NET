@@ -94,13 +94,24 @@ public sealed class CreateCommentRequest
     public HomeCommentScope Scope { get; set; }
     public int EntryId { get; set; }
     public string Text { get; set; } = string.Empty;
+    public List<CommentMentionInputDto> Mentions { get; set; } = new();
     public List<CommentAttachmentInputDto> Attachments { get; set; } = new();
+}
+
+public sealed class CommentMentionInputDto
+{
+    public string UserId { get; set; } = string.Empty;
+    public string DisplayName { get; set; } = string.Empty;
+    public string? Email { get; set; }
 }
 
 public sealed class MentionToken
 {
     public MentionType Type { get; set; }
     public string Token { get; set; } = string.Empty;
+    public string? ReferenceId { get; set; }
+    public string? DisplayText { get; set; }
+    public string? TargetUrl { get; set; }
 }
 
 public sealed class CommentAttachmentInputDto

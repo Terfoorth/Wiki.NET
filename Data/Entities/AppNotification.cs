@@ -47,5 +47,7 @@ public enum NotificationKind
 {
     WikiReviewDate = 1,
     OnboardingStartDate = 2,
-    OnboardingTargetDate = 3
+    OnboardingTargetDate = 3,
+    HomeCommentOwner = 4,
+    HomeCommentMention = 5
 }
