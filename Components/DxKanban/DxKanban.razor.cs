@@ -56,6 +56,11 @@ namespace Wiki_Blaze.Components.DxKanban {
         #endregion
 
         #region Lifecycle Methods
+        protected override void OnParametersSet() {
+            // Rebuild mapping from currently rendered columns only.
+            columnVisibleIndexMap.Clear();
+        }
+
         protected override async Task OnAfterRenderAsync(bool firstRender) {
             if(jsModule is null) {
                 jsModule = await JS.InvokeAsync<IJSObjectReference>("import", "/Components/DxKanban/DxKanban.razor.js");
@@ -85,7 +90,7 @@ namespace Wiki_Blaze.Components.DxKanban {
         }
 
         internal async Task OnColumnVisibleIndexChangedAsync(string? columnName, int visibleIndex) {
-            if(string.IsNullOrWhiteSpace(columnName)) {
+            if(string.IsNullOrWhiteSpace(columnName) || visibleIndex < 0) {
                 return;
             }
 
@@ -97,8 +102,8 @@ namespace Wiki_Blaze.Components.DxKanban {
             }
 
             var orderedColumnKeys = columnVisibleIndexMap
+                .Where(entry => entry.Value >= 0)
                 .OrderBy(entry => entry.Value)
-                .ThenBy(entry => entry.Key, StringComparer.OrdinalIgnoreCase)
                 .Select(entry => entry.Key)
                 .ToList();
 

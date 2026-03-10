@@ -32,35 +32,94 @@
 ::deep .home-kanban-card {
     display: flex;
     flex-direction: column;
-    gap: 0.35rem;
+    gap: 0.6rem;
     text-align: left;
-    padding: 0.85rem;
-    min-height: 9.5rem;
+    padding: 0.9rem 0.95rem;
+    min-height: 11rem;
+    border-radius: 0.9rem;
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    background: linear-gradient(180deg, #ffffff 0%, #f7fafc 100%);
+    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
 }
 
 ::deep .home-kanban-card.is-compact {
-    min-height: 8rem;
-    padding: 0.65rem;
-    font-size: 0.93rem;
+    min-height: 9.3rem;
+    padding: 0.75rem;
+    gap: 0.45rem;
+    font-size: 0.92rem;
+}
+
+::deep .home-kanban-card-header {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
 }
 
 ::deep .home-kanban-card-title {
     font-weight: 700;
-    line-height: 1.25;
-    margin-bottom: 0.2rem;
+    line-height: 1.3;
+    color: #1f2937;
+    margin: 0;
+}
+
+::deep .home-kanban-card-subtitle {
+    font-size: 0.8rem;
+    color: #64748b;
+    font-weight: 600;
 }
 
 ::deep .home-kanban-card-meta {
+    display: grid;
+    gap: 0.2rem;
     font-size: 0.83rem;
-    color: #505a66;
+    color: #4b5563;
+}
+
+::deep .home-meta-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 0.6rem;
+}
+
+::deep .home-meta-label {
+    min-width: 6rem;
+    font-weight: 600;
+    color: #6b7280;
+}
+
+::deep .home-meta-value {
+    text-align: right;
+    color: #374151;
+    overflow-wrap: anywhere;
+}
+
+::deep .home-kanban-card-footer {
+    margin-top: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+::deep .home-kanban-card-activity {
+    font-size: 0.74rem;
+    color: #64748b;
 }
 
 ::deep .home-kanban-card-links {
-    margin-top: auto;
     display: flex;
-    justify-content: space-between;
-    gap: 0.55rem;
+    flex-wrap: wrap;
+    gap: 0.45rem 0.8rem;
     font-size: 0.84rem;
+}
+
+::deep .home-kanban-card-links a {
+    text-decoration: none;
+    font-weight: 600;
+}
+
+::deep .home-kanban-card-links a:hover {
+    text-decoration: underline;
 }
 
 ::deep .home-comment-list {
@@ -96,4 +155,23 @@
 
 .custom-drop-zone > *:not(#overviewDemoSelectButton) {
     pointer-events: none;
+}
+
+@media (max-width: 768px) {
+    ::deep .home-toolbar-columns {
+        gap: 0.45rem 0.75rem;
+    }
+
+    ::deep .home-kanban-card {
+        min-height: 10rem;
+    }
+
+    ::deep .home-meta-row {
+        flex-direction: column;
+        gap: 0.05rem;
+    }
+
+    ::deep .home-meta-value {
+        text-align: left;
+    }
 }

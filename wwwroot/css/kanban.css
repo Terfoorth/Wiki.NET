@@ -1,16 +1,17 @@
 .dx-card {
-    overflow: hidden;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, .12), 0 1px 2px rgba(0, 0, 0, .24);
-    border-radius: 0.3rem;
+    overflow: visible;
+    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+    border-radius: 0.85rem;
     background-color: #fff !important;
     margin: 0 !important;
     position: relative;
     box-sizing: border-box;
     width: 100%;
-    height: 4.5rem;
-    padding: 1rem 2rem;
-    cursor: pointer;
-    text-align: center;
+    min-height: 0;
+    height: auto;
+    padding: 0;
+    cursor: default;
+    text-align: left;
 }
 
 .dxbl-grid[data-dx-focus-hidden] th.kanban-header-cell:focus-visible {
@@ -44,8 +45,9 @@
     width: 15rem;
 }
 
-.kanban-drag-anchor > * {
-    pointer-events: none;
+.kanban-column-grid .kanban-drag-anchor > .dx-card,
+.kanban-column-grid .kanban-drag-anchor > .dx-card * {
+    pointer-events: auto;
 }
 
 .kanban-layout-grid {
@@ -63,7 +65,7 @@
     padding: 0.5rem;
 }
 
-.kanban-layout-grid > .dxbl-scroll-viewer > .dxbl-scroll-viewer-content > .dxbl-grid-table > tbdoy > tr.dxbl-grid-empty-row > .dxbl-grid-empty-data-area * {
+.kanban-layout-grid > .dxbl-scroll-viewer > .dxbl-scroll-viewer-content > .dxbl-grid-table > tbody > tr.dxbl-grid-empty-row > .dxbl-grid-empty-data-area * {
     display: none !important;
 }
 

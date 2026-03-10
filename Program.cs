@@ -12,7 +12,9 @@ using Wiki_Blaze.Components.Account;
 using Wiki_Blaze.Data;
 using Wiki_Blaze.Services;
 
+
 var builder = WebApplication.CreateBuilder(args);
+
 
 // Add services to the container.
 builder.Services.AddRazorComponents()
