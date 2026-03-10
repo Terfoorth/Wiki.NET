@@ -132,23 +132,57 @@
     font-size: 0.84rem;
 }
 
-::deep .home-kanban-card-links a {
+::deep .home-card-action {
+    border: 0;
+    background: transparent;
+    font: inherit;
+    line-height: 1.2;
     text-decoration: none;
     font-weight: 600;
 }
 
-::deep .home-kanban-card-links a:hover {
+::deep .home-card-action:hover {
     text-decoration: underline;
+}
+
+::deep .home-comment-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.75fr) minmax(17rem, 1fr);
+    gap: 0.95rem;
+    height: 100%;
+    min-height: 0;
+}
+
+::deep .home-comment-main {
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+    min-height: 0;
+}
+
+::deep .home-comment-list-shell {
+    flex: 1 1 auto;
+    min-height: 0;
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    border-radius: 0.95rem;
+    background: #fff;
+    padding: 0.7rem;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
 }
 
 ::deep .home-comment-list {
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
-    margin-bottom: 0.9rem;
-    max-height: 21rem;
+    min-height: 0;
+    max-height: none;
     overflow: auto;
-    padding-right: 0.2rem;
+    padding-right: 0.25rem;
+}
+
+::deep .home-comment-empty {
+    padding: 0.5rem 0.25rem;
+    font-size: 0.9rem;
 }
 
 ::deep .home-comment-item {
@@ -202,6 +236,10 @@
 
 ::deep .home-comment-mention-tag:hover {
     background: rgba(47, 114, 186, 0.16);
+}
+
+::deep .home-comment-composer-shell {
+    flex-shrink: 0;
 }
 
 ::deep .home-comment-composer {
@@ -365,6 +403,104 @@
     overflow-wrap: anywhere;
 }
 
+::deep .home-comment-detail {
+    border: 1px solid rgba(15, 23, 42, 0.1);
+    border-radius: 0.95rem;
+    background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+    padding: 0.8rem;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+::deep .home-comment-detail-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem;
+    margin-bottom: 0.6rem;
+}
+
+::deep .home-comment-detail-toggle {
+    display: none;
+}
+
+::deep .home-comment-detail-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+    min-height: 0;
+    overflow: auto;
+}
+
+::deep .home-comment-detail-summary {
+    border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+    padding-bottom: 0.55rem;
+}
+
+::deep .home-comment-detail-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #111827;
+    line-height: 1.35;
+}
+
+::deep .home-comment-detail-subtitle {
+    margin-top: 0.2rem;
+    font-size: 0.81rem;
+    color: #64748b;
+}
+
+::deep .home-comment-detail-grid {
+    display: grid;
+    gap: 0.35rem;
+}
+
+::deep .home-comment-detail-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 0.65rem;
+    font-size: 0.82rem;
+}
+
+::deep .home-comment-detail-row span {
+    color: #6b7280;
+}
+
+::deep .home-comment-detail-row strong {
+    color: #1f2937;
+    font-weight: 600;
+    text-align: right;
+    overflow-wrap: anywhere;
+}
+
+::deep .home-comment-detail-list-title {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #334155;
+}
+
+::deep .home-comment-detail-list {
+    margin: 0;
+    padding-left: 1.1rem;
+    display: grid;
+    gap: 0.25rem;
+    font-size: 0.8rem;
+    color: #374151;
+    max-height: 7.25rem;
+    overflow: auto;
+}
+
+::deep .home-comment-detail-actions {
+    margin-top: auto;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    padding-top: 0.55rem;
+    border-top: 1px solid rgba(15, 23, 42, 0.08);
+}
+
 .custom-drop-zone {
     padding: 0 !important;
     border-style: dashed;
@@ -411,6 +547,46 @@
         align-items: flex-start;
         flex-direction: column;
         gap: 0.05rem;
+    }
+
+    ::deep .home-comment-layout {
+        grid-template-columns: 1fr;
+        gap: 0.75rem;
+    }
+
+    ::deep .home-comment-main {
+        order: 2;
+    }
+
+    ::deep .home-comment-list-shell {
+        padding: 0.6rem;
+    }
+
+    ::deep .home-comment-detail {
+        order: 1;
+        padding: 0.65rem;
+    }
+
+    ::deep .home-comment-detail-toggle {
+        display: inline-flex;
+        align-items: center;
+    }
+
+    ::deep .home-comment-detail-body.is-collapsed {
+        display: none;
+    }
+
+    ::deep .home-comment-detail-body.is-expanded {
+        display: flex;
+    }
+
+    ::deep .home-comment-detail-row {
+        flex-direction: column;
+        gap: 0.1rem;
+    }
+
+    ::deep .home-comment-detail-row strong {
+        text-align: left;
     }
 
     ::deep .home-comment-attachment-grid {

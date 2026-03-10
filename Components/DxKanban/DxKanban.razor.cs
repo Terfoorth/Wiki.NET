@@ -1,4 +1,4 @@
-﻿using DevExpress.Blazor;
+using DevExpress.Blazor;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 using System.Collections;
@@ -8,7 +8,9 @@ namespace Wiki_Blaze.Components.DxKanban {
         #region Fields
         private IEnumerable sampleSingleCellData = Enumerable.Range(0, 1);
         private IJSObjectReference? jsModule;
+        private IJSObjectReference? interactionGuardHandle;
         private readonly Dictionary<string, int> columnVisibleIndexMap = new(StringComparer.OrdinalIgnoreCase);
+        private ElementReference kanbanRootElement;
         #endregion
 
         #region Services
@@ -62,13 +64,22 @@ namespace Wiki_Blaze.Components.DxKanban {
         }
 
         protected override async Task OnAfterRenderAsync(bool firstRender) {
-            if(firstRender && jsModule is null) {
+            if(jsModule is null) {
                 jsModule = await JS.InvokeAsync<IJSObjectReference>("import", "/Components/DxKanban/DxKanban.razor.js");
+            }
+
+            if(interactionGuardHandle is null && jsModule is not null) {
+                interactionGuardHandle = await jsModule.InvokeAsync<IJSObjectReference>("attachNoDragInteractionGuards", kanbanRootElement);
             }
         }
 
         public async ValueTask DisposeAsync() {
             try {
+                if(interactionGuardHandle is not null) {
+                    await interactionGuardHandle.InvokeVoidAsync("dispose");
+                    await interactionGuardHandle.DisposeAsync();
+                }
+
                 if(jsModule != null) {
                     await jsModule.DisposeAsync();
                 }

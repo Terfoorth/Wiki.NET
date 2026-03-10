@@ -1065,3 +1065,4 @@ public partial class OnboardingService(IDbContextFactory<ApplicationDbContext> d
             ?? throw new InvalidOperationException($"Onboarding-Profil mit ID {profileId} wurde nicht gefunden.");
     }
 }
+

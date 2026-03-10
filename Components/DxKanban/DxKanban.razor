@@ -1,12 +1,14 @@
-﻿@namespace Wiki_Blaze.Components.DxKanban
+@namespace Wiki_Blaze.Components.DxKanban
 
-<DxGrid CssClass="@GetGridCssClass()"
-        AllowColumnReorder="@AllowColumnReorder"
-        Data="sampleSingleCellData"
-        CustomizeElement="ApplyCssClassesToHeaderAndDataCells">
-    <Columns>
-        <CascadingValue IsFixed=true Value="this">
-            @Columns
-        </CascadingValue>
-    </Columns>
-</DxGrid>
+<div class="kanban-root" @ref="kanbanRootElement">
+    <DxGrid CssClass="@GetGridCssClass()"
+            AllowColumnReorder="@AllowColumnReorder"
+            Data="sampleSingleCellData"
+            CustomizeElement="ApplyCssClassesToHeaderAndDataCells">
+        <Columns>
+            <CascadingValue IsFixed=true Value="this">
+                @Columns
+            </CascadingValue>
+        </Columns>
+    </DxGrid>
+</div>

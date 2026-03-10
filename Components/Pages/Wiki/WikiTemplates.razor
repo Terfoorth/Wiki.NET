@@ -1,4 +1,4 @@
-﻿@page "/wiki/templates"
+@page "/wiki/templates"
 @using Microsoft.AspNetCore.Components.Web
 @using Wiki_Blaze.Data.Entities
 @using Wiki_Blaze.Services
@@ -18,7 +18,7 @@
             <h2 class="mb-0 fw-bold text-primary">
                 <span class="oi oi-copywriting me-2"></span>Vorlagen
             </h2>
-            <small class="text-muted">Vorbereitete Strukturen fÃ¼r schnelle neue Wiki-EintrÃ¤ge</small>
+            <small class="text-muted">Vorbereitete Strukturen für schnelle neue Wiki-Einträge</small>
         </div>
         <div class="col-auto">
             <DxButton RenderStyle="ButtonRenderStyle.Success"
@@ -85,7 +85,7 @@
                         <button class="list-group-item list-group-item-action bg-transparent border-0 rounded px-2 py-2 @(SelectedGroupId == 0 ? "active-filter" : "")"
                                 @onclick="() => FilterGroup(0)">
                             <span class="d-flex justify-content-between align-items-center w-100">
-                                <span><span class="oi oi-grid-three-up me-2"></span> Alle EintrÃ¤ge</span>
+                                <span><span class="oi oi-grid-three-up me-2"></span> Alle Einträge</span>
                                 <span class="badge rounded-pill bg-light text-dark border">@GetAllEntriesCount()</span>
                             </span>
                         </button>
@@ -121,7 +121,7 @@
                                                     <button type="button" class="btn btn-sm btn-light border" title="Umbenennen" @onclick="() => StartRenameGroup(group)">
                                                         <span class="oi oi-pencil"></span>
                                                     </button>
-                                                    <button type="button" class="btn btn-sm btn-light border text-danger" title="LÃ¶schen" @onclick="() => DeleteGroupAsync(group)">
+                                                    <button type="button" class="btn btn-sm btn-light border text-danger" title="Löschen" @onclick="() => DeleteGroupAsync(group)">
                                                         <span class="oi oi-trash"></span>
                                                     </button>
                                                 }
@@ -170,7 +170,7 @@
                                         </div>
                                         <div class="d-flex align-items-center gap-2">
                                             <small class="text-muted">@(page.LastModified.ToString("dd.MM.yy"))</small>
-                                            <small class="text-muted" title="Rechtsklick fÃ¼r Aktionen">Rechtsklick fÃ¼r Aktionen</small>
+                                            <small class="text-muted" title="Rechtsklick für Aktionen">Rechtsklick für Aktionen</small>
                                         </div>
                                     </div>
 
@@ -193,7 +193,7 @@
                                     else
                                     {
                                         <p class="card-text text-muted small flex-grow-1 text-truncate-multiline">
-                                            @(string.IsNullOrWhiteSpace(page.PreviewText) ? "Keine Vorschau verfÃ¼gbar..." : page.PreviewText)
+                                            @(string.IsNullOrWhiteSpace(page.PreviewText) ? "Keine Vorschau verfügbar..." : page.PreviewText)
                                         </p>
                                     }
 
@@ -220,7 +220,7 @@
                     <p>Keine Vorlagen gefunden.</p>
                     @if (SelectedGroupId != 0 || !string.IsNullOrEmpty(SearchTerm))
                     {
-                        <button class="btn btn-link" @onclick="ResetFilters">Filter zurÃ¼cksetzen</button>
+                        <button class="btn btn-link" @onclick="ResetFilters">Filter zurücksetzen</button>
                     }
                 </div>
             }
@@ -290,13 +290,13 @@
 
 <DxContextMenu @ref="ContextMenu" ItemClick="OnContextMenuItemClick">
     <Items>
-        <DxContextMenuItem Text="Ã–ffnen" IconCssClass="oi oi-eye" Name="open" />
+        <DxContextMenuItem Text="Öffnen" IconCssClass="oi oi-eye" Name="open" />
         <DxContextMenuItem Text="Bearbeiten" IconCssClass="oi oi-pencil" Name="edit" />
         <DxContextMenuItem Text="Eigenschaften" IconCssClass="oi oi-info" Name="properties" />
         <DxContextMenuItem Text="Eintrag aus Vorlage erstellen" IconCssClass="oi oi-copywriting" Name="create-from-template-root">
             <Items>
                 <DxContextMenuItem Text="Im Wiki Dashboard erstellen" IconCssClass="oi oi-home" Name="create-from-template-dashboard" />
-                <DxContextMenuItem Text="In Wiki EntwÃ¼rfen erstellen" IconCssClass="oi oi-document" Name="create-from-template-drafts" />
+                <DxContextMenuItem Text="In Wiki Entwürfen erstellen" IconCssClass="oi oi-document" Name="create-from-template-drafts" />
             </Items>
         </DxContextMenuItem>
         @if (CanShowTemplateGroupContextItems)
@@ -310,7 +310,7 @@
                     <DxContextMenuItem Text="Neue Gruppe erstellen" IconCssClass="oi oi-plus" Name="create-group" BeginGroup="true" />
                 </Items>
             </DxContextMenuItem>
-        }        <DxContextMenuItem Text="LÃ¶schen" IconCssClass="oi oi-trash" Name="delete" BeginGroup="true" />
+        }        <DxContextMenuItem Text="Löschen" IconCssClass="oi oi-trash" Name="delete" BeginGroup="true" />
     </Items>
 </DxContextMenu>
 
@@ -555,7 +555,7 @@
             return;
         }
 
-        var confirmed = await Js.InvokeAsync<bool>("confirm", $"Gruppe \"{group.Name}\" wirklich lÃ¶schen?");
+        var confirmed = await Js.InvokeAsync<bool>("confirm", $"Gruppe \"{group.Name}\" wirklich löschen?");
         if (!confirmed)
         {
             return;
@@ -686,7 +686,7 @@
 
     private async Task DeleteEntryAsync(WikiPage page)
     {
-        var confirmed = await Js.InvokeAsync<bool>("confirm", $"Eintrag \"{page.Title}\" wirklich lÃ¶schen?");
+        var confirmed = await Js.InvokeAsync<bool>("confirm", $"Eintrag \"{page.Title}\" wirklich löschen?");
         if (!confirmed)
         {
             return;
@@ -932,8 +932,9 @@
     private static string GetReviewAlertLabel(WikiReviewAlertStateDto state)
     {
         return state.IsOverdue
-            ? $"Review Ã¼berfÃ¤llig seit {state.DueDate:dd.MM.yyyy}"
-            : $"Review fÃ¤llig am {state.DueDate:dd.MM.yyyy}";
+            ? $"Review überfällig seit {state.DueDate:dd.MM.yyyy}"
+            : $"Review fällig am {state.DueDate:dd.MM.yyyy}";
     }
 }
+
 

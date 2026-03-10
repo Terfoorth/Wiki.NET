@@ -107,7 +107,7 @@
                                 <div class="home-kanban-card-title">@card.Title</div>
                                 @if (ShowCardDragHint(card))
                                 {
-                                    <span class="home-kanban-drag-hint" title="Zum Verschieben den Drag-Handle links an der Karte verwenden.">⋮⋮</span>
+                                    <span class="home-kanban-drag-hint" title="Zum Verschieben den Drag-Handle links an der Karte verwenden.">&#8942;&#8942;</span>
                                 }
                             </div>
                             @if (!string.IsNullOrWhiteSpace(card.Subtitle))
@@ -136,13 +136,31 @@
                             <div class="home-kanban-card-links">
                                 @if (card.EntityType == HomeKanbanCardEntityType.WikiEntry)
                                 {
-                                    <a href="@card.PrimaryLinkUrl" class="link-primary">Eintrag Ansicht</a>
+                                    <button type="button"
+                                            class="btn btn-link p-0 link-primary home-card-action"
+                                            data-no-drag="true"
+                                            @onclick="() => OpenCard(card)"
+                                            @onclick:stopPropagation="true"
+                                            @onmousedown:stopPropagation="true"
+                                            @onpointerdown:stopPropagation="true">Eintrag Ansicht</button>
                                 }
                                 else
                                 {
-                                    <a href="#" class="link-primary" @onclick:preventDefault @onclick="() => OpenDetailsAsync(card)">Details</a>
+                                    <button type="button"
+                                            class="btn btn-link p-0 link-primary home-card-action"
+                                            data-no-drag="true"
+                                            @onclick="() => OpenDetailsAsync(card)"
+                                            @onclick:stopPropagation="true"
+                                            @onmousedown:stopPropagation="true"
+                                            @onpointerdown:stopPropagation="true">Details</button>
                                 }
-                                <a href="#" class="link-secondary" @onclick:preventDefault @onclick="() => OpenCommentsAsync(card)">Kommentare (@card.CommentCount)</a>
+                                <button type="button"
+                                        class="btn btn-link p-0 link-secondary home-card-action"
+                                        data-no-drag="true"
+                                        @onclick="() => OpenCommentsAsync(card)"
+                                        @onclick:stopPropagation="true"
+                                        @onmousedown:stopPropagation="true"
+                                        @onpointerdown:stopPropagation="true">Kommentare (@card.CommentCount)</button>
                             </div>
                         </div>
                     </div>
@@ -185,7 +203,7 @@
     </Items>
 </DxContextMenu>
 
-<DxPopup HeaderText="@PopupTitle" Width="900px" Height="680px" @bind-Visible="CommentsVisible" CloseOnOutsideClick="true">
+<DxPopup HeaderText="@PopupTitle" Width="92vw" Height="88vh" @bind-Visible="CommentsVisible" CloseOnOutsideClick="true">
     <BodyContentTemplate Context="commentPopupContext">
         @if (CommentCard is null)
         {
@@ -193,178 +211,272 @@
         }
         else
         {
-            <div class="home-comment-list">
-                @foreach (var item in Comments)
-                {
-                    <div class="home-comment-item">
-                        <div class="home-comment-header-row">
-                            <strong>@item.AuthorDisplayName</strong>
-                            <span class="text-muted">@item.CreatedAtUtc.ToLocalTime().ToString("dd.MM HH:mm")</span>
+            var selectedCard = CommentCard!;
+            <div class="home-comment-layout">
+                <div class="home-comment-main">
+                    <div class="home-comment-list-shell">
+                        <div class="home-comment-list">
+                            @if (Comments.Count == 0)
+                            {
+                                <div class="home-comment-empty text-muted">Noch keine Kommentare vorhanden.</div>
+                            }
+                            @foreach (var item in Comments)
+                            {
+                                <div class="home-comment-item">
+                                    <div class="home-comment-header-row">
+                                        <strong>@item.AuthorDisplayName</strong>
+                                        <span class="text-muted">@item.CreatedAtUtc.ToLocalTime().ToString("dd.MM HH:mm")</span>
+                                    </div>
+                                    <div class="home-comment-text">@RenderFormattedComment(item.Text)</div>
+                                    @if (item.Mentions.Count > 0)
+                                    {
+                                        <div class="home-comment-mentions">
+                                            @foreach (var mention in item.Mentions)
+                                            {
+                                                var mentionLabel = GetMentionLabel(mention);
+                                                @if (!string.IsNullOrWhiteSpace(mention.TargetUrl))
+                                                {
+                                                    <a href="@mention.TargetUrl"
+                                                       class="home-comment-mention-tag"
+                                                       target="_blank"
+                                                       rel="noopener noreferrer">@mentionLabel</a>
+                                                }
+                                                else
+                                                {
+                                                    <span class="home-comment-mention-tag">@mentionLabel</span>
+                                                }
+                                            }
+                                        </div>
+                                    }
+                                    @if (item.Attachments.Count > 0)
+                                    {
+                                        <div class="d-flex flex-wrap gap-2 mt-2">
+                                            @foreach (var attachment in item.Attachments)
+                                            {
+                                                @if (attachment.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+                                                {
+                                                    <img src="@GetAttachmentPreview(attachment)"
+                                                         alt="@attachment.FileName"
+                                                         style="max-height:110px;max-width:160px;border-radius:6px;border:1px solid rgba(0,0,0,.1);" />
+                                                }
+                                                else
+                                                {
+                                                    <span class="badge bg-light text-dark border">@attachment.FileName</span>
+                                                }
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            }
                         </div>
-                        <div class="home-comment-text">@RenderFormattedComment(item.Text)</div>
-                        @if (item.Mentions.Count > 0)
-                        {
-                            <div class="home-comment-mentions">
-                                @foreach (var mention in item.Mentions)
-                                {
-                                    var mentionLabel = GetMentionLabel(mention);
-                                    @if (!string.IsNullOrWhiteSpace(mention.TargetUrl))
-                                    {
-                                        <a href="@mention.TargetUrl"
-                                           class="home-comment-mention-tag"
-                                           target="_blank"
-                                           rel="noopener noreferrer">@mentionLabel</a>
-                                    }
-                                    else
-                                    {
-                                        <span class="home-comment-mention-tag">@mentionLabel</span>
-                                    }
-                                }
-                            </div>
-                        }
-                        @if (item.Attachments.Count > 0)
-                        {
-                            <div class="d-flex flex-wrap gap-2 mt-2">
-                                @foreach (var attachment in item.Attachments)
-                                {
-                                    @if (attachment.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
-                                    {
-                                        <img src="@GetAttachmentPreview(attachment)"
-                                             alt="@attachment.FileName"
-                                             style="max-height:110px;max-width:160px;border-radius:6px;border:1px solid rgba(0,0,0,.1);" />
-                                    }
-                                    else
-                                    {
-                                        <span class="badge bg-light text-dark border">@attachment.FileName</span>
-                                    }
-                                }
-                            </div>
-                        }
                     </div>
-                }
-            </div>
-            <div class="home-comment-composer" @ref="CommentComposerDropZoneElement">
-                <div class="home-comment-toolbar" role="toolbar" aria-label="Kommentar Werkzeuge">
-                    <button type="button" class="btn btn-sm btn-outline-secondary" aria-label="Fett" @onclick='() => ApplyFormattingToken("bold")'><strong>B</strong></button>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" aria-label="Kursiv" @onclick='() => ApplyFormattingToken("italic")'><em>I</em></button>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" aria-label="Code" @onclick='() => ApplyFormattingToken("code")'>Code</button>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" aria-label="Liste" @onclick='() => ApplyFormattingToken("list")'>Liste</button>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" aria-label="Emoji einfuegen" @onclick="ToggleEmojiPicker">Emoji</button>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" aria-label="Benutzer erwaehnen" @onclick="ToggleMentionPickerAsync">@("@")</button>
+                    <div class="home-comment-composer-shell">
+                        <div class="home-comment-composer" @ref="CommentComposerDropZoneElement">
+                            <div class="home-comment-toolbar" role="toolbar" aria-label="Kommentar Werkzeuge">
+                                <button type="button" class="btn btn-sm btn-outline-secondary" aria-label="Fett" @onclick='() => ApplyFormattingToken("bold")'><strong>B</strong></button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" aria-label="Kursiv" @onclick='() => ApplyFormattingToken("italic")'><em>I</em></button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" aria-label="Code" @onclick='() => ApplyFormattingToken("code")'>Code</button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" aria-label="Liste" @onclick='() => ApplyFormattingToken("list")'>Liste</button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" aria-label="Emoji einfuegen" @onclick="ToggleEmojiPicker">Emoji</button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" aria-label="Benutzer erwaehnen" @onclick="ToggleMentionPickerAsync">@("@")</button>
+                            </div>
+
+                            @if (ShowEmojiPicker)
+                            {
+                                <div class="home-comment-emoji-panel">
+                                    @foreach (var emoji in EmojiPalette)
+                                    {
+                                        <button type="button" class="home-comment-emoji-btn" @onclick="() => AddEmoji(emoji)">@emoji</button>
+                                    }
+                                </div>
+                            }
+
+                            @if (ShowMentionPicker)
+                            {
+                                <div class="home-comment-mention-panel">
+                                    <input class="form-control form-control-sm"
+                                           placeholder="Benutzer suchen"
+                                           aria-label="Benutzer suchen"
+                                           @bind="MentionSearchText"
+                                           @bind:event="oninput" />
+                                    @if (!MentionLookupLoaded)
+                                    {
+                                        <div class="small text-muted mt-2">Benutzer werden geladen...</div>
+                                    }
+                                    else if (FilteredMentionLookup.Count == 0)
+                                    {
+                                        <div class="small text-muted mt-2">Keine passenden Benutzer gefunden.</div>
+                                    }
+                                    else
+                                    {
+                                        <div class="home-comment-mention-results">
+                                            @foreach (var user in FilteredMentionLookup)
+                                            {
+                                                <button type="button"
+                                                        class="home-comment-mention-option"
+                                                        @onclick="() => SelectMention(user)">
+                                                    <span class="home-comment-mention-name">@user.DisplayName</span>
+                                                    @if (!string.IsNullOrWhiteSpace(user.Email))
+                                                    {
+                                                        <span class="home-comment-mention-mail">@user.Email</span>
+                                                    }
+                                                </button>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            }
+
+                            <textarea class="form-control home-comment-input"
+                                      rows="4"
+                                      placeholder="@CommentNullText"
+                                      aria-label="Kommentar Eingabe"
+                                      @bind="NewCommentText"
+                                      @bind:event="oninput"
+                                      @onkeydown="OnCommentInputKeyDown"></textarea>
+
+                            @if (SelectedMentions.Count > 0)
+                            {
+                                <div class="home-comment-chip-list">
+                                    @foreach (var mention in SelectedMentions)
+                                    {
+                                        <span class="home-comment-chip">
+                                            @($"@{mention.DisplayName}")
+                                            <button type="button"
+                                                    class="home-comment-chip-remove"
+                                                    aria-label="@($"{mention.DisplayName} entfernen")"
+                                                    @onclick="() => RemoveMention(mention.UserId)">x</button>
+                                        </span>
+                                    }
+                                </div>
+                            }
+
+                            @if (PendingAttachmentPreviews.Count > 0)
+                            {
+                                <div class="home-comment-attachment-grid">
+                                    @for (var index = 0; index < PendingAttachmentPreviews.Count; index++)
+                                    {
+                                        var preview = PendingAttachmentPreviews[index];
+                                        <div class="home-comment-attachment-card">
+                                            <img src="@preview.PreviewUrl"
+                                                 alt="@preview.FileName"
+                                                 class="home-comment-attachment-image" />
+                                            <div class="home-comment-attachment-meta">
+                                                <span class="home-comment-attachment-name">@preview.FileName</span>
+                                                <button type="button"
+                                                        class="btn btn-sm btn-link text-danger p-0"
+                                                        aria-label="@($"{preview.FileName} entfernen")"
+                                                        @onclick="() => RemovePendingAttachment(index)">Entfernen</button>
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            }
+
+                            @if (!string.IsNullOrWhiteSpace(CommentValidationMessage))
+                            {
+                                <div class="alert alert-warning py-1 px-2 mt-2 mb-0" role="alert">@CommentValidationMessage</div>
+                            }
+
+                            <div class="d-flex gap-2 mt-2 flex-wrap align-items-center">
+                                <InputFile OnChange="OnCommentFilesChanged"
+                                           multiple
+                                           accept="image/gif,image/png,image/jpeg,image/webp" />
+                                <span class="small text-muted">Drag &amp; Drop oder Paste ist ebenfalls aktiv (max 4 Dateien, je 8 MB).</span>
+                                <DxButton Text="@(IsSendingComment ? "Senden..." : "Senden")"
+                                          RenderStyle="ButtonRenderStyle.Primary"
+                                          Enabled="@CanSendComment"
+                                          Click="SendCommentAsync" />
+                            </div>
+                        </div>
+                    </div>
                 </div>
-
-                @if (ShowEmojiPicker)
-                {
-                    <div class="home-comment-emoji-panel">
-                        @foreach (var emoji in EmojiPalette)
-                        {
-                            <button type="button" class="home-comment-emoji-btn" @onclick="() => AddEmoji(emoji)">@emoji</button>
-                        }
+                <aside class="home-comment-detail">
+                    <div class="home-comment-detail-header">
+                        <h6 class="mb-0">Uebersicht / Aktueller Stand</h6>
+                        <button type="button"
+                                class="btn btn-sm btn-outline-secondary home-comment-detail-toggle"
+                                @onclick="ToggleCommentDetailPanel">@(CommentDetailsExpanded ? "Ausblenden" : "Einblenden")</button>
                     </div>
-                }
+                    <div class="home-comment-detail-body @(CommentDetailsExpanded ? "is-expanded" : "is-collapsed")">
+                        <div class="home-comment-detail-summary">
+                            <div class="home-comment-detail-title">@selectedCard.Title</div>
+                            @if (!string.IsNullOrWhiteSpace(selectedCard.Subtitle))
+                            {
+                                <div class="home-comment-detail-subtitle">@selectedCard.Subtitle</div>
+                            }
+                        </div>
 
-                @if (ShowMentionPicker)
-                {
-                    <div class="home-comment-mention-panel">
-                        <input class="form-control form-control-sm"
-                               placeholder="Benutzer suchen"
-                               aria-label="Benutzer suchen"
-                               @bind="MentionSearchText"
-                               @bind:event="oninput" />
-                        @if (!MentionLookupLoaded)
+                        @if (CommentScope == HomeCommentScope.Onboarding)
                         {
-                            <div class="small text-muted mt-2">Benutzer werden geladen...</div>
-                        }
-                        else if (FilteredMentionLookup.Count == 0)
-                        {
-                            <div class="small text-muted mt-2">Keine passenden Benutzer gefunden.</div>
+                            @if (IsCommentDetailLoading)
+                            {
+                                <div class="text-muted small">Detaildaten werden geladen...</div>
+                            }
+                            else if (CommentQuickDetail is null)
+                            {
+                                <div class="text-muted small">Keine Detaildaten verfuegbar.</div>
+                            }
+                            else
+                            {
+                                <div class="home-comment-detail-grid">
+                                    <div class="home-comment-detail-row"><span>Name</span><strong>@CommentQuickDetail.FullName</strong></div>
+                                    <div class="home-comment-detail-row"><span>Status</span><strong>@GetStatusLabel(CommentQuickDetail.Status)</strong></div>
+                                    <div class="home-comment-detail-row"><span>Abteilung</span><strong>@(string.IsNullOrWhiteSpace(CommentQuickDetail.Department) ? "-" : CommentQuickDetail.Department)</strong></div>
+                                    <div class="home-comment-detail-row"><span>Rolle</span><strong>@(string.IsNullOrWhiteSpace(CommentQuickDetail.JobTitle) ? "-" : CommentQuickDetail.JobTitle)</strong></div>
+                                    <div class="home-comment-detail-row"><span>Betreuung</span><strong>@(string.IsNullOrWhiteSpace(CommentQuickDetail.AssignedAgentDisplayName) ? "-" : CommentQuickDetail.AssignedAgentDisplayName)</strong></div>
+                                    <div class="home-comment-detail-row"><span>Massnahmen</span><strong>@($"{CommentQuickDetail.MeasureTotalCount - CommentQuickDetail.MeasureOpenCount}/{CommentQuickDetail.MeasureTotalCount}")</strong></div>
+                                    <div class="home-comment-detail-row"><span>Tests</span><strong>@($"{CommentQuickDetail.ChecklistTotalCount - CommentQuickDetail.ChecklistOpenCount}/{CommentQuickDetail.ChecklistTotalCount}")</strong></div>
+                                </div>
+
+                                @if (CommentQuickDetail.OpenMeasureItems.Count > 0)
+                                {
+                                    <div class="home-comment-detail-list-title">Offene Massnahmen</div>
+                                    <ul class="home-comment-detail-list">
+                                        @foreach (var item in CommentQuickDetail.OpenMeasureItems)
+                                        {
+                                            <li>@item</li>
+                                        }
+                                    </ul>
+                                }
+
+                                @if (CommentQuickDetail.OpenChecklistItems.Count > 0)
+                                {
+                                    <div class="home-comment-detail-list-title">Offene Tests</div>
+                                    <ul class="home-comment-detail-list">
+                                        @foreach (var item in CommentQuickDetail.OpenChecklistItems)
+                                        {
+                                            <li>@item</li>
+                                        }
+                                    </ul>
+                                }
+                            }
                         }
                         else
                         {
-                            <div class="home-comment-mention-results">
-                                @foreach (var user in FilteredMentionLookup)
-                                {
-                                    <button type="button"
-                                            class="home-comment-mention-option"
-                                            @onclick="() => SelectMention(user)">
-                                        <span class="home-comment-mention-name">@user.DisplayName</span>
-                                        @if (!string.IsNullOrWhiteSpace(user.Email))
-                                        {
-                                            <span class="home-comment-mention-mail">@user.Email</span>
-                                        }
-                                    </button>
-                                }
+                            <div class="home-comment-detail-grid">
+                                <div class="home-comment-detail-row"><span>Ersteller</span><strong>@selectedCard.CreatorDisplayName</strong></div>
+                                <div class="home-comment-detail-row"><span>Besitzer</span><strong>@(string.IsNullOrWhiteSpace(selectedCard.OwnerDisplayName) ? "-" : selectedCard.OwnerDisplayName)</strong></div>
+                                <div class="home-comment-detail-row"><span>Kategorie</span><strong>@selectedCard.CategoryOrRole</strong></div>
+                                <div class="home-comment-detail-row"><span>Aktivitaet</span><strong>@selectedCard.LastActivityUtc.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</strong></div>
                             </div>
                         }
-                    </div>
-                }
 
-                <textarea class="form-control home-comment-input"
-                          rows="4"
-                          placeholder="@CommentNullText"
-                          aria-label="Kommentar Eingabe"
-                          @bind="NewCommentText"
-                          @bind:event="oninput"
-                          @onkeydown="OnCommentInputKeyDown"></textarea>
-
-                @if (SelectedMentions.Count > 0)
-                {
-                    <div class="home-comment-chip-list">
-                        @foreach (var mention in SelectedMentions)
-                        {
-                            <span class="home-comment-chip">
-                                @($"@{mention.DisplayName}")
+                        <div class="home-comment-detail-actions">
+                            <button type="button" class="btn btn-sm btn-primary" @onclick="() => OpenCard(selectedCard)">Eintrag oeffnen</button>
+                            @if (selectedCard.EntityType == HomeKanbanCardEntityType.OnboardingProfile)
+                            {
                                 <button type="button"
-                                        class="home-comment-chip-remove"
-                                        aria-label="@($"{mention.DisplayName} entfernen")"
-                                        @onclick="() => RemoveMention(mention.UserId)">x</button>
-                            </span>
-                        }
+                                        class="btn btn-sm btn-outline-primary"
+                                        @onclick='() => NavigationManager.NavigateTo($"/reportdesigner/details/{selectedCard.EntryId}")'>Zur Detailseite</button>
+                            }
+                        </div>
                     </div>
-                }
-
-                @if (PendingAttachmentPreviews.Count > 0)
-                {
-                    <div class="home-comment-attachment-grid">
-                        @for (var index = 0; index < PendingAttachmentPreviews.Count; index++)
-                        {
-                            var preview = PendingAttachmentPreviews[index];
-                            <div class="home-comment-attachment-card">
-                                <img src="@preview.PreviewUrl"
-                                     alt="@preview.FileName"
-                                     class="home-comment-attachment-image" />
-                                <div class="home-comment-attachment-meta">
-                                    <span class="home-comment-attachment-name">@preview.FileName</span>
-                                    <button type="button"
-                                            class="btn btn-sm btn-link text-danger p-0"
-                                            aria-label="@($"{preview.FileName} entfernen")"
-                                            @onclick="() => RemovePendingAttachment(index)">Entfernen</button>
-                                </div>
-                            </div>
-                        }
-                    </div>
-                }
-
-                @if (!string.IsNullOrWhiteSpace(CommentValidationMessage))
-                {
-                    <div class="alert alert-warning py-1 px-2 mt-2 mb-0" role="alert">@CommentValidationMessage</div>
-                }
-
-                <div class="d-flex gap-2 mt-2 flex-wrap align-items-center">
-                    <InputFile OnChange="OnCommentFilesChanged"
-                               multiple
-                               accept="image/gif,image/png,image/jpeg,image/webp" />
-                    <span class="small text-muted">Drag &amp; Drop oder Paste ist ebenfalls aktiv (max 4 Dateien, je 8 MB).</span>
-                    <DxButton Text="@(IsSendingComment ? "Senden..." : "Senden")"
-                              RenderStyle="ButtonRenderStyle.Primary"
-                              Enabled="@CanSendComment"
-                              Click="SendCommentAsync" />
-                </div>
+                </aside>
             </div>
         }
     </BodyContentTemplate>
 </DxPopup>
-
 <DxPopup HeaderText="Onboarding Details" Width="840px" Height="600px" @bind-Visible="DetailsVisible" CloseOnOutsideClick="true">
     <BodyContentTemplate Context="detailPopupContext">
         @if (QuickDetail is null)
@@ -407,14 +519,14 @@
     private static readonly Regex UrlPattern = new(@"(https?://[^\s]+|www\.[^\s]+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly IReadOnlyList<string> EmojiPalette =
     [
-        "😀",
-        "🙂",
-        "😉",
-        "🎉",
-        "✅",
-        "🚀",
-        "💡",
-        "👀"
+        "\U0001F600",
+        "\U0001F642",
+        "\U0001F609",
+        "\U0001F389",
+        "\u2705",
+        "\U0001F680",
+        "\U0001F4A1",
+        "\U0001F440"
     ];
 
     private string? CurrentUserId { get; set; }
@@ -462,6 +574,9 @@
     private bool ShowEmojiPicker { get; set; }
     private bool IsSendingComment { get; set; }
     private string? CommentValidationMessage { get; set; }
+    private bool CommentDetailsExpanded { get; set; } = true;
+    private bool IsCommentDetailLoading { get; set; }
+    private OnboardingQuickDetailDto? CommentQuickDetail { get; set; }
     private ElementReference CommentComposerDropZoneElement { get; set; }
     private IJSObjectReference? CommentComposerModule { get; set; }
     private IJSObjectReference? CommentComposerInteropHandle { get; set; }
@@ -676,10 +791,44 @@
         ErrorMessage = null;
         CommentCard = card;
         CommentScope = card.EntityType == HomeKanbanCardEntityType.WikiEntry ? HomeCommentScope.Wiki : HomeCommentScope.Onboarding;
+        CommentQuickDetail = null;
+        CommentDetailsExpanded = true;
+        IsCommentDetailLoading = CommentScope == HomeCommentScope.Onboarding;
         CommentsVisible = true;
         ResetCommentComposerState();
-        await EnsureMentionLookupAsync();
-        await ReloadCommentsAsync();
+
+        Task<OnboardingQuickDetailDto?>? detailTask = null;
+        if (CommentScope == HomeCommentScope.Onboarding)
+        {
+            detailTask = OnboardingService.GetQuickDetailAsync(card.EntryId);
+        }
+
+        await Task.WhenAll(EnsureMentionLookupAsync(), ReloadCommentsAsync());
+
+        if (detailTask is not null)
+        {
+            try
+            {
+                CommentQuickDetail = await detailTask;
+            }
+            catch (Exception ex)
+            {
+                ErrorMessage = $"Detaildaten konnten nicht geladen werden: {ex.Message}";
+            }
+            finally
+            {
+                IsCommentDetailLoading = false;
+            }
+        }
+        else
+        {
+            IsCommentDetailLoading = false;
+        }
+    }
+
+    private void ToggleCommentDetailPanel()
+    {
+        CommentDetailsExpanded = !CommentDetailsExpanded;
     }
 
     private async Task OnCardContextMenuAsync(MouseEventArgs args, HomeKanbanCardDto card)
@@ -1462,3 +1611,4 @@
         Title
     }
 }
+
