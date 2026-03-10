@@ -388,8 +388,27 @@ public partial class OnboardingService
             throw new InvalidOperationException("Nur der Autor darf den Kommentar löschen.");
         }
 
+        await DeleteCommentNotificationsAsync(context, comment.Id, cancellationToken);
         context.HomeEntryComments.Remove(comment);
         await context.SaveChangesAsync(cancellationToken);
+    }
+
+    private static async Task DeleteCommentNotificationsAsync(
+        ApplicationDbContext context,
+        int commentId,
+        CancellationToken cancellationToken)
+    {
+        var notifications = await context.AppNotifications
+            .Where(notification =>
+                notification.SourceId == commentId
+                && (notification.Kind == NotificationKind.HomeCommentOwner
+                    || notification.Kind == NotificationKind.HomeCommentMention))
+            .ToListAsync(cancellationToken);
+
+        if (notifications.Count > 0)
+        {
+            context.AppNotifications.RemoveRange(notifications);
+        }
     }
 
     private static List<HomeKanbanCardDto> BuildCardsForStatus(

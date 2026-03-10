@@ -1,0 +1,61 @@
+﻿@page "/"
+@rendermode InteractiveServer
+
+@using BlazorSlider.Components.Slider
+
+<div>
+    <DxFormLayout CssClass="slider-fl" ItemCaptionAlignment="ItemCaptionAlignment.All">
+        <DxFormLayoutGroup ColSpanXs="12">
+            <Items>
+                <DxFormLayoutItem ColSpanXs="12" Caption="Default mode">
+                    <DxSlider T="int" MinValue="0" MaxValue="100" Value="90" />
+                </DxFormLayoutItem>
+                <DxFormLayoutItem ColSpanXs="12" Caption="Labels Enabled">
+                    <DxSlider T="int" MinValue="0" MaxValue="100" Value="50">
+                        <DxSliderLabelSettings Visible="true"
+                                               Position="VerticalEdge.Top" />
+                    </DxSlider>
+                </DxFormLayoutItem>
+                <DxFormLayoutItem ColSpanXs="12" Caption="Tooltips Enabled">
+                    <DxSlider T="int" MinValue="0" MaxValue="100" Value="35">
+                        <DxSliderTooltipSettings Enabled="true"
+                                                 ShowMode="TooltipShowMode.Always"
+                                                 Position="VerticalEdge.Bottom" />
+                    </DxSlider>
+                </DxFormLayoutItem>
+                <DxFormLayoutItem ColSpanXs="12" Caption="Range Highlight Disabled">
+                    <DxSlider T="int" MinValue="0" MaxValue="100"
+                              Value="20" ShowRange="false" />
+                </DxFormLayoutItem>
+                <DxFormLayoutItem ColSpanXs="12" Caption="Discrete Step Enabled">
+                    <DxSlider T="int" MinValue="0" MaxValue="100" Value="10" Step="10">
+                        <DxSliderTooltipSettings Enabled="true" />
+                    </DxSlider>
+                </DxFormLayoutItem>
+                <DxFormLayoutItem ColSpanXs="12" Caption="Disabled Mode">
+                    <DxSlider T="int" MinValue="0" MaxValue="100"
+                              Value="50" Enabled="false" />
+                </DxFormLayoutItem>
+            </Items>
+        </DxFormLayoutGroup>
+        <DxFormLayoutGroup Caption="Process Value Changes" ColSpanXs="12">
+            <Items>
+                <DxFormLayoutItem ColSpanXs="12" Caption="On handle movement">
+                    <DxSlider @bind-Value="SliderValue" MinValue="0" MaxValue="100"
+                              ValueChangeMode="SliderValueChangeMode.OnHandleMove" />
+                </DxFormLayoutItem>
+                <DxFormLayoutItem ColSpanXs="12" Caption="On handle release">
+                    <DxSlider @bind-Value="SliderValue" MinValue="0" MaxValue="100"
+                              ValueChangeMode="SliderValueChangeMode.OnHandleRelease" />
+                </DxFormLayoutItem>
+                <DxFormLayoutItem ColSpanXs="12" Caption="Slider value">
+                    <DxSpinEdit @bind-Value="SliderValue" />
+                </DxFormLayoutItem>
+            </Items>
+        </DxFormLayoutGroup>
+    </DxFormLayout>
+</div>
+
+@code{
+    double SliderValue { get; set; } = 15;
+}

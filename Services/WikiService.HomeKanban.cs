@@ -390,7 +390,7 @@ public partial class WikiService
     {
         using var context = await _dbFactory.CreateDbContextAsync();
         var comment = await context.HomeEntryComments
-            .FirstOrDefaultAsync(entry => entry.Id == commentId);
+            .FirstOrDefaultAsync(entry => entry.Id == commentId && entry.Scope == HomeCommentScope.Wiki);
 
         if (comment is null)
         {
@@ -402,8 +402,24 @@ public partial class WikiService
             throw new InvalidOperationException("Nur der Autor darf den Kommentar löschen.");
         }
 
+        await DeleteCommentNotificationsAsync(context, comment.Id);
         context.HomeEntryComments.Remove(comment);
         await context.SaveChangesAsync();
+    }
+
+    private static async Task DeleteCommentNotificationsAsync(ApplicationDbContext context, int commentId)
+    {
+        var notifications = await context.AppNotifications
+            .Where(notification =>
+                notification.SourceId == commentId
+                && (notification.Kind == NotificationKind.HomeCommentOwner
+                    || notification.Kind == NotificationKind.HomeCommentMention))
+            .ToListAsync();
+
+        if (notifications.Count > 0)
+        {
+            context.AppNotifications.RemoveRange(notifications);
+        }
     }
 
     public async Task RecordWikiEntryViewAsync(string? userId, int pageId)

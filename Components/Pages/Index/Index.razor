@@ -20,6 +20,7 @@
 @inject IUserIdResolver UserIdResolver
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IJSRuntime JsRuntime
+@inject NotificationRefreshSignal NotificationRefreshSignal
 
 <PageTitle>Home Dashboard</PageTitle>
 
@@ -225,7 +226,19 @@
                                 <div class="home-comment-item">
                                     <div class="home-comment-header-row">
                                         <strong>@item.AuthorDisplayName</strong>
-                                        <span class="text-muted">@item.CreatedAtUtc.ToLocalTime().ToString("dd.MM HH:mm")</span>
+                                        <div class="home-comment-header-meta">
+                                            <span class="text-muted">@item.CreatedAtUtc.ToLocalTime().ToString("dd.MM HH:mm")</span>
+                                            @if (CanDeleteComment(item))
+                                            {
+                                                <button type="button"
+                                                        class="btn btn-sm btn-link text-danger p-0 home-comment-delete-btn"
+                                                        aria-label="Kommentar loeschen"
+                                                        disabled="@(DeletingCommentId == item.Id)"
+                                                        @onclick="() => DeleteCommentAsync(item)">
+                                                    @(DeletingCommentId == item.Id ? "Loeschen..." : "Loeschen")
+                                                </button>
+                                            }
+                                        </div>
                                     </div>
                                     <div class="home-comment-text">@RenderFormattedComment(item.Text)</div>
                                     @if (item.Mentions.Count > 0)
@@ -573,6 +586,7 @@
     private bool ShowMentionPicker { get; set; }
     private bool ShowEmojiPicker { get; set; }
     private bool IsSendingComment { get; set; }
+    private int? DeletingCommentId { get; set; }
     private string? CommentValidationMessage { get; set; }
     private bool CommentDetailsExpanded { get; set; } = true;
     private bool IsCommentDetailLoading { get; set; }
@@ -965,6 +979,7 @@
             ResetCommentComposerState();
             await ReloadCommentsAsync();
             await LoadBoardsAsync();
+            NotificationRefreshSignal.RequestRefresh();
         }
         catch (Exception ex)
         {
@@ -1088,6 +1103,53 @@
         CommentValidationMessage = null;
     }
 
+    private bool CanDeleteComment(HomeEntryCommentDto comment)
+    {
+        return !string.IsNullOrWhiteSpace(CurrentUserId)
+               && string.Equals(comment.AuthorId, CurrentUserId, StringComparison.Ordinal);
+    }
+
+    private async Task DeleteCommentAsync(HomeEntryCommentDto comment)
+    {
+        if (!CanDeleteComment(comment) || DeletingCommentId.HasValue)
+        {
+            return;
+        }
+
+        var confirmed = await JsRuntime.InvokeAsync<bool>("confirm", "Kommentar wirklich loeschen?");
+        if (!confirmed)
+        {
+            return;
+        }
+
+        DeletingCommentId = comment.Id;
+        CommentValidationMessage = null;
+
+        try
+        {
+            if (comment.Scope == HomeCommentScope.Wiki)
+            {
+                await WikiService.DeleteHomeCommentAsync(CurrentUserId, comment.Id);
+            }
+            else
+            {
+                await OnboardingService.DeleteHomeCommentAsync(CurrentUserId, comment.Id);
+            }
+
+            await ReloadCommentsAsync();
+            await LoadBoardsAsync();
+            NotificationRefreshSignal.RequestRefresh();
+        }
+        catch (Exception ex)
+        {
+            CommentValidationMessage = $"Kommentar konnte nicht geloescht werden: {ex.Message}";
+        }
+        finally
+        {
+            DeletingCommentId = null;
+        }
+    }
+
     private async Task EnsureMentionLookupAsync()
     {
         if (MentionLookupLoaded)
@@ -1145,6 +1207,7 @@
         ShowMentionPicker = false;
         ShowEmojiPicker = false;
         IsSendingComment = false;
+        DeletingCommentId = null;
         CommentValidationMessage = null;
     }
 

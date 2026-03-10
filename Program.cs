@@ -91,6 +91,7 @@ builder.Services.AddScoped<IWikiService, WikiService>();
 builder.Services.AddScoped<IWikiFavoriteGroupService, WikiFavoriteGroupService>();
 builder.Services.AddScoped<IUserIdResolver, UserIdResolver>();
 builder.Services.AddScoped<IOnboardingService, OnboardingService>();
+builder.Services.AddScoped<NotificationRefreshSignal>();
 builder.Services.AddScoped<NotificationService>();
 builder.Services.AddScoped<INotificationService>(serviceProvider => serviceProvider.GetRequiredService<NotificationService>());
 builder.Services.AddScoped<INotificationSchedulerService>(serviceProvider => serviceProvider.GetRequiredService<NotificationService>());

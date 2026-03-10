@@ -4,9 +4,11 @@
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject UserManager<Wiki_Blaze.Data.ApplicationUser> UserManager
 @inject INotificationService NotificationService
+@inject NotificationRefreshSignal NotificationRefreshSignal
 @inject IJSRuntime JsRuntime
 @inject ILogger<MainLayout> Logger
 @using System.Security.Claims
+@using Wiki_Blaze.Data.Entities
 @using Wiki_Blaze.Services
 
 <div class="page">
@@ -93,22 +95,33 @@
                                                 {
                                                     <div class="notification-error-state small p-2">@NotificationErrorMessage</div>
                                                 }
-                                                else if (NotificationInbox.Items.Count == 0)
+                                                else if (GroupedNotifications.Count == 0)
                                                 {
-                                                    <div class="small text-muted p-2">Keine fälligen Notifications für heute (werktags ab 08:00).</div>
+                                                    <div class="small text-muted p-2">Keine Benachrichtigungen vorhanden.</div>
                                                 }
                                                 else
                                                 {
                                                     <div class="notification-dropdown-list">
-                                                        @foreach (var notification in NotificationInbox.Items)
+                                                        @foreach (var group in GroupedNotifications)
                                                         {
-                                                            <button type="button"
-                                                                    class="notification-item @(notification.IsRead ? "is-read" : "is-unread")"
-                                                                    @onclick="() => OpenNotificationAsync(notification)">
-                                                                <div class="notification-item-title">@notification.Title</div>
-                                                                <div class="notification-item-body">@notification.Body</div>
-                                                                <div class="notification-item-meta">@FormatNotificationTimestamp(notification.CreatedAtUtc)</div>
-                                                            </button>
+                                                            <section class="notification-group">
+                                                                <div class="notification-group-title">
+                                                                    <span class="@group.IconCssClass" aria-hidden="true"></span>
+                                                                    <span>@group.Title</span>
+                                                                </div>
+                                                                <div class="notification-group-items">
+                                                                    @foreach (var notification in group.Items)
+                                                                    {
+                                                                        <button type="button"
+                                                                                class="notification-item @(notification.IsRead ? "is-read" : "is-unread")"
+                                                                                @onclick="() => OpenNotificationAsync(notification)">
+                                                                            <div class="notification-item-title">@notification.Title</div>
+                                                                            <div class="notification-item-body">@notification.Body</div>
+                                                                            <div class="notification-item-meta">@FormatNotificationTimestamp(notification.CreatedAtUtc)</div>
+                                                                        </button>
+                                                                    }
+                                                                </div>
+                                                            </section>
                                                         }
                                                     </div>
                                                 }
@@ -158,12 +171,15 @@
     private bool IsNotificationLoading;
     private string? NotificationErrorMessage;
     private NotificationInboxDto NotificationInbox { get; set; } = new();
+    private IReadOnlyList<NotificationGroupState> GroupedNotifications { get; set; } = Array.Empty<NotificationGroupState>();
     private PeriodicTimer? notificationsTimer;
     private CancellationTokenSource? notificationsCts;
     private Task? notificationsRefreshTask;
     private readonly SemaphoreSlim notificationsGate = new(1, 1);
 
     private sealed record EffectivePreferences(string Theme, string Density, string StartPage, string? UserId);
+    private sealed record NotificationGroupDefinition(string Title, string IconCssClass, NotificationKind[] Kinds);
+    private sealed record NotificationGroupState(string Title, string IconCssClass, IReadOnlyList<NotificationInboxItemDto> Items);
 
     private static readonly EffectivePreferences DefaultPreferences = new(
         Wiki_Blaze.Data.ApplicationUser.DefaultThemePreference,
@@ -171,10 +187,31 @@
         Wiki_Blaze.Data.ApplicationUser.DefaultStartPage,
         null);
 
+    private static readonly IReadOnlyList<NotificationGroupDefinition> NotificationGroups =
+    [
+        new NotificationGroupDefinition(
+            "Onboarding Reminder",
+            "oi oi-calendar",
+            [NotificationKind.OnboardingStartDate, NotificationKind.OnboardingTargetDate]),
+        new NotificationGroupDefinition(
+            "Wiki ReviewDate",
+            "oi oi-book",
+            [NotificationKind.WikiReviewDate]),
+        new NotificationGroupDefinition(
+            "Kommentar Info",
+            "oi oi-comment-square",
+            [NotificationKind.HomeCommentOwner]),
+        new NotificationGroupDefinition(
+            "Kommentar Erwaehnung",
+            "oi oi-person",
+            [NotificationKind.HomeCommentMention])
+    ];
+
     protected override void OnInitialized() {
         currentUrl = NavigationManager.ToBaseRelativePath(NavigationManager.Uri);
         NavigationManager.LocationChanged += OnLocationChanged;
         AuthenticationStateProvider.AuthenticationStateChanged += OnAuthenticationStateChanged;
+        NotificationRefreshSignal.Requested += OnNotificationRefreshRequested;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -368,6 +405,7 @@
         if (string.IsNullOrWhiteSpace(currentUserId))
         {
             NotificationInbox = new NotificationInboxDto();
+            GroupedNotifications = Array.Empty<NotificationGroupState>();
             NotificationErrorMessage = null;
             await InvokeAsync(StateHasChanged);
             return;
@@ -389,11 +427,13 @@
                     currentUserId,
                     take: 20,
                     includeRead: !NotificationsOnlyUnread);
+                GroupedNotifications = BuildNotificationGroups(NotificationInbox.Items);
             }
             catch (Exception ex)
             {
                 Logger.LogError(ex, "Failed to load notification inbox for user {UserId}.", currentUserId);
                 NotificationInbox = new NotificationInboxDto();
+                GroupedNotifications = Array.Empty<NotificationGroupState>();
                 NotificationErrorMessage = "Notifications konnten nicht geladen werden.";
             }
         }
@@ -404,6 +444,36 @@
         }
 
         await InvokeAsync(StateHasChanged);
+    }
+
+    private static IReadOnlyList<NotificationGroupState> BuildNotificationGroups(IReadOnlyList<NotificationInboxItemDto> items)
+    {
+        if (items.Count == 0)
+        {
+            return Array.Empty<NotificationGroupState>();
+        }
+
+        var groups = new List<NotificationGroupState>();
+        foreach (var group in NotificationGroups)
+        {
+            var groupItems = items
+                .Where(item => group.Kinds.Contains(item.Kind))
+                .ToList();
+
+            if (groupItems.Count == 0)
+            {
+                continue;
+            }
+
+            groups.Add(new NotificationGroupState(group.Title, group.IconCssClass, groupItems));
+        }
+
+        return groups;
+    }
+
+    private void OnNotificationRefreshRequested()
+    {
+        _ = InvokeAsync(RefreshNotificationsAsync);
     }
 
     private static bool GetBoolValue(object? value)
@@ -467,6 +537,7 @@
     public void Dispose() {
         NavigationManager.LocationChanged -= OnLocationChanged;
         AuthenticationStateProvider.AuthenticationStateChanged -= OnAuthenticationStateChanged;
+        NotificationRefreshSignal.Requested -= OnNotificationRefreshRequested;
         notificationsCts?.Cancel();
         notificationsCts?.Dispose();
         notificationsTimer?.Dispose();

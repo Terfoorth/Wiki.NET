@@ -142,9 +142,32 @@
 .notification-dropdown-list {
     display: flex;
     flex-direction: column;
-    gap: 0.35rem;
+    gap: 0.6rem;
     max-height: 22rem;
     overflow-y: auto;
+}
+
+.notification-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.notification-group-title {
+    align-items: center;
+    color: #4b5563;
+    display: inline-flex;
+    font-size: 0.74rem;
+    font-weight: 700;
+    gap: 0.35rem;
+    letter-spacing: 0.01rem;
+    text-transform: uppercase;
+}
+
+.notification-group-items {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
 }
 
 .notification-item {

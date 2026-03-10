@@ -8,7 +8,7 @@
     <AssemblyName>$(AssemblyName.Replace(' ', '_'))</AssemblyName>
     <NodeModulesDir>$(ProjectDir)node_modules\</NodeModulesDir>
     <WwwRootDir>$(ProjectDir)wwwroot\</WwwRootDir>
-    <DefaultItemExcludes>$(DefaultItemExcludes);Onboarding_modul\**\*;Wiki-Blaze.Tests\**\*</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);Onboarding_modul\**\*;Wiki-Blaze.Tests\**\*;BlazorSlider\**\*</DefaultItemExcludes>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
     <GenerateAssemblyInfo>False</GenerateAssemblyInfo>
@@ -37,24 +37,31 @@
   <ItemGroup>
     <Compile Remove="Components\Pages\Index\Class.cs" />
     <Compile Remove="Program(Slider).cs" />
+    <Compile Remove="BlazorSlider\**\*.cs" />
     <Compile Remove="contract-management\**" />
     <Compile Remove="Onboarding_modul\**\*.cs" />
     <RazorComponent Remove="Components\App(Slider).razor" />
     <RazorComponent Remove="Components\Layout\MainLayout(Slider).razor" />
     <RazorComponent Remove="Components\Pages\Index\Index(Slider).razor" />
+    <RazorComponent Remove="BlazorSlider\**\*.razor" />
     <RazorComponent Remove="Onboarding_modul\**\*.razor" />
     <ScopedCssInput Remove="Components\Pages\Index\Index(Slider).razor.css" />
+    <ScopedCssInput Remove="BlazorSlider\**\*.razor.css" />
     <ScopedCssInput Remove="Onboarding_modul\**\*.razor.css" />
     <Content Remove="Components\App(Slider).razor" />
     <Content Remove="Components\Layout\MainLayout(Slider).razor" />
     <Content Remove="Components\Pages\Index\Index(Slider).razor" />
     <Content Remove="Components\Pages\Index\Index(Slider).razor.css" />
+    <Content Remove="BlazorSlider\**\*" />
     <Content Remove="contract-management\**" />
     <Content Remove="Onboarding_modul\**\*" />
     <None Remove="Components\Pages\Index\Index(Slider).razor.css" />
+    <None Remove="BlazorSlider\**\*" />
     <EmbeddedResource Remove="contract-management\**" />
+    <EmbeddedResource Remove="BlazorSlider\**\*" />
     <EmbeddedResource Remove="Onboarding_modul\**\*" />
     <None Remove="contract-management\**" />
+    <TypeScriptCompile Remove="BlazorSlider\**\*" />
   </ItemGroup>
   <ItemGroup>
     <Content Remove="Services\MainLayout.razor" />
