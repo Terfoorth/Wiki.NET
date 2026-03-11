@@ -23,14 +23,20 @@
     min-width: 12rem;
 }
 
-::deep .home-kanban-view-wiki .kanban-header-cell,
-::deep .home-kanban-view-wiki .kanban-data-cell {
-    background-color: rgba(59, 130, 92, 0.16) !important;
+::deep .home-kanban-view-wiki .kanban-header-cell {
+    background-color: rgb(96, 183, 10) !important;
 }
 
-::deep .home-kanban-view-onboarding .kanban-header-cell,
+::deep .home-kanban-view-wiki .kanban-data-cell {
+    background-color: rgb(118, 232, 85) !important;
+}
+
+::deep .home-kanban-view-onboarding .kanban-header-cell {
+    background-color: rgb(60, 113, 239) !important;
+}
+
 ::deep .home-kanban-view-onboarding .kanban-data-cell {
-    background-color: rgba(47, 114, 186, 0.18) !important;
+    background-color: rgb(99, 130, 204) !important;
 }
 
 ::deep .home-kanban-card {
@@ -43,7 +49,7 @@
     border-radius: 0.9rem;
     border: 1px solid rgba(15, 23, 42, 0.08);
     background: linear-gradient(180deg, #ffffff 0%, #f7fafc 100%);
-    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
+    box-shadow: 4px 10px 20px rgba(15, 23, 42, 0.28);
 }
 
 ::deep .home-kanban-card.is-reminder-active {
