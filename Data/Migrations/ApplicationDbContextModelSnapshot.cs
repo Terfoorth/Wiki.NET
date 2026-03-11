@@ -1683,7 +1683,7 @@ namespace Wiki_Blaze.Migrations
                     b.HasOne("Wiki_Blaze.Data.ApplicationUser", "CreatedByUser")
                         .WithMany()
                         .HasForeignKey("CreatedByUserId")
-                        .OnDelete(DeleteBehavior.SetNull);
+                        .OnDelete(DeleteBehavior.NoAction);
 
                     b.HasOne("Wiki_Blaze.Data.ApplicationUser", "LinkedUser")
                         .WithMany()

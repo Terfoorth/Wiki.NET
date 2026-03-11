@@ -215,7 +215,7 @@ namespace Wiki_Blaze.Data
                 .HasOne(profile => profile.CreatedByUser)
                 .WithMany()
                 .HasForeignKey(profile => profile.CreatedByUserId)
-                .OnDelete(DeleteBehavior.SetNull);
+                .OnDelete(DeleteBehavior.NoAction);
 
             builder.Entity<OnboardingProfileAttachment>()
                 .HasIndex(attachment => attachment.ProfileId)
