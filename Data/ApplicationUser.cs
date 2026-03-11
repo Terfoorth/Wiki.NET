@@ -37,6 +37,10 @@ namespace Wiki_Blaze.Data
         public string? Location { get; set; }
 
         [PersonalData]
+        [MaxLength(100)]
+        public string? Country { get; set; }
+
+        [PersonalData]
         [MaxLength(500)]
         public string? Bio { get; set; }
 

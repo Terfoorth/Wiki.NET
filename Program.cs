@@ -3,6 +3,7 @@ using System.Linq;
 using DevExpress.AspNetCore.Reporting;
 using DevExpress.Blazor.Reporting;
 using DevExpress.XtraReports.Web.Extensions;
+using Microsoft.AspNetCore.Authentication.Negotiate;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Data.SqlClient;
@@ -11,6 +12,7 @@ using Wiki_Blaze.Components;
 using Wiki_Blaze.Components.Account;
 using Wiki_Blaze.Data;
 using Wiki_Blaze.Services;
+using Wiki_Blaze.Services.Authentication;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -44,12 +46,16 @@ builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddScoped<IdentityUserAccessor>();
 builder.Services.AddScoped<IdentityRedirectManager>();
 builder.Services.AddScoped<AuthenticationStateProvider, IdentityRevalidatingAuthenticationStateProvider>();
-builder.Services.AddAuthentication(options =>
+var authenticationBuilder = builder.Services.AddAuthentication(options =>
 {
     options.DefaultScheme = IdentityConstants.ApplicationScheme;
     options.DefaultSignInScheme = IdentityConstants.ExternalScheme;
-})
-    .AddIdentityCookies();
+});
+authenticationBuilder.AddIdentityCookies();
+authenticationBuilder.AddNegotiate();
+builder.Services.AddAuthorization();
+builder.Services.Configure<WindowsAuthenticationOptions>(
+    builder.Configuration.GetSection(WindowsAuthenticationOptions.SectionName));
 
 var dataDirectoryPath = Path.Combine(builder.Environment.ContentRootPath, "Data");
 Directory.CreateDirectory(dataDirectoryPath);
@@ -90,6 +96,7 @@ builder.Services.AddIdentityCore<ApplicationUser>(options => options.SignIn.Requ
 builder.Services.AddScoped<IWikiService, WikiService>();
 builder.Services.AddScoped<IWikiFavoriteGroupService, WikiFavoriteGroupService>();
 builder.Services.AddScoped<IUserIdResolver, UserIdResolver>();
+builder.Services.AddScoped<IActiveDirectoryUserProfileService, ActiveDirectoryUserProfileService>();
 builder.Services.AddScoped<IOnboardingService, OnboardingService>();
 builder.Services.AddScoped<NotificationRefreshSignal>();
 builder.Services.AddScoped<NotificationService>();
@@ -185,6 +192,8 @@ else
 app.UseHttpsRedirection();
 
 app.UseStaticFiles();
+app.UseAuthentication();
+app.UseAuthorization();
 app.UseAntiforgery();
 
 app.MapRazorComponents<App>()
