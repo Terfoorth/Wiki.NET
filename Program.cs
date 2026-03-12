@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Wiki_Blaze.Components;
 using Wiki_Blaze.Components.Account;
 using Wiki_Blaze.Data;
@@ -130,6 +131,19 @@ await using (var scope = app.Services.CreateAsyncScope())
     {
         startupLogger.LogWarning(ex, "Could not determine pending migrations at startup.");
     }
+
+    var windowsOptions = scope.ServiceProvider
+        .GetRequiredService<IOptions<WindowsAuthenticationOptions>>()
+        .Value;
+    startupLogger.LogInformation(
+        "Windows authentication config: Enabled={Enabled}, AllowedDomain={AllowedDomain}, AutoProvision={AutoProvision}, ProfileSyncMode={ProfileSyncMode}, DirectoryServicesEnabled={DirectoryServicesEnabled}, DomainController={DomainController}, Container={Container}",
+        windowsOptions.Enabled,
+        windowsOptions.AllowedDomain,
+        windowsOptions.AutoProvision,
+        windowsOptions.ProfileSyncMode,
+        windowsOptions.DirectoryServices.Enabled,
+        string.IsNullOrWhiteSpace(windowsOptions.DirectoryServices.DomainController) ? "<default>" : windowsOptions.DirectoryServices.DomainController,
+        string.IsNullOrWhiteSpace(windowsOptions.DirectoryServices.Container) ? "<default>" : windowsOptions.DirectoryServices.Container);
 
     var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
     var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();

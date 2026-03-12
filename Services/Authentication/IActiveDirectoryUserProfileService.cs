@@ -4,9 +4,11 @@ namespace Wiki_Blaze.Services.Authentication;
 
 public interface IActiveDirectoryUserProfileService
 {
-    ActiveDirectoryUserProfile ResolveProfile(
+    Task<ActiveDirectoryUserProfile> ResolveProfileAsync(
         ClaimsPrincipal principal,
         string samAccountName,
         string? userPrincipalName,
-        string allowedDomain);
+        string allowedDomain,
+        WindowsDirectoryServicesOptions directoryServicesOptions,
+        CancellationToken cancellationToken = default);
 }

@@ -118,11 +118,13 @@ namespace Microsoft.AspNetCore.Routing
                     return Results.LocalRedirect(BuildLoginRedirectUrl(safeReturnUrl));
                 }
 
-                var profile = activeDirectoryUserProfileService.ResolveProfile(
+                var profile = await activeDirectoryUserProfileService.ResolveProfileAsync(
                     principal,
                     identityInfo.SamAccountName,
                     identityInfo.UserPrincipalName,
-                    windowsOptions.AllowedDomain);
+                    windowsOptions.AllowedDomain,
+                    windowsOptions.DirectoryServices,
+                    context.RequestAborted);
 
                 ApplyIdentityFallbacks(profile, identityInfo, windowsOptions.AllowedDomain);
 
@@ -142,7 +144,7 @@ namespace Microsoft.AspNetCore.Routing
                     {
                         UserName = TrimToLength(profile.SamAccountName ?? identityInfo.SamAccountName, 256),
                         Email = TrimToLength(profile.Email, 256),
-                        EmailConfirmed = !string.IsNullOrWhiteSpace(profile.Email),
+                        EmailConfirmed = true,
                     };
 
                     ApplyProfileToUser(user, profile, overwriteExisting: true);
@@ -160,7 +162,6 @@ namespace Microsoft.AspNetCore.Routing
                     }
 
                     isNewUser = true;
-                    await wikiFavoriteGroupService.EnsureDefaultGroupAsync(user.Id);
                 }
                 else if (windowsOptions.ProfileSyncMode == WindowsProfileSyncMode.EveryLogin)
                 {
@@ -187,6 +188,20 @@ namespace Microsoft.AspNetCore.Routing
                     SetStatusMessage(context, $"Error: Windows account link failed ({loginErrors}).");
                     return Results.LocalRedirect(BuildLoginRedirectUrl(safeReturnUrl));
                 }
+
+                var addRoleResult = await EnsureUserRoleAsync(userManager, user, "User");
+                if (!addRoleResult.Succeeded)
+                {
+                    var roleErrors = string.Join(", ", addRoleResult.Errors.Select(error => error.Description));
+                    logger.LogWarning(
+                        "Could not ensure role 'User' for user {UserId}: {Errors}",
+                        user.Id,
+                        roleErrors);
+                    SetStatusMessage(context, $"Error: User role assignment failed ({roleErrors}).");
+                    return Results.LocalRedirect(BuildLoginRedirectUrl(safeReturnUrl));
+                }
+
+                await wikiFavoriteGroupService.EnsureDefaultGroupAsync(user.Id);
 
                 if (isNewUser)
                 {
@@ -358,6 +373,19 @@ namespace Microsoft.AspNetCore.Routing
             return await userManager.AddLoginAsync(
                 user,
                 new UserLoginInfo(WindowsLoginProvider, providerKey, WindowsLoginDisplayName));
+        }
+
+        private static async Task<IdentityResult> EnsureUserRoleAsync(
+            UserManager<ApplicationUser> userManager,
+            ApplicationUser user,
+            string roleName)
+        {
+            if (await userManager.IsInRoleAsync(user, roleName))
+            {
+                return IdentityResult.Success;
+            }
+
+            return await userManager.AddToRoleAsync(user, roleName);
         }
 
         private static void ApplyIdentityFallbacks(
