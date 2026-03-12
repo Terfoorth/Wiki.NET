@@ -1,4 +1,4 @@
-﻿using Wiki_Blaze.Data.Entities;
+using Wiki_Blaze.Data.Entities;
 
 namespace Wiki_Blaze.Services
 {
@@ -55,7 +55,7 @@ namespace Wiki_Blaze.Services
         Task SaveAttributeValueAsync(WikiPageAttributeValue value);
         Task DeleteAttributeValueAsync(int id);
 
-        // --- Kommentare ---
+        // --- Kommentare (legacy: ersetzt durch Home-Kommentar-Modul) ---
         Task<List<WikiComment>> GetCommentsAsync(int pageId);
         Task<WikiComment?> GetCommentByIdAsync(int id);
         Task SaveCommentAsync(WikiComment comment);
