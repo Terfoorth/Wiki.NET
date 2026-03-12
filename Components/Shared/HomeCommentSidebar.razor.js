@@ -1,4 +1,27 @@
-const composerHandlers = new WeakMap();
+const sidebarHandlers = new WeakMap();
+let bodyLockCount = 0;
+let bodyOriginalOverflow = "";
+
+function lockBodyScroll() {
+    if (bodyLockCount === 0) {
+        bodyOriginalOverflow = document.body.style.overflow;
+        document.body.style.overflow = "hidden";
+    }
+
+    bodyLockCount += 1;
+}
+
+function unlockBodyScroll() {
+    if (bodyLockCount <= 0) {
+        bodyLockCount = 0;
+        return;
+    }
+
+    bodyLockCount -= 1;
+    if (bodyLockCount === 0) {
+        document.body.style.overflow = bodyOriginalOverflow;
+    }
+}
 
 function getImageFiles(source) {
     if (!source) {
@@ -6,7 +29,8 @@ function getImageFiles(source) {
     }
 
     if (source.files && source.files.length > 0) {
-        return Array.from(source.files).filter((file) => file && typeof file.type === "string" && file.type.toLowerCase().startsWith("image/"));
+        return Array.from(source.files)
+            .filter((file) => file && typeof file.type === "string" && file.type.toLowerCase().startsWith("image/"));
     }
 
     if (source.items && source.items.length > 0) {
@@ -48,17 +72,12 @@ async function pushFilesToDotNet(files, dotNetRef) {
     }
 }
 
-export function attachCommentComposerDropPaste(element, dotNetRef) {
+function attachCommentComposerDropPaste(element, dotNetRef) {
     if (!element || !dotNetRef) {
         return {
             dispose() {
             }
         };
-    }
-
-    const existing = composerHandlers.get(element);
-    if (existing) {
-        existing.dispose();
     }
 
     const setDragOver = (isDragOver) => {
@@ -89,6 +108,7 @@ export function attachCommentComposerDropPaste(element, dotNetRef) {
         event.preventDefault();
         event.stopPropagation();
         setDragOver(false);
+
         const files = getImageFiles(event.dataTransfer);
         if (files.length === 0) {
             return;
@@ -97,7 +117,7 @@ export function attachCommentComposerDropPaste(element, dotNetRef) {
         try {
             await pushFilesToDotNet(files, dotNetRef);
         } catch {
-            // Let .NET validation and error handling decide.
+            // Validation and error handling runs in .NET.
         }
     };
 
@@ -113,7 +133,7 @@ export function attachCommentComposerDropPaste(element, dotNetRef) {
         try {
             await pushFilesToDotNet(files, dotNetRef);
         } catch {
-            // Let .NET validation and error handling decide.
+            // Validation and error handling runs in .NET.
         }
     };
 
@@ -123,7 +143,7 @@ export function attachCommentComposerDropPaste(element, dotNetRef) {
     element.addEventListener("drop", onDrop);
     element.addEventListener("paste", onPaste);
 
-    const handle = {
+    return {
         dispose() {
             element.removeEventListener("dragenter", onDragEnter);
             element.removeEventListener("dragover", onDragOver);
@@ -131,10 +151,72 @@ export function attachCommentComposerDropPaste(element, dotNetRef) {
             element.removeEventListener("drop", onDrop);
             element.removeEventListener("paste", onPaste);
             setDragOver(false);
-            composerHandlers.delete(element);
+        }
+    };
+}
+
+export function attachHomeCommentSidebarInterop(sidebarElement, commentDropZoneElement, dotNetRef, canCompose) {
+    if (!sidebarElement || !dotNetRef) {
+        return {
+            dispose() {
+            }
+        };
+    }
+
+    const existing = sidebarHandlers.get(sidebarElement);
+    if (existing) {
+        existing.dispose();
+    }
+
+    lockBodyScroll();
+
+    const onKeyDown = async (event) => {
+        if (event.key !== "Escape") {
+            return;
+        }
+
+        event.preventDefault();
+
+        try {
+            await dotNetRef.invokeMethodAsync("HandleSidebarEscapeRequested");
+        } catch {
+            // Component may have been disposed already.
         }
     };
 
-    composerHandlers.set(element, handle);
+    document.addEventListener("keydown", onKeyDown, true);
+
+    let composerHandle = null;
+    if (canCompose && commentDropZoneElement) {
+        composerHandle = attachCommentComposerDropPaste(commentDropZoneElement, dotNetRef);
+    }
+
+    try {
+        sidebarElement.focus({ preventScroll: true });
+    } catch {
+        // Ignore focus errors.
+    }
+
+    const handle = {
+        disposed: false,
+        dispose() {
+            if (handle.disposed) {
+                return;
+            }
+
+            handle.disposed = true;
+            document.removeEventListener("keydown", onKeyDown, true);
+
+            if (composerHandle) {
+                composerHandle.dispose();
+                composerHandle = null;
+            }
+
+            unlockBodyScroll();
+            sidebarHandlers.delete(sidebarElement);
+        }
+    };
+
+    sidebarHandlers.set(sidebarElement, handle);
     return handle;
 }

@@ -21,6 +21,10 @@
             </div>
             <div class="d-flex gap-2">
                 <DxButton Text="Zur Übersicht" RenderStyle="ButtonRenderStyle.Secondary" Click="NavigateBack" />
+                <DxButton Text="Kommentare"
+                          RenderStyle="ButtonRenderStyle.Secondary"
+                          IconCssClass="oi oi-comment-square"
+                          Click="OpenComments" />
                 <DxButton Text="Settings" RenderStyle="ButtonRenderStyle.Secondary" NavigateUrl="/reportdesigner/settings" />
             </div>
         </div>
@@ -476,6 +480,18 @@
     }
 </div>
 
+<HomeCommentSidebar @bind-Visible="CommentsVisible"
+                    Scope="HomeCommentScope.Onboarding"
+                    EntryId="@(Profile?.Id ?? ProfileId)"
+                    Title="@CommentSidebarTitle"
+                    Subtitle="@CommentSidebarSubtitle"
+                    CreatorDisplayName="@CommentSidebarCreator"
+                    OwnerDisplayName="@CommentSidebarOwner"
+                    CategoryOrRole="@Profile?.JobTitle"
+                    LastActivityUtc="@Profile?.LastModifiedAt"
+                    ShowContextDetails="true"
+                    ShowOnboardingQuickDetail="true" />
+
 @code {
     [Parameter]
     public int ProfileId { get; set; }
@@ -483,6 +499,7 @@
     private OnboardingProfile? Profile { get; set; }
 
     private bool CanEdit { get; set; }
+    private bool CommentsVisible { get; set; }
     private bool ShowOnlyOpenMeasures { get; set; }
     private bool ShowOnlyOpenChecklist { get; set; }
     private string? CurrentUserId { get; set; }
@@ -524,6 +541,10 @@
 
     private bool CanAddMeasureEntry => CanEdit && NewMeasureCatalogItemId > 0 && !string.IsNullOrWhiteSpace(NewMeasureValue);
     private bool HasPendingAttachmentUpload => PendingAttachmentContent is { Length: > 0 } && !string.IsNullOrWhiteSpace(PendingAttachmentFileName);
+    private string CommentSidebarTitle => Profile is null ? "Kommentare" : $"Kommentare - {GetProfileDisplayName(Profile)}";
+    private string? CommentSidebarSubtitle => Profile is null ? null : BuildProfileSubtitle(Profile);
+    private string? CommentSidebarOwner => ResolveLookupDisplayName(Profile?.AssignedAgentUserId) ?? Profile?.AssignedAgentUserId;
+    private string? CommentSidebarCreator => ResolveLookupDisplayName(Profile?.CreatedByUserId) ?? Profile?.CreatedByUserId;
 
     private IReadOnlyList<OnboardingSalutation> SalutationOptions { get; } =
     [
@@ -606,6 +627,11 @@
     private void NavigateBack()
     {
         NavigationManager.NavigateTo("/reportdesigner");
+    }
+
+    private void OpenComments()
+    {
+        CommentsVisible = true;
     }
 
     private async Task SaveProfileAsync()
@@ -940,6 +966,34 @@
         var measureDone = profile.MeasureEntries.Count(item => item.IsCompleted);
         var checklistDone = profile.ChecklistEntries.Count(item => item.IsCompleted);
         return $"Maßnahmen {measureDone}/{profile.MeasureEntries.Count} · Tests {checklistDone}/{profile.ChecklistEntries.Count}";
+    }
+
+    private static string? BuildProfileSubtitle(OnboardingProfile profile)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(profile.Department))
+        {
+            parts.Add(profile.Department);
+        }
+
+        if (!string.IsNullOrWhiteSpace(profile.JobTitle))
+        {
+            parts.Add(profile.JobTitle);
+        }
+
+        return parts.Count == 0 ? null : string.Join(" / ", parts);
+    }
+
+    private string? ResolveLookupDisplayName(string? userId)
+    {
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            return null;
+        }
+
+        return AssigneeLookup
+            .FirstOrDefault(item => string.Equals(item.UserId, userId, StringComparison.Ordinal))
+            ?.DisplayName;
     }
 
     private static List<TimelineEntry> BuildTimeline(OnboardingProfile? profile)

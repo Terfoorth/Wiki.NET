@@ -70,6 +70,17 @@
     --dxbl-btn-padding-y: 0.25rem;
 }
 
+::deep .navigation-drawer-header .sidebar-header-toggle {
+    opacity: 1;
+    visibility: visible;
+}
+
+::deep .navigation-drawer-header .sidebar-header-toggle.dxbl-btn {
+    --dxbl-btn-color: rgba(255, 255, 255, 0.94);
+    --dxbl-btn-hover-color: #fff;
+    --dxbl-btn-active-color: #fff;
+}
+
 .page-content-container {
     display: flex;
     flex-direction: column;

@@ -20,8 +20,15 @@ namespace Microsoft.AspNetCore.Routing
     internal static class IdentityComponentsEndpointRouteBuilderExtensions
     {
         private const string WindowsLoginProvider = "Windows";
-        private const string WindowsLoginDisplayName = "Windows Kerberos";
+        private const string WindowsLoginDisplayName = "Windows Integrated";
         private const string WindowsAccountNameClaimType = "http://schemas.microsoft.com/ws/2008/06/identity/claims/windowsaccountname";
+        private const string WindowsLoginEntryRoute = "/LoginWithWindows";
+        private const string WindowsLoginCallbackRoute = "/LoginWithWindowsCallback";
+        private const string LegacyKerberosLoginRoute = "/LoginWithKerberos";
+        private const string LegacyKerberosCallbackRoute = "/LoginWithKerberosCallback";
+        private const string WindowsLoginEntryPath = "/Account/LoginWithWindows";
+        private const string WindowsLoginCallbackPath = "/Account/LoginWithWindowsCallback";
+        private const string ChallengeAttemptedQueryKey = "challengeAttempted";
 
         // These endpoints are required by the Identity Razor components defined in the /Components/Account/Pages directory of this project.
         public static IEndpointConventionBuilder MapAdditionalIdentityEndpoints(this IEndpointRouteBuilder endpoints)
@@ -49,36 +56,31 @@ namespace Microsoft.AspNetCore.Routing
                 return Results.Challenge(properties, [provider]);
             });
 
-            accountGroup.MapGet("/LoginWithKerberos", (
+            accountGroup.MapGet(WindowsLoginEntryRoute, (
                 HttpContext context,
                 [FromQuery] string? returnUrl,
-                [FromServices] IOptions<WindowsAuthenticationOptions> windowsAuthOptions) =>
+                [FromServices] IOptions<WindowsAuthenticationOptions> windowsAuthOptions,
+                [FromServices] ILoggerFactory loggerFactory) =>
             {
-                var windowsOptions = windowsAuthOptions.Value;
-                var safeReturnUrl = NormalizeReturnUrl(returnUrl);
-
-                if (!windowsOptions.Enabled)
-                {
-                    SetStatusMessage(context, "Error: Windows login is currently disabled.");
-                    return Results.LocalRedirect(BuildLoginRedirectUrl(safeReturnUrl));
-                }
-
-                var redirectUrl = UriHelper.BuildRelative(
-                    context.Request.PathBase,
-                    "/Account/LoginWithKerberosCallback",
-                    QueryString.Create("returnUrl", safeReturnUrl));
-
-                var properties = new AuthenticationProperties
-                {
-                    RedirectUri = redirectUrl,
-                };
-
-                return Results.Challenge(properties, [NegotiateDefaults.AuthenticationScheme]);
+                var logger = loggerFactory.CreateLogger("WindowsLogin");
+                return BeginWindowsLoginChallenge(context, returnUrl, windowsAuthOptions.Value, logger);
             });
 
-            accountGroup.MapGet("/LoginWithKerberosCallback", async (
+            accountGroup.MapGet(LegacyKerberosLoginRoute, (
                 HttpContext context,
                 [FromQuery] string? returnUrl,
+                [FromServices] ILoggerFactory loggerFactory) =>
+            {
+                var safeReturnUrl = NormalizeReturnUrl(returnUrl);
+                var logger = loggerFactory.CreateLogger("WindowsLogin");
+                logger.LogInformation("Legacy endpoint '{Path}' called. Redirecting to '{TargetPath}'.", LegacyKerberosLoginRoute, WindowsLoginEntryPath);
+                return Results.LocalRedirect(BuildWindowsLoginRedirectUrl(safeReturnUrl));
+            });
+
+            accountGroup.MapGet(WindowsLoginCallbackRoute, async (
+                HttpContext context,
+                [FromQuery] string? returnUrl,
+                [FromQuery] bool challengeAttempted,
                 [FromServices] IOptions<WindowsAuthenticationOptions> windowsAuthOptions,
                 [FromServices] SignInManager<ApplicationUser> signInManager,
                 [FromServices] UserManager<ApplicationUser> userManager,
@@ -87,132 +89,41 @@ namespace Microsoft.AspNetCore.Routing
                 [FromServices] ILoggerFactory loggerFactory) =>
             {
                 var logger = loggerFactory.CreateLogger("WindowsLogin");
-                var windowsOptions = windowsAuthOptions.Value;
-                var safeReturnUrl = NormalizeReturnUrl(returnUrl);
+                return await HandleWindowsLoginCallbackAsync(
+                    context,
+                    returnUrl,
+                    challengeAttempted,
+                    windowsAuthOptions.Value,
+                    signInManager,
+                    userManager,
+                    wikiFavoriteGroupService,
+                    activeDirectoryUserProfileService,
+                    logger);
+            });
 
-                if (!windowsOptions.Enabled)
-                {
-                    SetStatusMessage(context, "Error: Windows login is currently disabled.");
-                    return Results.LocalRedirect(BuildLoginRedirectUrl(safeReturnUrl));
-                }
-
-                var negotiateResult = await context.AuthenticateAsync(NegotiateDefaults.AuthenticationScheme);
-                if (!negotiateResult.Succeeded || negotiateResult.Principal?.Identity?.IsAuthenticated != true)
-                {
-                    var challengeRedirect = UriHelper.BuildRelative(
-                        context.Request.PathBase,
-                        "/Account/LoginWithKerberosCallback",
-                        QueryString.Create("returnUrl", safeReturnUrl));
-
-                    return Results.Challenge(
-                        new AuthenticationProperties { RedirectUri = challengeRedirect },
-                        [NegotiateDefaults.AuthenticationScheme]);
-                }
-
-                var principal = negotiateResult.Principal;
-                var rawIdentityName = ResolveWindowsIdentityName(principal);
-                if (!TryParseWindowsIdentity(rawIdentityName, windowsOptions.AllowedDomain, out var identityInfo))
-                {
-                    logger.LogWarning("Windows login denied due to domain mismatch. IdentityName: {IdentityName}", rawIdentityName);
-                    SetStatusMessage(context, "Error: Windows login is only allowed for HARMONIE.com domain users.");
-                    return Results.LocalRedirect(BuildLoginRedirectUrl(safeReturnUrl));
-                }
-
-                var profile = await activeDirectoryUserProfileService.ResolveProfileAsync(
-                    principal,
-                    identityInfo.SamAccountName,
-                    identityInfo.UserPrincipalName,
-                    windowsOptions.AllowedDomain,
-                    windowsOptions.DirectoryServices,
-                    context.RequestAborted);
-
-                ApplyIdentityFallbacks(profile, identityInfo, windowsOptions.AllowedDomain);
-
-                var providerKey = ResolveProviderKey(principal, profile, identityInfo);
-                var user = await FindUserForWindowsLoginAsync(userManager, providerKey, identityInfo, profile);
-                var isNewUser = false;
-
-                if (user is null)
-                {
-                    if (!windowsOptions.AutoProvision)
-                    {
-                        SetStatusMessage(context, "Error: No local account found and automatic provisioning is disabled.");
-                        return Results.LocalRedirect(BuildLoginRedirectUrl(safeReturnUrl));
-                    }
-
-                    user = new ApplicationUser
-                    {
-                        UserName = TrimToLength(profile.SamAccountName ?? identityInfo.SamAccountName, 256),
-                        Email = TrimToLength(profile.Email, 256),
-                        EmailConfirmed = true,
-                    };
-
-                    ApplyProfileToUser(user, profile, overwriteExisting: true);
-
-                    var createResult = await userManager.CreateAsync(user);
-                    if (!createResult.Succeeded)
-                    {
-                        var createErrors = string.Join(", ", createResult.Errors.Select(error => error.Description));
-                        logger.LogWarning(
-                            "Windows auto-provisioning failed for {UserName}: {Errors}",
-                            user.UserName,
-                            createErrors);
-                        SetStatusMessage(context, $"Error: Could not provision account ({createErrors}).");
-                        return Results.LocalRedirect(BuildLoginRedirectUrl(safeReturnUrl));
-                    }
-
-                    isNewUser = true;
-                }
-                else if (windowsOptions.ProfileSyncMode == WindowsProfileSyncMode.EveryLogin)
-                {
-                    ApplyProfileToUser(user, profile, overwriteExisting: true);
-                    var updateResult = await userManager.UpdateAsync(user);
-                    if (!updateResult.Succeeded)
-                    {
-                        var updateErrors = string.Join(", ", updateResult.Errors.Select(error => error.Description));
-                        logger.LogWarning(
-                            "Windows profile synchronization failed for user {UserId}: {Errors}",
-                            user.Id,
-                            updateErrors);
-                    }
-                }
-
-                var addLoginResult = await EnsureWindowsLoginMappingAsync(userManager, user, providerKey);
-                if (!addLoginResult.Succeeded)
-                {
-                    var loginErrors = string.Join(", ", addLoginResult.Errors.Select(error => error.Description));
-                    logger.LogWarning(
-                        "Could not attach Windows login mapping for user {UserId}: {Errors}",
-                        user.Id,
-                        loginErrors);
-                    SetStatusMessage(context, $"Error: Windows account link failed ({loginErrors}).");
-                    return Results.LocalRedirect(BuildLoginRedirectUrl(safeReturnUrl));
-                }
-
-                var addRoleResult = await EnsureUserRoleAsync(userManager, user, "User");
-                if (!addRoleResult.Succeeded)
-                {
-                    var roleErrors = string.Join(", ", addRoleResult.Errors.Select(error => error.Description));
-                    logger.LogWarning(
-                        "Could not ensure role 'User' for user {UserId}: {Errors}",
-                        user.Id,
-                        roleErrors);
-                    SetStatusMessage(context, $"Error: User role assignment failed ({roleErrors}).");
-                    return Results.LocalRedirect(BuildLoginRedirectUrl(safeReturnUrl));
-                }
-
-                await wikiFavoriteGroupService.EnsureDefaultGroupAsync(user.Id);
-
-                if (isNewUser)
-                {
-                    logger.LogInformation(
-                        "Provisioned new user {UserId} from Windows identity {IdentityName}.",
-                        user.Id,
-                        rawIdentityName);
-                }
-
-                await signInManager.SignInAsync(user, isPersistent: false);
-                return Results.LocalRedirect(BuildReturnRedirectUrl(safeReturnUrl));
+            accountGroup.MapGet(LegacyKerberosCallbackRoute, async (
+                HttpContext context,
+                [FromQuery] string? returnUrl,
+                [FromQuery] bool challengeAttempted,
+                [FromServices] IOptions<WindowsAuthenticationOptions> windowsAuthOptions,
+                [FromServices] SignInManager<ApplicationUser> signInManager,
+                [FromServices] UserManager<ApplicationUser> userManager,
+                [FromServices] IWikiFavoriteGroupService wikiFavoriteGroupService,
+                [FromServices] IActiveDirectoryUserProfileService activeDirectoryUserProfileService,
+                [FromServices] ILoggerFactory loggerFactory) =>
+            {
+                var logger = loggerFactory.CreateLogger("WindowsLogin");
+                logger.LogInformation("Legacy endpoint '{Path}' called. Processing through '{TargetPath}'.", LegacyKerberosCallbackRoute, WindowsLoginCallbackRoute);
+                return await HandleWindowsLoginCallbackAsync(
+                    context,
+                    returnUrl,
+                    challengeAttempted,
+                    windowsAuthOptions.Value,
+                    signInManager,
+                    userManager,
+                    wikiFavoriteGroupService,
+                    activeDirectoryUserProfileService,
+                    logger);
             });
 
             accountGroup.MapPost("/Logout", async (
@@ -292,6 +203,216 @@ namespace Microsoft.AspNetCore.Routing
             });
 
             return accountGroup;
+        }
+
+        private static IResult BeginWindowsLoginChallenge(
+            HttpContext context,
+            string? returnUrl,
+            WindowsAuthenticationOptions windowsOptions,
+            ILogger logger)
+        {
+            var safeReturnUrl = NormalizeReturnUrl(returnUrl);
+            if (!windowsOptions.Enabled)
+            {
+                SetStatusMessage(context, "Error: Windows login is currently disabled.");
+                return Results.LocalRedirect(BuildLoginRedirectUrl(safeReturnUrl));
+            }
+
+            logger.LogInformation(
+                "Starting Windows login challenge. ReturnUrl={ReturnUrl}, Scheme={Scheme}, Callback={CallbackPath}",
+                safeReturnUrl,
+                NegotiateDefaults.AuthenticationScheme,
+                WindowsLoginCallbackPath);
+
+            var redirectUrl = BuildWindowsCallbackUrl(context, safeReturnUrl, WindowsLoginCallbackPath, challengeAttempted: true);
+            var properties = new AuthenticationProperties
+            {
+                RedirectUri = redirectUrl,
+            };
+
+            return Results.Challenge(properties, [NegotiateDefaults.AuthenticationScheme]);
+        }
+
+        private static async Task<IResult> HandleWindowsLoginCallbackAsync(
+            HttpContext context,
+            string? returnUrl,
+            bool challengeAttempted,
+            WindowsAuthenticationOptions windowsOptions,
+            SignInManager<ApplicationUser> signInManager,
+            UserManager<ApplicationUser> userManager,
+            IWikiFavoriteGroupService wikiFavoriteGroupService,
+            IActiveDirectoryUserProfileService activeDirectoryUserProfileService,
+            ILogger logger)
+        {
+            var safeReturnUrl = NormalizeReturnUrl(returnUrl);
+            if (!windowsOptions.Enabled)
+            {
+                SetStatusMessage(context, "Error: Windows login is currently disabled.");
+                return Results.LocalRedirect(BuildLoginRedirectUrl(safeReturnUrl));
+            }
+
+            ClaimsPrincipal? principal = null;
+            if (TryGetIntegratedWindowsPrincipal(context.User, out var contextPrincipal))
+            {
+                principal = contextPrincipal;
+                logger.LogInformation(
+                    "Using integrated Windows principal from HttpContext.User. IdentityName={IdentityName}, AuthType={AuthType}",
+                    ResolveWindowsIdentityName(principal),
+                    principal.Identity?.AuthenticationType);
+            }
+
+            if (principal is null)
+            {
+                var negotiateResult = await context.AuthenticateAsync(NegotiateDefaults.AuthenticationScheme);
+                if (negotiateResult.Succeeded && TryGetIntegratedWindowsPrincipal(negotiateResult.Principal, out var negotiatePrincipal))
+                {
+                    principal = negotiatePrincipal;
+                    logger.LogInformation(
+                        "Resolved Windows principal via '{Scheme}' authenticate fallback. IdentityName={IdentityName}, AuthType={AuthType}",
+                        NegotiateDefaults.AuthenticationScheme,
+                        ResolveWindowsIdentityName(principal),
+                        principal.Identity?.AuthenticationType);
+                }
+            }
+
+            if (principal is null)
+            {
+                if (!challengeAttempted)
+                {
+                    var challengeRedirect = BuildWindowsCallbackUrl(context, safeReturnUrl, WindowsLoginCallbackPath, challengeAttempted: true);
+                    logger.LogInformation(
+                        "No authenticated Windows principal found. Issuing single challenge with callback '{CallbackPath}'.",
+                        WindowsLoginCallbackPath);
+                    return Results.Challenge(
+                        new AuthenticationProperties { RedirectUri = challengeRedirect },
+                        [NegotiateDefaults.AuthenticationScheme]);
+                }
+
+                logger.LogWarning(
+                    "Windows login failed after one challenge attempt. ReturnUrl={ReturnUrl}",
+                    safeReturnUrl);
+                SetStatusMessage(context, "Error: Windows authentication failed. Use local login or verify browser and IIS Windows authentication settings.");
+                return Results.LocalRedirect(BuildLoginRedirectUrl(safeReturnUrl));
+            }
+
+            var rawIdentityName = ResolveWindowsIdentityName(principal);
+            if (!TryParseWindowsIdentity(rawIdentityName, windowsOptions.AllowedDomain, out var identityInfo))
+            {
+                logger.LogWarning("Windows login denied due to domain mismatch. IdentityName={IdentityName}", rawIdentityName);
+                var allowedDomainLabel = NormalizeOptional(windowsOptions.AllowedDomain) ?? "configured";
+                SetStatusMessage(context, $"Error: Windows login is only allowed for {allowedDomainLabel} domain users.");
+                return Results.LocalRedirect(BuildLoginRedirectUrl(safeReturnUrl));
+            }
+
+            var profile = await activeDirectoryUserProfileService.ResolveProfileAsync(
+                principal,
+                identityInfo.SamAccountName,
+                identityInfo.UserPrincipalName,
+                windowsOptions.AllowedDomain,
+                windowsOptions.DirectoryServices,
+                context.RequestAborted);
+
+            ApplyIdentityFallbacks(profile, identityInfo, windowsOptions.AllowedDomain);
+
+            var providerKey = ResolveProviderKey(principal, profile, identityInfo);
+            var user = await FindUserForWindowsLoginAsync(userManager, providerKey, identityInfo, profile);
+            var isNewUser = false;
+
+            if (user is null)
+            {
+                if (!windowsOptions.AutoProvision)
+                {
+                    logger.LogWarning(
+                        "No local account found for Windows identity {IdentityName} and auto provisioning is disabled.",
+                        rawIdentityName);
+                    SetStatusMessage(context, "Error: No local account found and automatic provisioning is disabled.");
+                    return Results.LocalRedirect(BuildLoginRedirectUrl(safeReturnUrl));
+                }
+
+                user = new ApplicationUser
+                {
+                    UserName = TrimToLength(profile.SamAccountName ?? identityInfo.SamAccountName, 256),
+                    Email = TrimToLength(profile.Email, 256),
+                    EmailConfirmed = true,
+                };
+
+                ApplyProfileToUser(user, profile, overwriteExisting: true);
+
+                var createResult = await userManager.CreateAsync(user);
+                if (!createResult.Succeeded)
+                {
+                    var createErrors = string.Join(", ", createResult.Errors.Select(error => error.Description));
+                    logger.LogWarning(
+                        "Windows auto-provisioning failed for {UserName}: {Errors}",
+                        user.UserName,
+                        createErrors);
+                    SetStatusMessage(context, $"Error: Could not provision account ({createErrors}).");
+                    return Results.LocalRedirect(BuildLoginRedirectUrl(safeReturnUrl));
+                }
+
+                isNewUser = true;
+            }
+            else if (windowsOptions.ProfileSyncMode == WindowsProfileSyncMode.EveryLogin)
+            {
+                ApplyProfileToUser(user, profile, overwriteExisting: true);
+                var updateResult = await userManager.UpdateAsync(user);
+                if (!updateResult.Succeeded)
+                {
+                    var updateErrors = string.Join(", ", updateResult.Errors.Select(error => error.Description));
+                    logger.LogWarning(
+                        "Windows profile synchronization failed for user {UserId}: {Errors}",
+                        user.Id,
+                        updateErrors);
+                }
+                else
+                {
+                    logger.LogInformation("Synchronized AD profile for user {UserId} on login.", user.Id);
+                }
+            }
+
+            var addLoginResult = await EnsureWindowsLoginMappingAsync(userManager, user, providerKey);
+            if (!addLoginResult.Succeeded)
+            {
+                var loginErrors = string.Join(", ", addLoginResult.Errors.Select(error => error.Description));
+                logger.LogWarning(
+                    "Could not attach Windows login mapping for user {UserId}: {Errors}",
+                    user.Id,
+                    loginErrors);
+                SetStatusMessage(context, $"Error: Windows account link failed ({loginErrors}).");
+                return Results.LocalRedirect(BuildLoginRedirectUrl(safeReturnUrl));
+            }
+
+            logger.LogInformation("Windows login mapping ensured for user {UserId}.", user.Id);
+
+            var addRoleResult = await EnsureUserRoleAsync(userManager, user, "User");
+            if (!addRoleResult.Succeeded)
+            {
+                var roleErrors = string.Join(", ", addRoleResult.Errors.Select(error => error.Description));
+                logger.LogWarning(
+                    "Could not ensure role 'User' for user {UserId}: {Errors}",
+                    user.Id,
+                    roleErrors);
+                SetStatusMessage(context, $"Error: User role assignment failed ({roleErrors}).");
+                return Results.LocalRedirect(BuildLoginRedirectUrl(safeReturnUrl));
+            }
+
+            await wikiFavoriteGroupService.EnsureDefaultGroupAsync(user.Id);
+
+            if (isNewUser)
+            {
+                logger.LogInformation(
+                    "Provisioned new user {UserId} from Windows identity {IdentityName}.",
+                    user.Id,
+                    rawIdentityName);
+            }
+            else
+            {
+                logger.LogInformation("Matched Windows identity {IdentityName} to existing local user {UserId}.", rawIdentityName, user.Id);
+            }
+
+            await signInManager.SignInAsync(user, isPersistent: false);
+            logger.LogInformation("Windows login succeeded for user {UserId}.", user.Id);
+            return Results.LocalRedirect(BuildReturnRedirectUrl(safeReturnUrl));
         }
 
         private static string ResolveProviderKey(
@@ -450,6 +571,29 @@ namespace Microsoft.AspNetCore.Routing
             return normalizedExistingValue;
         }
 
+        private static string BuildWindowsLoginRedirectUrl(string returnUrl)
+        {
+            var query = QueryString.Create("returnUrl", NormalizeReturnUrl(returnUrl));
+            return $"~{WindowsLoginEntryPath}{query}";
+        }
+
+        private static string BuildWindowsCallbackUrl(
+            HttpContext context,
+            string returnUrl,
+            string callbackPath,
+            bool challengeAttempted)
+        {
+            IEnumerable<KeyValuePair<string, string?>> query = [
+                new("returnUrl", NormalizeReturnUrl(returnUrl)),
+                new(ChallengeAttemptedQueryKey, challengeAttempted ? "true" : "false")
+            ];
+
+            return UriHelper.BuildRelative(
+                context.Request.PathBase,
+                callbackPath,
+                QueryString.Create(query));
+        }
+
         private static string BuildLoginRedirectUrl(string returnUrl)
         {
             var query = QueryString.Create("returnUrl", NormalizeReturnUrl(returnUrl));
@@ -488,6 +632,33 @@ namespace Microsoft.AspNetCore.Routing
                 principal.FindFirstValue(WindowsAccountNameClaimType)
                 ?? principal.FindFirstValue(ClaimTypes.Upn)
                 ?? principal.Identity?.Name);
+        }
+
+        private static bool TryGetIntegratedWindowsPrincipal(ClaimsPrincipal? principal, out ClaimsPrincipal windowsPrincipal)
+        {
+            windowsPrincipal = default!;
+            if (principal?.Identity?.IsAuthenticated != true)
+            {
+                return false;
+            }
+
+            var authenticationType = NormalizeOptional(principal.Identity.AuthenticationType);
+            var appearsToBeWindowsIdentity =
+                principal.HasClaim(claim => claim.Type == WindowsAccountNameClaimType)
+                || principal.HasClaim(claim => claim.Type == ClaimTypes.PrimarySid)
+                || principal.HasClaim(claim => claim.Type == ClaimTypes.Sid)
+                || (authenticationType?.Contains("Negotiate", StringComparison.OrdinalIgnoreCase) ?? false)
+                || (authenticationType?.Contains("NTLM", StringComparison.OrdinalIgnoreCase) ?? false)
+                || (authenticationType?.Contains("Kerberos", StringComparison.OrdinalIgnoreCase) ?? false)
+                || (authenticationType?.Contains("Windows", StringComparison.OrdinalIgnoreCase) ?? false);
+
+            if (!appearsToBeWindowsIdentity)
+            {
+                return false;
+            }
+
+            windowsPrincipal = principal;
+            return true;
         }
 
         private static bool TryParseWindowsIdentity(

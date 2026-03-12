@@ -206,6 +206,36 @@ else
 app.UseHttpsRedirection();
 
 app.UseStaticFiles();
+var windowsLoginRequestLogger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("WindowsLogin");
+app.Use(async (context, next) =>
+{
+    var requestPath = context.Request.Path.Value;
+    var isWindowsLoginRequest =
+        string.Equals(requestPath, "/Account/LoginWithWindows", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(requestPath, "/Account/LoginWithWindowsCallback", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(requestPath, "/Account/LoginWithKerberos", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(requestPath, "/Account/LoginWithKerberosCallback", StringComparison.OrdinalIgnoreCase);
+
+    if (!isWindowsLoginRequest)
+    {
+        await next();
+        return;
+    }
+
+    windowsLoginRequestLogger.LogInformation(
+        "Windows login request started. Path={Path}, ChallengeAttempted={ChallengeAttempted}, IsAuthenticated={IsAuthenticated}, AuthType={AuthType}",
+        requestPath,
+        context.Request.Query["challengeAttempted"].ToString(),
+        context.User.Identity?.IsAuthenticated == true,
+        context.User.Identity?.AuthenticationType ?? "<none>");
+
+    await next();
+
+    windowsLoginRequestLogger.LogInformation(
+        "Windows login request completed. Path={Path}, StatusCode={StatusCode}",
+        requestPath,
+        context.Response.StatusCode);
+});
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseAntiforgery();

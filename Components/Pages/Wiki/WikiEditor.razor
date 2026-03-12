@@ -1,4 +1,4 @@
-﻿@page "/wiki/create"
+@page "/wiki/create"
 @page "/wiki/templates/create"
 @page "/wiki/edit/{Id:int}"
 @page "/wiki/templates/edit/{Id:int}"
@@ -28,6 +28,11 @@
             <DxButton Text="Abbrechen"
                       RenderStyle="ButtonRenderStyle.Secondary"
                       Click="NavigateBack"
+                      CssClass="me-2" />
+            <DxButton Text="Kommentare"
+                      RenderStyle="ButtonRenderStyle.Secondary"
+                      IconCssClass="oi oi-comment-square"
+                      Click="OpenComments"
                       CssClass="me-2" />
             <DxButton Text="Speichern"
                       RenderStyle="ButtonRenderStyle.Primary"
@@ -112,6 +117,20 @@
     }
 </div>
 
+<HomeCommentSidebar @bind-Visible="CommentsVisible"
+                    Scope="HomeCommentScope.Wiki"
+                    EntryId="CommentEntryId"
+                    Title="@CommentSidebarTitle"
+                    Subtitle="@CommentSidebarSubtitle"
+                    CreatorDisplayName="@WikiPageModel.AuthorDisplayName"
+                    OwnerDisplayName="@WikiPageModel.OwnerDisplayName"
+                    CategoryOrRole="@CommentSidebarCategoryOrRole"
+                    LastActivityUtc="@(IsNew ? null : WikiPageModel.LastModified)"
+                    ShowContextDetails="true"
+                    ShowOnboardingQuickDetail="false"
+                    CanCompose="@CanComposeComments"
+                    ComposeDisabledReason="@CommentComposeDisabledReason" />
+
 @code {
     [Parameter] public int? Id { get; set; }
     [Parameter, SupplyParameterFromQuery(Name = "returnUrl")] public string? ReturnUrl { get; set; }
@@ -147,6 +166,15 @@
     private string EditorHeading => IsTemplateMode
         ? (IsNew ? "Neue Vorlage" : $"Vorlage bearbeiten: {WikiPageModel.Title}")
         : (IsNew ? "Neuer Wiki-Eintrag" : $"Bearbeite: {WikiPageModel.Title}");
+    private bool CommentsVisible { get; set; }
+    private int CommentEntryId => Id ?? 0;
+    private bool CanComposeComments => !IsNew;
+    private string CommentComposeDisabledReason => "Kommentare nach erstem Speichern verfügbar.";
+    private string CommentSidebarTitle => IsNew ? "Kommentare - Neuer Eintrag" : $"Kommentare - {WikiPageModel.Title}";
+    private string? CommentSidebarSubtitle => IsTemplateMode
+        ? ResolveTemplateGroupName(SelectedTemplateGroupId)
+        : ResolveCategoryName(WikiPageModel.CategoryId);
+    private string? CommentSidebarCategoryOrRole => IsTemplateMode ? "Template" : ResolveCategoryName(WikiPageModel.CategoryId);
 
     protected override async Task OnInitializedAsync()
     {
@@ -451,6 +479,11 @@
         NavManager.NavigateTo(ResolveReturnUrl());
     }
 
+    private void OpenComments()
+    {
+        CommentsVisible = true;
+    }
+
     private void ApplyPublicationMode()
     {
         if (SelectedPublicationOption == PublicationMode.Private)
@@ -462,6 +495,21 @@
 
         WikiPageModel.Status = WikiPageStatus.Published;
         WikiPageModel.Visibility = WikiPageVisibility.Team;
+    }
+
+    private string? ResolveCategoryName(int categoryId)
+    {
+        return Categories.FirstOrDefault(category => category.Id == categoryId)?.Name;
+    }
+
+    private string? ResolveTemplateGroupName(int? templateGroupId)
+    {
+        if (!templateGroupId.HasValue)
+        {
+            return null;
+        }
+
+        return TemplateGroups.FirstOrDefault(group => group.Id == templateGroupId.Value)?.Name;
     }
 
     private static PublicationMode ResolvePublicationMode(WikiPage page)

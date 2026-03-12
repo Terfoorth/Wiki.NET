@@ -1,4 +1,4 @@
-﻿@page "/wiki/view/{Id:int}"
+@page "/wiki/view/{Id:int}"
 @using Microsoft.AspNetCore.Components
 @using Microsoft.AspNetCore.Components.Authorization
 @using System.Security.Claims
@@ -34,6 +34,11 @@ else
             </div>
             <div>
                 <DxButton Text="Zurück" RenderStyle="ButtonRenderStyle.Secondary" Outline="true" NavigateUrl="@ResolveReturnUrl()" CssClass="me-2" />
+                <DxButton Text="Kommentare"
+                          RenderStyle="ButtonRenderStyle.Secondary"
+                          IconCssClass="oi oi-comment-square"
+                          Click="OpenComments"
+                          CssClass="me-2" />
                 <DxButton Text="Bearbeiten" RenderStyle="ButtonRenderStyle.Primary" IconCssClass="oi oi-pencil" NavigateUrl="@GetEditEntryUrl(Page.Id)" />
             </div>
         </div>
@@ -47,6 +52,18 @@ else
                         BarMode="BarMode.None" 
                         CssClass="w-100 h-100 border-0" />
         </div>
+
+        <HomeCommentSidebar @bind-Visible="CommentsVisible"
+                            Scope="HomeCommentScope.Wiki"
+                            EntryId="Page.Id"
+                            Title="@CommentSidebarTitle"
+                            Subtitle="@Page.Category?.Name"
+                            CreatorDisplayName="@Page.AuthorDisplayName"
+                            OwnerDisplayName="@Page.OwnerDisplayName"
+                            CategoryOrRole="@Page.Category?.Name"
+                            LastActivityUtc="@Page.LastModified"
+                            ShowContextDetails="true"
+                            ShowOnboardingQuickDetail="false" />
     </div>
 }
 
@@ -54,6 +71,8 @@ else
     [Parameter] public int Id { get; set; }
     [Parameter, SupplyParameterFromQuery(Name = "returnUrl")] public string? ReturnUrl { get; set; }
     private WikiPage? Page;
+    private bool CommentsVisible { get; set; }
+    private string CommentSidebarTitle => Page is null ? "Kommentare" : $"Kommentare - {Page.Title}";
 
     protected override async Task OnInitializedAsync()
     {
@@ -117,5 +136,10 @@ else
         }
 
         return "/wiki";
+    }
+
+    private void OpenComments()
+    {
+        CommentsVisible = true;
     }
 }

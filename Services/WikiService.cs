@@ -1,4 +1,4 @@
-﻿using DevExpress.Data.Helpers;
+using DevExpress.Data.Helpers;
 using DevExpress.Internal;
 using DevExpress.XtraReports.Templates;
 using Microsoft.AspNetCore.Identity;
@@ -1121,7 +1121,9 @@ namespace Wiki_Blaze.Services
 
         #endregion
 
-        #region Kommentare
+        #region Kommentare (legacy)
+
+        // Legacy WikiComment API: neue UI verwendet HomeEntryComments (Home-Kommentar-Modul).
 
         public async Task<List<WikiComment>> GetCommentsAsync(int pageId)
         {

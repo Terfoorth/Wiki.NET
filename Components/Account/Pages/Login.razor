@@ -50,9 +50,9 @@
         </div>
         @if (IsWindowsLoginEnabled)
         {
-            <form action="@KerberosLoginUrl" method="get" class="external-logins mb-2">
+            <form action="@WindowsLoginUrl" method="get" class="external-logins mb-2">
                 <input type="hidden" name="returnUrl" value="@ReturnUrl" />
-                <DxButton CssClass="w-100" SubmitFormOnClick="true" Text="Login with Kerberos" RenderStyle="ButtonRenderStyle.Secondary"></DxButton>
+                <DxButton CssClass="w-100" SubmitFormOnClick="true" Text="Windows Anmeldung" RenderStyle="ButtonRenderStyle.Secondary"></DxButton>
             </form>
         }
         <ExternalLoginPicker />
@@ -71,7 +71,7 @@
 @code {
     private string? errorMessage;
     private bool IsWindowsLoginEnabled => WindowsAuthenticationOptions.Value.Enabled;
-    private string KerberosLoginUrl => AddDrawerStateToUrl("Account/LoginWithKerberos");
+    private string WindowsLoginUrl => AddDrawerStateToUrl("Account/LoginWithWindows");
 
     [CascadingParameter]
     private HttpContext HttpContext { get; set; } = default!;

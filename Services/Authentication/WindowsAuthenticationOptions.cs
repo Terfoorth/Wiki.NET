@@ -10,7 +10,7 @@ public sealed class WindowsAuthenticationOptions
 
     public bool AutoProvision { get; set; } = true;
 
-    public WindowsProfileSyncMode ProfileSyncMode { get; set; } = WindowsProfileSyncMode.FirstLoginOnly;
+    public WindowsProfileSyncMode ProfileSyncMode { get; set; } = WindowsProfileSyncMode.EveryLogin;
 
     public WindowsDirectoryServicesOptions DirectoryServices { get; set; } = new();
 }
