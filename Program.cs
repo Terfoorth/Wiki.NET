@@ -3,14 +3,17 @@ using System.Linq;
 using DevExpress.AspNetCore.Reporting;
 using DevExpress.Blazor.Reporting;
 using DevExpress.XtraReports.Web.Extensions;
+using Microsoft.AspNetCore.Authentication.Negotiate;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Wiki_Blaze.Components;
 using Wiki_Blaze.Components.Account;
 using Wiki_Blaze.Data;
 using Wiki_Blaze.Services;
+using Wiki_Blaze.Services.Authentication;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -44,12 +47,16 @@ builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddScoped<IdentityUserAccessor>();
 builder.Services.AddScoped<IdentityRedirectManager>();
 builder.Services.AddScoped<AuthenticationStateProvider, IdentityRevalidatingAuthenticationStateProvider>();
-builder.Services.AddAuthentication(options =>
+var authenticationBuilder = builder.Services.AddAuthentication(options =>
 {
     options.DefaultScheme = IdentityConstants.ApplicationScheme;
     options.DefaultSignInScheme = IdentityConstants.ExternalScheme;
-})
-    .AddIdentityCookies();
+});
+authenticationBuilder.AddIdentityCookies();
+authenticationBuilder.AddNegotiate();
+builder.Services.AddAuthorization();
+builder.Services.Configure<WindowsAuthenticationOptions>(
+    builder.Configuration.GetSection(WindowsAuthenticationOptions.SectionName));
 
 var dataDirectoryPath = Path.Combine(builder.Environment.ContentRootPath, "Data");
 Directory.CreateDirectory(dataDirectoryPath);
@@ -90,7 +97,9 @@ builder.Services.AddIdentityCore<ApplicationUser>(options => options.SignIn.Requ
 builder.Services.AddScoped<IWikiService, WikiService>();
 builder.Services.AddScoped<IWikiFavoriteGroupService, WikiFavoriteGroupService>();
 builder.Services.AddScoped<IUserIdResolver, UserIdResolver>();
+builder.Services.AddScoped<IActiveDirectoryUserProfileService, ActiveDirectoryUserProfileService>();
 builder.Services.AddScoped<IOnboardingService, OnboardingService>();
+builder.Services.AddScoped<NotificationRefreshSignal>();
 builder.Services.AddScoped<NotificationService>();
 builder.Services.AddScoped<INotificationService>(serviceProvider => serviceProvider.GetRequiredService<NotificationService>());
 builder.Services.AddScoped<INotificationSchedulerService>(serviceProvider => serviceProvider.GetRequiredService<NotificationService>());
@@ -122,6 +131,19 @@ await using (var scope = app.Services.CreateAsyncScope())
     {
         startupLogger.LogWarning(ex, "Could not determine pending migrations at startup.");
     }
+
+    var windowsOptions = scope.ServiceProvider
+        .GetRequiredService<IOptions<WindowsAuthenticationOptions>>()
+        .Value;
+    startupLogger.LogInformation(
+        "Windows authentication config: Enabled={Enabled}, AllowedDomain={AllowedDomain}, AutoProvision={AutoProvision}, ProfileSyncMode={ProfileSyncMode}, DirectoryServicesEnabled={DirectoryServicesEnabled}, DomainController={DomainController}, Container={Container}",
+        windowsOptions.Enabled,
+        windowsOptions.AllowedDomain,
+        windowsOptions.AutoProvision,
+        windowsOptions.ProfileSyncMode,
+        windowsOptions.DirectoryServices.Enabled,
+        string.IsNullOrWhiteSpace(windowsOptions.DirectoryServices.DomainController) ? "<default>" : windowsOptions.DirectoryServices.DomainController,
+        string.IsNullOrWhiteSpace(windowsOptions.DirectoryServices.Container) ? "<default>" : windowsOptions.DirectoryServices.Container);
 
     var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
     var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
@@ -184,6 +206,8 @@ else
 app.UseHttpsRedirection();
 
 app.UseStaticFiles();
+app.UseAuthentication();
+app.UseAuthorization();
 app.UseAntiforgery();
 
 app.MapRazorComponents<App>()

@@ -5,13 +5,16 @@
 @using System.ComponentModel.DataAnnotations
 @using Microsoft.AspNetCore.Authentication
 @using Microsoft.AspNetCore.Identity
+@using Microsoft.Extensions.Options
 @using Wiki_Blaze.Data
+@using Wiki_Blaze.Services.Authentication
 
 @inject UserManager<ApplicationUser> UserManager
 @inject SignInManager<ApplicationUser> SignInManager
 @inject ILogger<Login> Logger
 @inject NavigationManager NavigationManager
 @inject IdentityRedirectManager RedirectManager
+@inject IOptions<WindowsAuthenticationOptions> WindowsAuthenticationOptions
 
 <PageTitle>Log in</PageTitle>
 
@@ -45,6 +48,13 @@
             <div class="or-text">or</div>
             <div class="or-line"></div>
         </div>
+        @if (IsWindowsLoginEnabled)
+        {
+            <form action="@KerberosLoginUrl" method="get" class="external-logins mb-2">
+                <input type="hidden" name="returnUrl" value="@ReturnUrl" />
+                <DxButton CssClass="w-100" SubmitFormOnClick="true" Text="Login with Kerberos" RenderStyle="ButtonRenderStyle.Secondary"></DxButton>
+            </form>
+        }
         <ExternalLoginPicker />
         <div class="links-container">
             <span>Do not have an Account?</span><a href="@(AddDrawerStateToUrl(NavigationManager.GetUriWithQueryParameters("Account/Register", new Dictionary<string, object?> { [" ReturnUrl"]=ReturnUrl })))">Create an account</a>
@@ -60,6 +70,8 @@
 
 @code {
     private string? errorMessage;
+    private bool IsWindowsLoginEnabled => WindowsAuthenticationOptions.Value.Enabled;
+    private string KerberosLoginUrl => AddDrawerStateToUrl("Account/LoginWithKerberos");
 
     [CascadingParameter]
     private HttpContext HttpContext { get; set; } = default!;

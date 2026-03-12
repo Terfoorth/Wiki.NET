@@ -23,8 +23,6 @@ namespace Wiki_Blaze.Components.DxKanban {
         #endregion
 
         #region Event Handlers
-        protected override bool ShouldRender() => false; // t1135370
-
         protected override void OnParametersSet() {
             Kanban?.RegisterColumn(ColumnName, VisibleIndex);
         }

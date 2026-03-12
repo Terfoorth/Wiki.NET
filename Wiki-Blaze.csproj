@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
   <PropertyGroup>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UserSecretsId>aspnet-Wiki_Blaze-adc61716-0a08-4a8a-9b63-7320dd731198</UserSecretsId>
@@ -8,7 +8,7 @@
     <AssemblyName>$(AssemblyName.Replace(' ', '_'))</AssemblyName>
     <NodeModulesDir>$(ProjectDir)node_modules\</NodeModulesDir>
     <WwwRootDir>$(ProjectDir)wwwroot\</WwwRootDir>
-    <DefaultItemExcludes>$(DefaultItemExcludes);Onboarding_modul\**\*;Wiki-Blaze.Tests\**\*</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);Onboarding_modul\**\*;Wiki-Blaze.Tests\**\*;BlazorSlider\**\*</DefaultItemExcludes>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
     <GenerateAssemblyInfo>False</GenerateAssemblyInfo>
@@ -37,24 +37,31 @@
   <ItemGroup>
     <Compile Remove="Components\Pages\Index\Class.cs" />
     <Compile Remove="Program(Slider).cs" />
+    <Compile Remove="BlazorSlider\**\*.cs" />
     <Compile Remove="contract-management\**" />
     <Compile Remove="Onboarding_modul\**\*.cs" />
     <RazorComponent Remove="Components\App(Slider).razor" />
     <RazorComponent Remove="Components\Layout\MainLayout(Slider).razor" />
     <RazorComponent Remove="Components\Pages\Index\Index(Slider).razor" />
+    <RazorComponent Remove="BlazorSlider\**\*.razor" />
     <RazorComponent Remove="Onboarding_modul\**\*.razor" />
     <ScopedCssInput Remove="Components\Pages\Index\Index(Slider).razor.css" />
+    <ScopedCssInput Remove="BlazorSlider\**\*.razor.css" />
     <ScopedCssInput Remove="Onboarding_modul\**\*.razor.css" />
     <Content Remove="Components\App(Slider).razor" />
     <Content Remove="Components\Layout\MainLayout(Slider).razor" />
     <Content Remove="Components\Pages\Index\Index(Slider).razor" />
     <Content Remove="Components\Pages\Index\Index(Slider).razor.css" />
+    <Content Remove="BlazorSlider\**\*" />
     <Content Remove="contract-management\**" />
     <Content Remove="Onboarding_modul\**\*" />
     <None Remove="Components\Pages\Index\Index(Slider).razor.css" />
+    <None Remove="BlazorSlider\**\*" />
     <EmbeddedResource Remove="contract-management\**" />
+    <EmbeddedResource Remove="BlazorSlider\**\*" />
     <EmbeddedResource Remove="Onboarding_modul\**\*" />
     <None Remove="contract-management\**" />
+    <TypeScriptCompile Remove="BlazorSlider\**\*" />
   </ItemGroup>
   <ItemGroup>
     <Content Remove="Services\MainLayout.razor" />
@@ -136,6 +143,7 @@
     <PackageReference Include="DevExpress.Blazor.RichEdit" Version="25.2.*" />
     <PackageReference Include="DevExpress.Drawing.Skia" Version="25.2.*" />
     <PackageReference Include="DevExpress.Pdf.SkiaRenderer" Version="25.2.*" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.Negotiate" Version="8.0.18" />
     <PackageReference Include="Microsoft.AspNetCore.Diagnostics.EntityFrameworkCore" Version="8.0.18" />
     <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="8.0.18" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="8.0.18" />
@@ -211,6 +219,9 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
+    <PackageReference Include="System.DirectoryServices" Version="10.0.4" />
+    <PackageReference Include="System.DirectoryServices.AccountManagement" Version="10.0.4" />
+    <PackageReference Include="System.DirectoryServices.Protocols" Version="10.0.4" />
   </ItemGroup>
   <ItemGroup>
     <TypeScriptCompile Include="node_modules\devextreme-dist\ts\dx.all.d.ts" />

@@ -1,4 +1,4 @@
-﻿@page "/wiki/favorites"
+@page "/wiki/favorites"
 @using Microsoft.AspNetCore.Components.Web
 @using Microsoft.AspNetCore.Identity
 @using System.Security.Claims
@@ -22,7 +22,7 @@
             <h2 class="mb-0 fw-bold text-primary">
                 <span class="oi oi-star me-2"></span>Favoriten
             </h2>
-            <small class="text-muted">Schneller Zugriff auf deine gespeicherten Wiki-EintrÃ¤ge</small>
+            <small class="text-muted">Schneller Zugriff auf deine gespeicherten Wiki-Einträge</small>
         </div>
         <div class="col-auto">
             <DxButton RenderStyle="ButtonRenderStyle.Success"
@@ -58,7 +58,7 @@
                     <div class="list-group list-group-flush bg-transparent">
                         <button class="list-group-item list-group-item-action bg-transparent border-0 rounded px-2 py-2 @(SelectedGroupId == 0 ? "active-filter" : "")"
                                 @onclick="() => FilterGroup(0)">
-                            <span class="oi oi-grid-three-up me-2"></span> Alle EintrÃ¤ge
+                            <span class="oi oi-grid-three-up me-2"></span> Alle Einträge
                         </button>
                         @foreach (var group in FavoriteGroups)
                         {
@@ -74,7 +74,7 @@
                                     <span class="oi oi-pencil"></span>
                                 </button>
                                 <button class="btn btn-sm btn-link text-danger p-1"
-                                        title="Gruppe lÃ¶schen"
+                                        title="Gruppe löschen"
                                         disabled="@IsDefaultGroup(group)"
                                         @onclick="() => DeleteGroupAsync(group)">
                                     <span class="oi oi-trash"></span>
@@ -140,7 +140,7 @@
                                                     aria-pressed="@IsFavorite(page.Id)"
                                                     @onclick="() => ToggleFavoriteAsync(page)"
                                                     @onclick:stopPropagation>
-                                                <span class="wiki-favorite-icon" aria-hidden="true">@(IsFavorite(page.Id) ? "â˜…" : "â˜†")</span>
+                                                <span class="wiki-favorite-icon" aria-hidden="true">@(IsFavorite(page.Id) ? "★" : "☆")</span>
                                             </button>
                                             <div class="dropdown">
                                                 <button class="btn btn-sm btn-light border dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="Aktionen">
@@ -149,7 +149,7 @@
                                                 <ul class="dropdown-menu dropdown-menu-end">
                                                     <li>
                                                         <button class="dropdown-item" type="button" @onclick="() => OpenEntry(page)">
-                                                            <span class="oi oi-eye me-2"></span>Ã–ffnen
+                                                            <span class="oi oi-eye me-2"></span>Öffnen
                                                         </button>
                                                     </li>
                                                     <li>
@@ -170,7 +170,7 @@
                                                     <li><hr class="dropdown-divider"></li>
                                                     <li>
                                                         <button class="dropdown-item text-danger" type="button" @onclick="() => DeleteEntryAsync(page)">
-                                                            <span class="oi oi-trash me-2"></span>LÃ¶schen
+                                                            <span class="oi oi-trash me-2"></span>Löschen
                                                         </button>
                                                     </li>
                                                 </ul>
@@ -197,7 +197,7 @@
                                     else
                                     {
                                         <p class="card-text text-muted small flex-grow-1 text-truncate-multiline">
-                                            @(string.IsNullOrWhiteSpace(page.PreviewText) ? "Keine Vorschau verfÃ¼gbar..." : page.PreviewText)
+                                            @(string.IsNullOrWhiteSpace(page.PreviewText) ? "Keine Vorschau verfügbar..." : page.PreviewText)
                                         </p>
                                     }
 
@@ -224,7 +224,7 @@
                     <p>Keine Favoriten gefunden.</p>
                     @if (SelectedGroupId != 0 || !string.IsNullOrEmpty(SearchTerm))
                     {
-                        <button class="btn btn-link" @onclick="ResetFilters">Filter zurÃ¼cksetzen</button>
+                        <button class="btn btn-link" @onclick="ResetFilters">Filter zurücksetzen</button>
                     }
                 </div>
             }
@@ -320,10 +320,10 @@
 
 <DxContextMenu @ref="ContextMenu" ItemClick="OnContextMenuItemClick">
     <Items>
-        <DxContextMenuItem Text="Ã–ffnen" IconCssClass="oi oi-eye" Name="open" />
+        <DxContextMenuItem Text="Öffnen" IconCssClass="oi oi-eye" Name="open" />
         <DxContextMenuItem Text="Bearbeiten" IconCssClass="oi oi-pencil" Name="edit" />
         <DxContextMenuItem Text="Eigenschaften" IconCssClass="oi oi-info" Name="properties" />
-        <DxContextMenuItem Text="Favorit umschalten" IconCssClass="oi oi-star" Name="toggle-favorite" />        <DxContextMenuItem Text="LÃ¶schen" IconCssClass="oi oi-trash" Name="delete" BeginGroup="true" />
+        <DxContextMenuItem Text="Favorit umschalten" IconCssClass="oi oi-star" Name="toggle-favorite" />        <DxContextMenuItem Text="Löschen" IconCssClass="oi oi-trash" Name="delete" BeginGroup="true" />
     </Items>
 </DxContextMenu>
 
@@ -563,7 +563,7 @@
 
     private async Task DeleteEntryAsync(WikiPage page)
     {
-        var confirmed = await Js.InvokeAsync<bool>("confirm", $"Eintrag \"{page.Title}\" wirklich lÃ¶schen?");
+        var confirmed = await Js.InvokeAsync<bool>("confirm", $"Eintrag \"{page.Title}\" wirklich löschen?");
         if (!confirmed)
         {
             return;
@@ -659,7 +659,7 @@
     private bool IsFavorite(int pageId) => FavoritePageIds.Contains(pageId);
 
     private string GetFavoriteTooltip(int pageId)
-        => IsFavorite(pageId) ? "Aus Favoriten entfernen" : "Zu Favoriten hinzufÃ¼gen";
+        => IsFavorite(pageId) ? "Aus Favoriten entfernen" : "Zu Favoriten hinzufügen";
 
     private string GetFavoriteMenuText(int pageId)
         => IsFavorite(pageId) ? "Favorit entfernen" : "Als Favorit markieren";
@@ -792,7 +792,7 @@
         }
 
         GroupManagementError = null;
-        var confirmed = await Js.InvokeAsync<bool>("confirm", $"Gruppe \"{group.Name}\" wirklich lÃ¶schen?");
+        var confirmed = await Js.InvokeAsync<bool>("confirm", $"Gruppe \"{group.Name}\" wirklich löschen?");
         if (!confirmed)
         {
             return;
@@ -880,9 +880,10 @@
     private static string GetReviewAlertLabel(WikiReviewAlertStateDto state)
     {
         return state.IsOverdue
-            ? $"Review Ã¼berfÃ¤llig seit {state.DueDate:dd.MM.yyyy}"
-            : $"Review fÃ¤llig am {state.DueDate:dd.MM.yyyy}";
+            ? $"Review überfällig seit {state.DueDate:dd.MM.yyyy}"
+            : $"Review fällig am {state.DueDate:dd.MM.yyyy}";
     }
 }
+
 
 

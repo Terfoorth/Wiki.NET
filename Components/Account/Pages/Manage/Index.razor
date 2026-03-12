@@ -39,6 +39,9 @@
                 <DxFormLayoutItem Caption="Location" ColSpanMd="6">
                     <InteractiveServerTextBox Name="Input.Location" Value="@Input.Location" />
                 </DxFormLayoutItem>
+                <DxFormLayoutItem Caption="Country" ColSpanMd="6">
+                    <InteractiveServerTextBox Name="Input.Country" Value="@Input.Country" />
+                </DxFormLayoutItem>
                 <DxFormLayoutItem Caption="Phone number" ColSpanMd="6">
                     <InteractiveServerMaskedInput Name="Input.PhoneNumber" Value="@Input.PhoneNumber" Mask="(999)000-0000"></InteractiveServerMaskedInput>
                 </DxFormLayoutItem>
@@ -86,6 +89,7 @@
         Input.JobTitle ??= user.JobTitle;
         Input.Department ??= user.Department;
         Input.Location ??= user.Location;
+        Input.Country ??= user.Country;
         Input.Bio ??= user.Bio;
     }
 
@@ -105,6 +109,7 @@
         user.LastName = Input.LastName;
         user.DisplayName = Input.DisplayName;
         user.Location = Input.Location;
+        user.Country = Input.Country;
         user.Bio = Input.Bio;
 
         if (isAdmin)
@@ -146,6 +151,9 @@
 
         [MaxLength(150)]
         public string? Location { get; set; }
+
+        [MaxLength(100)]
+        public string? Country { get; set; }
 
         [MaxLength(500)]
         public string? Bio { get; set; }

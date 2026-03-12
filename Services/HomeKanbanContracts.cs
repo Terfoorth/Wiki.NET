@@ -14,6 +14,12 @@ public enum HomeKanbanCardEntityType
     OnboardingProfile = 1
 }
 
+public enum HomeKanbanReminderKind
+{
+    WikiReviewDate = 0,
+    OnboardingTargetDate = 1
+}
+
 public enum HomeCommentScope
 {
     Wiki = 0,
@@ -51,6 +57,11 @@ public sealed class HomeKanbanCardDto
     public string? PrimaryLinkUrl { get; set; }
     public DateTime LastActivityUtc { get; set; }
     public int CommentCount { get; set; }
+    public bool IsReminderActive { get; set; }
+    public bool IsReminderOverdue { get; set; }
+    public DateTime? ReminderDueDate { get; set; }
+    public string? ReminderLabel { get; set; }
+    public HomeKanbanReminderKind? ReminderKind { get; set; }
 }
 
 public sealed class HomeKanbanBoardDto
@@ -94,13 +105,24 @@ public sealed class CreateCommentRequest
     public HomeCommentScope Scope { get; set; }
     public int EntryId { get; set; }
     public string Text { get; set; } = string.Empty;
+    public List<CommentMentionInputDto> Mentions { get; set; } = new();
     public List<CommentAttachmentInputDto> Attachments { get; set; } = new();
+}
+
+public sealed class CommentMentionInputDto
+{
+    public string UserId { get; set; } = string.Empty;
+    public string DisplayName { get; set; } = string.Empty;
+    public string? Email { get; set; }
 }
 
 public sealed class MentionToken
 {
     public MentionType Type { get; set; }
     public string Token { get; set; } = string.Empty;
+    public string? ReferenceId { get; set; }
+    public string? DisplayText { get; set; }
+    public string? TargetUrl { get; set; }
 }
 
 public sealed class CommentAttachmentInputDto

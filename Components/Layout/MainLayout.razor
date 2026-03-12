@@ -4,9 +4,11 @@
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject UserManager<Wiki_Blaze.Data.ApplicationUser> UserManager
 @inject INotificationService NotificationService
+@inject NotificationRefreshSignal NotificationRefreshSignal
 @inject IJSRuntime JsRuntime
 @inject ILogger<MainLayout> Logger
 @using System.Security.Claims
+@using Wiki_Blaze.Data.Entities
 @using Wiki_Blaze.Services
 
 <div class="page">
@@ -50,31 +52,31 @@
                     <AuthorizeView>
                         <Authorized>
                             <div class="menu-button-float-end display-desktop notification-header-actions">
-                                <div class="notification-dropdown-wrapper">
+                                <div class="notification-bell-wrap">
                                     <button type="button"
                                             class="notification-bell-button"
                                             aria-label="Benachrichtigungen"
                                             aria-haspopup="menu"
                                             aria-expanded="@IsNotificationDropdownOpen"
-                                            @onclick="ToggleNotificationsDropdownAsync">
+                                            @onclick="ToggleNotificationsDropdownAsync"
+                                            @onclick:stopPropagation="true"
+                                            @onmousedown:stopPropagation="true">
                                         <span class="oi oi-bell" aria-hidden="true"></span>
                                     </button>
                                     @if (NotificationInbox.UnreadCount > 0)
                                     {
                                         <span class="notification-badge">@NotificationInbox.UnreadCount</span>
                                     }
-                                    @if (IsNotificationDropdownOpen)
-                                    {
-                                        <div class="notification-dropdown-menu card shadow">
-                                            <div class="card-body p-2">
-                                                <div class="d-flex justify-content-between align-items-center mb-2">
-                                                    <strong class="small">Benachrichtigungen</strong>
-                                                    <button type="button"
-                                                            class="btn-close btn-sm"
-                                                            aria-label="Schließen"
-                                                            @onclick="CloseNotificationsDropdown"></button>
-                                                </div>
-                                                <div class="form-check form-switch mb-2">
+                                </div>
+                                <DxPopup HeaderText="Benachrichtigungen"
+                                         Width="28rem"
+                                         Height="34rem"
+                                         @bind-Visible="IsNotificationDropdownOpen"
+                                         CloseOnOutsideClick="true">
+                                    <BodyContentTemplate Context="notificationPopupContext">
+                                        <div class="notification-popup-content">
+                                            <div class="notification-filter-row">
+                                                <div class="form-check form-switch m-0">
                                                     <input id="notificationsOnlyUnread"
                                                            class="form-check-input"
                                                            type="checkbox"
@@ -83,39 +85,52 @@
                                                            @onchange="OnNotificationsOnlyUnreadChanged" />
                                                     <label class="form-check-label small" for="notificationsOnlyUnread">Nur ungelesen</label>
                                                 </div>
-                                                @if (IsNotificationLoading)
-                                                {
-                                                    <div class="text-center p-2">
-                                                        <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
-                                                    </div>
-                                                }
-                                                else if (!string.IsNullOrWhiteSpace(NotificationErrorMessage))
-                                                {
-                                                    <div class="notification-error-state small p-2">@NotificationErrorMessage</div>
-                                                }
-                                                else if (NotificationInbox.Items.Count == 0)
-                                                {
-                                                    <div class="small text-muted p-2">Keine fälligen Notifications für heute (werktags ab 08:00).</div>
-                                                }
-                                                else
-                                                {
-                                                    <div class="notification-dropdown-list">
-                                                        @foreach (var notification in NotificationInbox.Items)
-                                                        {
-                                                            <button type="button"
-                                                                    class="notification-item @(notification.IsRead ? "is-read" : "is-unread")"
-                                                                    @onclick="() => OpenNotificationAsync(notification)">
-                                                                <div class="notification-item-title">@notification.Title</div>
-                                                                <div class="notification-item-body">@notification.Body</div>
-                                                                <div class="notification-item-meta">@FormatNotificationTimestamp(notification.CreatedAtUtc)</div>
-                                                            </button>
-                                                        }
-                                                    </div>
-                                                }
+                                                <select class="form-select form-select-sm notification-kind-filter"
+                                                        value="@SelectedNotificationFilter"
+                                                        @onchange="OnNotificationFilterChanged">
+                                                    <option value="@NotificationFilter.All">Alle</option>
+                                                    <option value="@NotificationFilter.Onboarding">Onboarding</option>
+                                                    <option value="@NotificationFilter.Wiki">Wiki</option>
+                                                    <option value="@NotificationFilter.CommentOwner">Kommentare</option>
+                                                    <option value="@NotificationFilter.CommentMention">Erwaehnungen</option>
+                                                </select>
                                             </div>
+                                            @if (IsNotificationLoading)
+                                            {
+                                                <div class="text-center p-2">
+                                                    <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                                                </div>
+                                            }
+                                            else if (!string.IsNullOrWhiteSpace(NotificationErrorMessage))
+                                            {
+                                                <div class="notification-error-state small p-2">@NotificationErrorMessage</div>
+                                            }
+                                            else if (FilteredNotifications.Count == 0)
+                                            {
+                                                <div class="small text-muted p-2">Keine Benachrichtigungen vorhanden.</div>
+                                            }
+                                            else
+                                            {
+                                                <div class="notification-dropdown-list">
+                                                    @foreach (var notification in FilteredNotifications)
+                                                    {
+                                                        <button type="button"
+                                                                class="notification-item @(notification.IsRead ? "is-read" : "is-unread")"
+                                                                @onclick="() => OpenNotificationAsync(notification)">
+                                                            <div class="notification-item-head">
+                                                                <span class="notification-item-kind">@GetNotificationKindLabel(notification.Kind)</span>
+                                                                <span class="notification-item-meta">@FormatNotificationTimestamp(notification.CreatedAtUtc)</span>
+                                                            </div>
+                                                            <div class="notification-item-title">@notification.Title</div>
+                                                            <div class="notification-item-body">@notification.Body</div>
+                                                            <div class="notification-item-meta">Faellig: @notification.DueDate.ToLocalTime().ToString("dd.MM.yyyy")</div>
+                                                        </button>
+                                                    }
+                                                </div>
+                                            }
                                         </div>
-                                    }
-                                </div>
+                                    </BodyContentTemplate>
+                                </DxPopup>
                                 <NavLink href="@AddDrawerStateToUrl("Account/Manage")" class="button-link">
                                     <DxButton Text="@context.User.Identity?.Name" RenderStyle="ButtonRenderStyle.Secondary" RenderStyleMode="ButtonRenderStyleMode.Text" IconCssClass="icon icon-user"></DxButton>
                                 </NavLink>
@@ -133,10 +148,6 @@
                         </NotAuthorized>
                     </AuthorizeView>
                 </div>
-                @if (IsNotificationDropdownOpen)
-                {
-                    <div class="notification-dropdown-backdrop" @onclick="CloseNotificationsDropdown"></div>
-                }
                 <div class="page-content-container">
                     @Body
                 </div>
@@ -158,6 +169,8 @@
     private bool IsNotificationLoading;
     private string? NotificationErrorMessage;
     private NotificationInboxDto NotificationInbox { get; set; } = new();
+    private IReadOnlyList<NotificationInboxItemDto> FilteredNotifications { get; set; } = Array.Empty<NotificationInboxItemDto>();
+    private NotificationFilter SelectedNotificationFilter { get; set; } = NotificationFilter.All;
     private PeriodicTimer? notificationsTimer;
     private CancellationTokenSource? notificationsCts;
     private Task? notificationsRefreshTask;
@@ -175,6 +188,7 @@
         currentUrl = NavigationManager.ToBaseRelativePath(NavigationManager.Uri);
         NavigationManager.LocationChanged += OnLocationChanged;
         AuthenticationStateProvider.AuthenticationStateChanged += OnAuthenticationStateChanged;
+        NotificationRefreshSignal.Requested += OnNotificationRefreshRequested;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -294,6 +308,22 @@
         await RefreshNotificationsAsync();
     }
 
+    private Task OnNotificationFilterChanged(ChangeEventArgs args)
+    {
+        if (args.Value is not null
+            && Enum.TryParse<NotificationFilter>(args.Value.ToString(), ignoreCase: true, out var parsedFilter))
+        {
+            SelectedNotificationFilter = parsedFilter;
+        }
+        else
+        {
+            SelectedNotificationFilter = NotificationFilter.All;
+        }
+
+        ApplyNotificationFilter();
+        return InvokeAsync(StateHasChanged);
+    }
+
     private async Task OpenNotificationAsync(NotificationInboxItemDto notification)
     {
         if (string.IsNullOrWhiteSpace(currentUserId))
@@ -323,6 +353,19 @@
     private string FormatNotificationTimestamp(DateTime createdAtUtc)
     {
         return createdAtUtc.ToLocalTime().ToString("dd.MM.yyyy HH:mm");
+    }
+
+    private static string GetNotificationKindLabel(NotificationKind kind)
+    {
+        return kind switch
+        {
+            NotificationKind.OnboardingStartDate => "Onboarding Start",
+            NotificationKind.OnboardingTargetDate => "Onboarding Ziel",
+            NotificationKind.WikiReviewDate => "Wiki Review",
+            NotificationKind.HomeCommentOwner => "Kommentar",
+            NotificationKind.HomeCommentMention => "Erwaehnung",
+            _ => "Hinweis"
+        };
     }
 
     private void StartNotificationsRefreshLoop()
@@ -368,6 +411,7 @@
         if (string.IsNullOrWhiteSpace(currentUserId))
         {
             NotificationInbox = new NotificationInboxDto();
+            FilteredNotifications = Array.Empty<NotificationInboxItemDto>();
             NotificationErrorMessage = null;
             await InvokeAsync(StateHasChanged);
             return;
@@ -389,11 +433,13 @@
                     currentUserId,
                     take: 20,
                     includeRead: !NotificationsOnlyUnread);
+                ApplyNotificationFilter();
             }
             catch (Exception ex)
             {
                 Logger.LogError(ex, "Failed to load notification inbox for user {UserId}.", currentUserId);
                 NotificationInbox = new NotificationInboxDto();
+                FilteredNotifications = Array.Empty<NotificationInboxItemDto>();
                 NotificationErrorMessage = "Notifications konnten nicht geladen werden.";
             }
         }
@@ -404,6 +450,27 @@
         }
 
         await InvokeAsync(StateHasChanged);
+    }
+
+    private void ApplyNotificationFilter()
+    {
+        if (NotificationInbox.Items.Count == 0)
+        {
+            FilteredNotifications = Array.Empty<NotificationInboxItemDto>();
+            return;
+        }
+
+        FilteredNotifications = NotificationInbox.Items
+            .Where(item => IsNotificationVisibleForFilter(item.Kind, SelectedNotificationFilter))
+            .OrderBy(item => item.IsRead ? 1 : 0)
+            .ThenBy(item => item.DueDate.Date)
+            .ThenByDescending(item => item.CreatedAtUtc)
+            .ToList();
+    }
+
+    private void OnNotificationRefreshRequested()
+    {
+        _ = InvokeAsync(RefreshNotificationsAsync);
     }
 
     private static bool GetBoolValue(object? value)
@@ -419,6 +486,18 @@
         }
 
         return false;
+    }
+
+    private static bool IsNotificationVisibleForFilter(NotificationKind kind, NotificationFilter filter)
+    {
+        return filter switch
+        {
+            NotificationFilter.Onboarding => kind is NotificationKind.OnboardingStartDate or NotificationKind.OnboardingTargetDate,
+            NotificationFilter.Wiki => kind == NotificationKind.WikiReviewDate,
+            NotificationFilter.CommentOwner => kind == NotificationKind.HomeCommentOwner,
+            NotificationFilter.CommentMention => kind == NotificationKind.HomeCommentMention,
+            _ => true
+        };
     }
 
     private static string NormalizeNavigationTarget(string? targetUrl)
@@ -464,9 +543,19 @@
             ?? userPrincipal.FindFirst("sub")?.Value;
     }
 
+    private enum NotificationFilter
+    {
+        All,
+        Onboarding,
+        Wiki,
+        CommentOwner,
+        CommentMention
+    }
+
     public void Dispose() {
         NavigationManager.LocationChanged -= OnLocationChanged;
         AuthenticationStateProvider.AuthenticationStateChanged -= OnAuthenticationStateChanged;
+        NotificationRefreshSignal.Requested -= OnNotificationRefreshRequested;
         notificationsCts?.Cancel();
         notificationsCts?.Dispose();
         notificationsTimer?.Dispose();

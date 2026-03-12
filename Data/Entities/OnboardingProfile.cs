@@ -70,6 +70,9 @@ public class OnboardingProfile
     [MaxLength(450)]
     public string? AssignedAgentUserId { get; set; }
 
+    [MaxLength(450)]
+    public string? CreatedByUserId { get; set; }
+
     public OnboardingProfileStatus Status { get; set; } = OnboardingProfileStatus.NotStarted;
 
     public DateTime? StartDate { get; set; }
@@ -90,6 +93,9 @@ public class OnboardingProfile
 
     [ForeignKey(nameof(AssignedAgentUserId))]
     public ApplicationUser? AssignedAgentUser { get; set; }
+
+    [ForeignKey(nameof(CreatedByUserId))]
+    public ApplicationUser? CreatedByUser { get; set; }
 
     public OnboardingProfileAttachment? Attachment { get; set; }
 

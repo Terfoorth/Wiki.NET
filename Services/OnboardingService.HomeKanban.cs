@@ -4,12 +4,14 @@ using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using Wiki_Blaze.Data;
 using Wiki_Blaze.Data.Entities;
+using Wiki_Blaze.Services.Notifications;
 
 namespace Wiki_Blaze.Services;
 
 public partial class OnboardingService
 {
     private static readonly Regex HomeMentionRegex = new(@"@\w+", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    private const int MaxMentionsPerComment = 10;
     private static readonly HashSet<string> AllowedHomeCommentImageTypes = new(StringComparer.OrdinalIgnoreCase)
     {
         "image/gif",
@@ -29,15 +31,18 @@ public partial class OnboardingService
             .AsNoTracking()
             .Include(profile => profile.AssignedAgentUser)
             .Include(profile => profile.LinkedUser)
+            .Include(profile => profile.CreatedByUser)
             .OrderByDescending(profile => profile.LastModifiedAt)
             .ToListAsync(cancellationToken);
 
+        var localDate = await ResolveHomeLocalDateAsync(context, userId, cancellationToken);
+
         var cards = new List<HomeKanbanCardDto>(profiles.Count);
-        cards.AddRange(BuildCardsForStatus(profiles, OnboardingProfileStatus.Draft, HomeKanbanColumnKeys.OnboardingDrafts, takePerColumn));
-        cards.AddRange(BuildCardsForStatus(profiles, OnboardingProfileStatus.NotStarted, HomeKanbanColumnKeys.OnboardingNotStarted, takePerColumn));
-        cards.AddRange(BuildCardsForStatus(profiles, OnboardingProfileStatus.InProgress, HomeKanbanColumnKeys.OnboardingInProgress, takePerColumn));
-        cards.AddRange(BuildCardsForStatus(profiles, OnboardingProfileStatus.Completed, HomeKanbanColumnKeys.OnboardingCompleted, takePerColumn));
-        cards.AddRange(BuildCardsForStatus(profiles, OnboardingProfileStatus.Archived, HomeKanbanColumnKeys.OnboardingArchived, takePerColumn));
+        cards.AddRange(BuildCardsForStatus(profiles, OnboardingProfileStatus.Draft, HomeKanbanColumnKeys.OnboardingDrafts, takePerColumn, localDate));
+        cards.AddRange(BuildCardsForStatus(profiles, OnboardingProfileStatus.NotStarted, HomeKanbanColumnKeys.OnboardingNotStarted, takePerColumn, localDate));
+        cards.AddRange(BuildCardsForStatus(profiles, OnboardingProfileStatus.InProgress, HomeKanbanColumnKeys.OnboardingInProgress, takePerColumn, localDate));
+        cards.AddRange(BuildCardsForStatus(profiles, OnboardingProfileStatus.Completed, HomeKanbanColumnKeys.OnboardingCompleted, takePerColumn, localDate));
+        cards.AddRange(BuildCardsForStatus(profiles, OnboardingProfileStatus.Archived, HomeKanbanColumnKeys.OnboardingArchived, takePerColumn, localDate));
 
         var defaultColumns = GetDefaultOnboardingColumns();
 
@@ -323,7 +328,8 @@ public partial class OnboardingService
             throw new InvalidOperationException("Kommentartext oder mindestens ein Anhang ist erforderlich.");
         }
 
-        var mentions = ExtractHomeMentionTokens(normalizedText);
+        var mentions = ClampHomeMentionPayload(BuildHomeMentionTokens(normalizedText, request.Mentions));
+        var nowUtc = DateTime.UtcNow;
         var entity = new HomeEntryComment
         {
             Scope = HomeCommentScope.Onboarding,
@@ -331,7 +337,7 @@ public partial class OnboardingService
             AuthorId = string.IsNullOrWhiteSpace(userId) ? null : userId,
             Text = normalizedText,
             MentionTokensJson = mentions.Count == 0 ? null : JsonSerializer.Serialize(mentions),
-            CreatedAtUtc = DateTime.UtcNow
+            CreatedAtUtc = nowUtc
         };
 
         foreach (var attachment in request.Attachments)
@@ -352,11 +358,13 @@ public partial class OnboardingService
                 ContentType = attachment.ContentType,
                 Content = attachment.Content.ToArray(),
                 SizeBytes = attachment.Content.LongLength,
-                UploadedAtUtc = DateTime.UtcNow
+                UploadedAtUtc = nowUtc
             });
         }
 
         context.HomeEntryComments.Add(entity);
+        await context.SaveChangesAsync(cancellationToken);
+        await CreateOnboardingCommentNotificationsAsync(context, request.EntryId, entity.Id, entity.AuthorId, mentions, cancellationToken);
         await context.SaveChangesAsync(cancellationToken);
 
         var saved = await context.HomeEntryComments
@@ -384,48 +392,77 @@ public partial class OnboardingService
             throw new InvalidOperationException("Nur der Autor darf den Kommentar löschen.");
         }
 
+        await DeleteCommentNotificationsAsync(context, comment.Id, cancellationToken);
         context.HomeEntryComments.Remove(comment);
         await context.SaveChangesAsync(cancellationToken);
+    }
+
+    private static async Task DeleteCommentNotificationsAsync(
+        ApplicationDbContext context,
+        int commentId,
+        CancellationToken cancellationToken)
+    {
+        var notifications = await context.AppNotifications
+            .Where(notification =>
+                notification.SourceId == commentId
+                && (notification.Kind == NotificationKind.HomeCommentOwner
+                    || notification.Kind == NotificationKind.HomeCommentMention))
+            .ToListAsync(cancellationToken);
+
+        if (notifications.Count > 0)
+        {
+            context.AppNotifications.RemoveRange(notifications);
+        }
     }
 
     private static List<HomeKanbanCardDto> BuildCardsForStatus(
         List<OnboardingProfile> profiles,
         OnboardingProfileStatus status,
         string columnKey,
-        int takePerColumn)
+        int takePerColumn,
+        DateTime localDate)
     {
         return profiles
             .Where(profile => profile.Status == status)
             .OrderByDescending(profile => profile.LastModifiedAt)
             .Take(takePerColumn)
-            .Select((profile, index) => new HomeKanbanCardDto
+            .Select((profile, index) =>
             {
-                EntryId = profile.Id,
-                EntityType = HomeKanbanCardEntityType.OnboardingProfile,
-                ColumnKey = columnKey,
-                SortOrder = (index + 1) * 10,
-                Title = BuildProfileDisplayName(profile.FirstName, profile.LastName, profile.FullName),
-                CreatorDisplayName = profile.LinkedUser is null
-                    ? "-"
-                    : ResolveUserDisplayName(
-                        profile.LinkedUser.DisplayName,
-                        profile.LinkedUser.FirstName,
-                        profile.LinkedUser.LastName,
-                        profile.LinkedUser.UserName,
-                        profile.LinkedUser.Email),
-                OwnerDisplayName = profile.AssignedAgentUser is null
-                    ? "-"
-                    : ResolveUserDisplayName(
-                        profile.AssignedAgentUser.DisplayName,
-                        profile.AssignedAgentUser.FirstName,
-                        profile.AssignedAgentUser.LastName,
-                        profile.AssignedAgentUser.UserName,
-                        profile.AssignedAgentUser.Email),
-                CategoryOrRole = !string.IsNullOrWhiteSpace(profile.JobTitle) ? profile.JobTitle! : "-",
-                Subtitle = profile.Department,
-                PrimaryLinkText = "Details",
-                PrimaryLinkUrl = $"/reportdesigner/details/{profile.Id}",
-                LastActivityUtc = profile.LastModifiedAt
+                var reminderState = BuildOnboardingReminderState(profile.TargetDate, localDate);
+                return new HomeKanbanCardDto
+                {
+                    EntryId = profile.Id,
+                    EntityType = HomeKanbanCardEntityType.OnboardingProfile,
+                    ColumnKey = columnKey,
+                    SortOrder = (index + 1) * 10,
+                    Title = BuildProfileDisplayName(profile.FirstName, profile.LastName, profile.FullName),
+                    CreatorDisplayName = profile.CreatedByUser is null
+                        ? "-"
+                        : ResolveUserDisplayName(
+                            profile.CreatedByUser.DisplayName,
+                            profile.CreatedByUser.FirstName,
+                            profile.CreatedByUser.LastName,
+                            profile.CreatedByUser.UserName,
+                            profile.CreatedByUser.Email),
+                    OwnerDisplayName = profile.AssignedAgentUser is null
+                        ? "-"
+                        : ResolveUserDisplayName(
+                            profile.AssignedAgentUser.DisplayName,
+                            profile.AssignedAgentUser.FirstName,
+                            profile.AssignedAgentUser.LastName,
+                            profile.AssignedAgentUser.UserName,
+                            profile.AssignedAgentUser.Email),
+                    CategoryOrRole = !string.IsNullOrWhiteSpace(profile.JobTitle) ? profile.JobTitle! : "-",
+                    Subtitle = profile.Department,
+                    PrimaryLinkText = "Details",
+                    PrimaryLinkUrl = $"/reportdesigner/details/{profile.Id}",
+                    LastActivityUtc = profile.LastModifiedAt,
+                    IsReminderActive = reminderState.IsActive,
+                    IsReminderOverdue = reminderState.IsOverdue,
+                    ReminderDueDate = reminderState.DueDate,
+                    ReminderLabel = reminderState.Label,
+                    ReminderKind = reminderState.IsActive ? HomeKanbanReminderKind.OnboardingTargetDate : null
+                };
             })
             .ToList();
     }
@@ -475,6 +512,90 @@ public partial class OnboardingService
                 AcceptDrop = true
             }
         ];
+    }
+
+    private static HomeReminderState BuildOnboardingReminderState(DateTime? dueDate, DateTime localDate)
+    {
+        if (!dueDate.HasValue)
+        {
+            return HomeReminderState.None;
+        }
+
+        var normalizedDueDate = dueDate.Value.Date;
+        var firstReminderDate = NotificationScheduleCalculator.GetFirstReminderDate(normalizedDueDate);
+        if (localDate < firstReminderDate)
+        {
+            return HomeReminderState.None;
+        }
+
+        var isOverdue = normalizedDueDate < localDate;
+        var label = isOverdue
+            ? $"Onboarding-Zieldatum ueberfaellig seit {normalizedDueDate:dd.MM.yyyy}"
+            : $"Onboarding-Zieldatum faellig am {normalizedDueDate:dd.MM.yyyy}";
+
+        return new HomeReminderState(true, isOverdue, normalizedDueDate, label);
+    }
+
+    private static async Task<DateTime> ResolveHomeLocalDateAsync(
+        ApplicationDbContext context,
+        string userId,
+        CancellationToken cancellationToken)
+    {
+        var timeZoneId = await context.Users
+            .AsNoTracking()
+            .Where(user => user.Id == userId)
+            .Select(user => user.TimeZone)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var timeZone = ResolveHomeTimeZoneInfo(timeZoneId);
+        return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, timeZone).Date;
+    }
+
+    private static TimeZoneInfo ResolveHomeTimeZoneInfo(string? timeZoneId)
+    {
+        if (string.IsNullOrWhiteSpace(timeZoneId))
+        {
+            return TimeZoneInfo.Utc;
+        }
+
+        var normalizedTimeZoneId = timeZoneId.Trim();
+        if (TryFindHomeTimeZoneInfo(normalizedTimeZoneId, out var resolvedTimeZone))
+        {
+            return resolvedTimeZone;
+        }
+
+        if (TimeZoneInfo.TryConvertIanaIdToWindowsId(normalizedTimeZoneId, out var windowsTimeZoneId)
+            && TryFindHomeTimeZoneInfo(windowsTimeZoneId, out resolvedTimeZone))
+        {
+            return resolvedTimeZone;
+        }
+
+        if (TimeZoneInfo.TryConvertWindowsIdToIanaId(normalizedTimeZoneId, out var ianaTimeZoneId)
+            && TryFindHomeTimeZoneInfo(ianaTimeZoneId, out resolvedTimeZone))
+        {
+            return resolvedTimeZone;
+        }
+
+        return TimeZoneInfo.Utc;
+    }
+
+    private static bool TryFindHomeTimeZoneInfo(string timeZoneId, out TimeZoneInfo timeZoneInfo)
+    {
+        try
+        {
+            timeZoneInfo = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
+            return true;
+        }
+        catch (TimeZoneNotFoundException)
+        {
+            timeZoneInfo = TimeZoneInfo.Utc;
+            return false;
+        }
+        catch (InvalidTimeZoneException)
+        {
+            timeZoneInfo = TimeZoneInfo.Utc;
+            return false;
+        }
     }
 
     private static bool CanMoveOnboardingCard(string sourceColumnKey, string targetColumnKey)
@@ -601,6 +722,76 @@ public partial class OnboardingService
         }
     }
 
+    private static List<MentionToken> BuildHomeMentionTokens(string text, IReadOnlyList<CommentMentionInputDto>? mentionInputs)
+    {
+        var structuredMentions = NormalizeHomeStructuredMentions(mentionInputs);
+        return structuredMentions.Count > 0
+            ? structuredMentions
+            : ExtractHomeMentionTokens(text);
+    }
+
+    private static List<MentionToken> NormalizeHomeStructuredMentions(IReadOnlyList<CommentMentionInputDto>? mentionInputs)
+    {
+        if (mentionInputs is null || mentionInputs.Count == 0)
+        {
+            return new List<MentionToken>();
+        }
+
+        var mentions = new List<MentionToken>(Math.Min(mentionInputs.Count, MaxMentionsPerComment));
+        var seenUserIds = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var mention in mentionInputs)
+        {
+            if (!TryNormalizeHomeUserId(mention.UserId, out var userId))
+            {
+                continue;
+            }
+
+            if (!seenUserIds.Add(userId))
+            {
+                continue;
+            }
+
+            var displayText = NormalizeHomeText(mention.DisplayName) ?? userId;
+            var email = NormalizeHomeText(mention.Email);
+            mentions.Add(new MentionToken
+            {
+                Type = MentionType.User,
+                Token = $"@{displayText}",
+                ReferenceId = userId,
+                DisplayText = displayText,
+                TargetUrl = string.IsNullOrWhiteSpace(email) ? null : $"mailto:{email}"
+            });
+
+            if (mentions.Count >= MaxMentionsPerComment)
+            {
+                break;
+            }
+        }
+
+        return mentions;
+    }
+
+    private static List<MentionToken> ClampHomeMentionPayload(IReadOnlyList<MentionToken> mentions)
+    {
+        if (mentions.Count == 0)
+        {
+            return new List<MentionToken>();
+        }
+
+        var boundedMentions = mentions.ToList();
+        while (boundedMentions.Count > 0)
+        {
+            if (JsonSerializer.Serialize(boundedMentions).Length <= 2000)
+            {
+                return boundedMentions;
+            }
+
+            boundedMentions.RemoveAt(boundedMentions.Count - 1);
+        }
+
+        return new List<MentionToken>();
+    }
+
     private static List<MentionToken> ExtractHomeMentionTokens(string text)
     {
         if (string.IsNullOrWhiteSpace(text))
@@ -621,11 +812,167 @@ public partial class OnboardingService
             mentions.Add(new MentionToken
             {
                 Type = type,
-                Token = token
+                Token = token,
+                DisplayText = token
             });
         }
 
         return mentions;
+    }
+
+    private async Task CreateOnboardingCommentNotificationsAsync(
+        ApplicationDbContext context,
+        int entryId,
+        int commentId,
+        string? authorId,
+        IReadOnlyList<MentionToken> mentions,
+        CancellationToken cancellationToken)
+    {
+        var profileInfo = await context.OnboardingProfiles
+            .AsNoTracking()
+            .Where(profile => profile.Id == entryId)
+            .Select(profile => new
+            {
+                profile.FirstName,
+                profile.LastName,
+                profile.FullName,
+                profile.CreatedByUserId,
+                profile.AssignedAgentUserId,
+                profile.LinkedUserId
+            })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (profileInfo is null)
+        {
+            return;
+        }
+
+        var recipientKinds = new Dictionary<string, NotificationKind>(StringComparer.Ordinal);
+        var ownerCandidate = TryNormalizeHomeUserId(profileInfo.CreatedByUserId, out var createdByUserId)
+            ? createdByUserId
+            : TryNormalizeHomeUserId(profileInfo.AssignedAgentUserId, out var assignedAgentUserId)
+                ? assignedAgentUserId
+                : TryNormalizeHomeUserId(profileInfo.LinkedUserId, out var linkedUserId)
+                    ? linkedUserId
+                    : null;
+
+        if (!string.IsNullOrWhiteSpace(ownerCandidate) && !IsSameHomeUser(ownerCandidate, authorId))
+        {
+            recipientKinds[ownerCandidate] = NotificationKind.HomeCommentOwner;
+        }
+
+        foreach (var mentionUserId in mentions
+                     .Where(mention => mention.Type == MentionType.User && TryNormalizeHomeUserId(mention.ReferenceId, out _))
+                     .Select(mention => mention.ReferenceId!.Trim())
+                     .Distinct(StringComparer.Ordinal))
+        {
+            if (IsSameHomeUser(mentionUserId, authorId))
+            {
+                continue;
+            }
+
+            recipientKinds[mentionUserId] = NotificationKind.HomeCommentMention;
+        }
+
+        if (recipientKinds.Count == 0)
+        {
+            return;
+        }
+
+        var recipientUserIds = recipientKinds.Keys.ToList();
+        var recipients = await context.Users
+            .AsNoTracking()
+            .Where(user => recipientUserIds.Contains(user.Id))
+            .Select(user => user.Id)
+            .ToListAsync(cancellationToken);
+
+        if (recipients.Count == 0)
+        {
+            return;
+        }
+
+        var authorDisplayName = await ResolveHomeCommentAuthorDisplayNameAsync(context, authorId, cancellationToken);
+        var createdAtUtc = DateTime.UtcNow;
+        var targetUrl = $"/reportdesigner/details/{entryId}";
+        var profileDisplayName = BuildProfileDisplayName(profileInfo.FirstName, profileInfo.LastName, profileInfo.FullName);
+        if (string.IsNullOrWhiteSpace(profileDisplayName))
+        {
+            profileDisplayName = $"Onboarding #{entryId}";
+        }
+
+        foreach (var recipientUserId in recipients)
+        {
+            var kind = recipientKinds[recipientUserId];
+            var title = kind == NotificationKind.HomeCommentMention
+                ? $"Erwaehnung in Kommentar: {profileDisplayName}"
+                : $"Neuer Kommentar: {profileDisplayName}";
+            var body = kind == NotificationKind.HomeCommentMention
+                ? $"{authorDisplayName} hat dich in einem Kommentar erwaehnt."
+                : $"{authorDisplayName} hat einen neuen Kommentar hinterlassen.";
+
+            context.AppNotifications.Add(new AppNotification
+            {
+                UserId = recipientUserId,
+                Kind = kind,
+                SourceId = commentId,
+                DueDate = createdAtUtc.Date,
+                TriggerDate = createdAtUtc.Date,
+                CreatedAtUtc = createdAtUtc,
+                IsRead = false,
+                ReadAtUtc = null,
+                Title = title,
+                Body = body,
+                TargetUrl = targetUrl
+            });
+        }
+    }
+
+    private async Task<string> ResolveHomeCommentAuthorDisplayNameAsync(
+        ApplicationDbContext context,
+        string? authorId,
+        CancellationToken cancellationToken)
+    {
+        if (!TryNormalizeHomeUserId(authorId, out var normalizedAuthorId))
+        {
+            return "Jemand";
+        }
+
+        var user = await context.Users
+            .AsNoTracking()
+            .FirstOrDefaultAsync(entry => entry.Id == normalizedAuthorId, cancellationToken);
+
+        return user is null
+            ? "Jemand"
+            : ResolveUserDisplayName(user.DisplayName, user.FirstName, user.LastName, user.UserName, user.Email);
+    }
+
+    private static bool IsSameHomeUser(string? leftUserId, string? rightUserId)
+    {
+        return TryNormalizeHomeUserId(leftUserId, out var left)
+               && TryNormalizeHomeUserId(rightUserId, out var right)
+               && string.Equals(left, right, StringComparison.Ordinal);
+    }
+
+    private static bool TryNormalizeHomeUserId(string? userId, out string normalizedUserId)
+    {
+        normalizedUserId = string.Empty;
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            return false;
+        }
+
+        normalizedUserId = userId.Trim();
+        return normalizedUserId.Length > 0;
+    }
+
+    private static string? NormalizeHomeText(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        return value.Trim();
     }
 
     private static List<MentionToken> ReadHomeMentionTokens(string? payload)
@@ -655,6 +1002,15 @@ public partial class OnboardingService
 
         const int maxLength = 260;
         return value.Length <= maxLength ? value : value[..maxLength];
+    }
+
+    private readonly record struct HomeReminderState(
+        bool IsActive,
+        bool IsOverdue,
+        DateTime? DueDate,
+        string? Label)
+    {
+        public static HomeReminderState None => new(false, false, null, null);
     }
 
     private static HomeEntryCommentDto MapHomeCommentToDto(HomeEntryComment comment)
@@ -691,3 +1047,4 @@ public partial class OnboardingService
         };
     }
 }
+

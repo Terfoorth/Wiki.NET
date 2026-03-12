@@ -1,4 +1,5 @@
-.dx-card {
+.kanban-column-grid .dx-card,
+.kanban-drag-hint .dx-card {
     overflow: visible;
     box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
     border-radius: 0.85rem;
@@ -45,11 +46,6 @@
     width: 15rem;
 }
 
-.kanban-column-grid .kanban-drag-anchor > .dx-card,
-.kanban-column-grid .kanban-drag-anchor > .dx-card * {
-    pointer-events: auto;
-}
-
 .kanban-layout-grid {
     border: none;
     height: 30rem;
@@ -80,23 +76,15 @@
 }
 
 .kanban-column-grid .kanban-drag-anchor {
-    padding: 0;
+    width: 2rem;
+    min-width: 2rem;
+    max-width: 2rem;
+    padding-top: 0.35rem;
+    cursor: grab;
 }
 
 .kanban-column-grid .kanban-drag-anchor + td {
     padding: 0 !important;
-}
-
-.kanban-column-grid .kanban-drag-anchor + td * {
-    padding: 0 !important;
-}
-
-.kanban-column-grid .dxbl-grid-indent-cell-size {
-    width: 100% !important;
-}
-
-.kanban-column-grid .dxbl-grid-indent-cell-size + col {
-    width: 0px !important;
 }
 
 .kanban-column-grid .dxbl-grid-header-row {
@@ -109,7 +97,7 @@
 
 .kanban-column-grid .dxbl-grid-table {
     border: none !important;
-    border-spacing: 0 1rem;
+    border-spacing: 0 0.55rem;
     border-collapse: separate;
 }
 
