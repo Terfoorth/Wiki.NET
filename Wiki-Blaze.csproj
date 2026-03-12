@@ -219,6 +219,9 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
+    <PackageReference Include="System.DirectoryServices" Version="10.0.4" />
+    <PackageReference Include="System.DirectoryServices.AccountManagement" Version="10.0.4" />
+    <PackageReference Include="System.DirectoryServices.Protocols" Version="10.0.4" />
   </ItemGroup>
   <ItemGroup>
     <TypeScriptCompile Include="node_modules\devextreme-dist\ts\dx.all.d.ts" />
