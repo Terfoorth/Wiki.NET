@@ -1,0 +1,448 @@
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Identity
+@using Wiki_Blaze.Components.Shared
+@using Wiki_Blaze.Data
+@using Wiki_Blaze.Data.Entities
+@using Wiki_Blaze.Services
+@rendermode InteractiveServer
+@implements IDisposable
+
+@inject NavigationManager NavigationManager
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject UserManager<ApplicationUser> UserManager
+@inject INotificationService NotificationService
+@inject NotificationRefreshSignal NotificationRefreshSignal
+@inject ILogger<NotificationBellDropdown> Logger
+
+<div class="notification-bell-wrap">
+    <button type="button"
+            class="notification-bell-button"
+            aria-label="Benachrichtigungen"
+            aria-haspopup="menu"
+            aria-expanded="@IsNotificationDropdownOpen"
+            @onclick="ToggleNotificationsDropdownAsync"
+            @onclick:stopPropagation="true"
+            @onmousedown:stopPropagation="true">
+        <span class="oi oi-bell" aria-hidden="true"></span>
+    </button>
+    @if (NotificationInbox.UnreadCount > 0)
+    {
+        <span class="notification-badge">@NotificationInbox.UnreadCount</span>
+    }
+</div>
+<DxPopup HeaderText="Benachrichtigungen"
+         Width="28rem"
+         Height="34rem"
+         @bind-Visible="IsNotificationDropdownOpen"
+         CloseOnOutsideClick="true">
+    <BodyContentTemplate Context="notificationPopupContext">
+        <div class="notification-popup-content">
+            <div class="notification-filter-row">
+                <div class="form-check form-switch m-0">
+                    <input id="notificationsOnlyUnread"
+                           class="form-check-input"
+                           type="checkbox"
+                           role="switch"
+                           checked="@NotificationsOnlyUnread"
+                           @onchange="OnNotificationsOnlyUnreadChanged" />
+                    <label class="form-check-label small" for="notificationsOnlyUnread">Nur ungelesen</label>
+                </div>
+                <select class="form-select form-select-sm notification-kind-filter"
+                        value="@SelectedNotificationFilter"
+                        @onchange="OnNotificationFilterChanged">
+                    <option value="@NotificationFilter.All">Alle</option>
+                    <option value="@NotificationFilter.Onboarding">Onboarding</option>
+                    <option value="@NotificationFilter.Wiki">Wiki</option>
+                    <option value="@NotificationFilter.CommentOwner">Kommentare</option>
+                    <option value="@NotificationFilter.CommentMention">Erwaehnungen</option>
+                </select>
+            </div>
+            @if (IsNotificationLoading)
+            {
+                <div class="text-center p-2">
+                    <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                </div>
+            }
+            else if (!string.IsNullOrWhiteSpace(NotificationErrorMessage))
+            {
+                <div class="notification-error-state small p-2">@NotificationErrorMessage</div>
+            }
+            else if (FilteredNotifications.Count == 0)
+            {
+                <div class="small text-muted p-2">Keine Benachrichtigungen vorhanden.</div>
+            }
+            else
+            {
+                <div class="notification-dropdown-list">
+                    @foreach (var notification in FilteredNotifications)
+                    {
+                        <button type="button"
+                                class="notification-item @(notification.IsRead ? "is-read" : "is-unread")"
+                                @onclick="() => OpenNotificationAsync(notification)">
+                            <div class="notification-item-head">
+                                <span class="notification-item-kind">@GetNotificationKindLabel(notification.Kind)</span>
+                                <span class="notification-item-meta">@FormatNotificationTimestamp(notification.CreatedAtUtc)</span>
+                            </div>
+                            <div class="notification-item-title">@notification.Title</div>
+                            <div class="notification-item-body">@notification.Body</div>
+                            <div class="notification-item-meta">Faellig: @notification.DueDate.ToLocalTime().ToString("dd.MM.yyyy")</div>
+                        </button>
+                    }
+                </div>
+            }
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+@code {
+    [Parameter] public bool ToggledDrawer { get; set; }
+
+    private string? currentUserId;
+    private bool notificationsRefreshStarted;
+    private bool IsNotificationDropdownOpen;
+    private bool NotificationsOnlyUnread;
+    private bool IsNotificationLoading;
+    private string? NotificationErrorMessage;
+    private NotificationInboxDto NotificationInbox { get; set; } = new();
+    private IReadOnlyList<NotificationInboxItemDto> FilteredNotifications { get; set; } = Array.Empty<NotificationInboxItemDto>();
+    private NotificationFilter SelectedNotificationFilter { get; set; } = NotificationFilter.All;
+    private PeriodicTimer? notificationsTimer;
+    private CancellationTokenSource? notificationsCts;
+    private Task? notificationsRefreshTask;
+    private readonly SemaphoreSlim notificationsGate = new(1, 1);
+
+    protected override void OnInitialized()
+    {
+        AuthenticationStateProvider.AuthenticationStateChanged += OnAuthenticationStateChanged;
+        NotificationRefreshSignal.Requested += OnNotificationRefreshRequested;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        await RefreshNotificationsAsync();
+        StartNotificationsRefreshLoop();
+    }
+
+    private async Task ToggleNotificationsDropdownAsync()
+    {
+        if (IsNotificationDropdownOpen)
+        {
+            IsNotificationDropdownOpen = false;
+            return;
+        }
+
+        IsNotificationDropdownOpen = true;
+        try
+        {
+            await RefreshNotificationsAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to open notification dropdown.");
+            NotificationErrorMessage = "Notifications konnten nicht geladen werden.";
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task OnNotificationsOnlyUnreadChanged(ChangeEventArgs args)
+    {
+        NotificationsOnlyUnread = GetBoolValue(args.Value);
+        await RefreshNotificationsAsync();
+    }
+
+    private Task OnNotificationFilterChanged(ChangeEventArgs args)
+    {
+        if (args.Value is not null
+            && Enum.TryParse<NotificationFilter>(args.Value.ToString(), ignoreCase: true, out var parsedFilter))
+        {
+            SelectedNotificationFilter = parsedFilter;
+        }
+        else
+        {
+            SelectedNotificationFilter = NotificationFilter.All;
+        }
+
+        ApplyNotificationFilter();
+        return InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OpenNotificationAsync(NotificationInboxItemDto notification)
+    {
+        if (string.IsNullOrWhiteSpace(currentUserId))
+        {
+            return;
+        }
+
+        try
+        {
+            await NotificationService.MarkAsReadAsync(currentUserId, notification.Id);
+            NotificationErrorMessage = null;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to mark notification {NotificationId} as read for user {UserId}.", notification.Id, currentUserId);
+            NotificationErrorMessage = "Notifications konnten nicht geladen werden.";
+            return;
+        }
+
+        IsNotificationDropdownOpen = false;
+        await RefreshNotificationsAsync();
+
+        var target = NormalizeNavigationTarget(notification.TargetUrl);
+        NavigationManager.NavigateTo(AddDrawerStateToUrl(target));
+    }
+
+    private string FormatNotificationTimestamp(DateTime createdAtUtc)
+    {
+        return createdAtUtc.ToLocalTime().ToString("dd.MM.yyyy HH:mm");
+    }
+
+    private static string GetNotificationKindLabel(NotificationKind kind)
+    {
+        return kind switch
+        {
+            NotificationKind.OnboardingStartDate => "Onboarding Start",
+            NotificationKind.OnboardingTargetDate => "Onboarding Ziel",
+            NotificationKind.OnboardingTodoUpcoming => "Onboarding Todos",
+            NotificationKind.WikiReviewDate => "Wiki Review",
+            NotificationKind.HomeCommentOwner => "Kommentar",
+            NotificationKind.HomeCommentMention => "Erwaehnung",
+            _ => "Hinweis"
+        };
+    }
+
+    private void StartNotificationsRefreshLoop()
+    {
+        if (notificationsRefreshStarted)
+        {
+            return;
+        }
+
+        notificationsRefreshStarted = true;
+        notificationsCts = new CancellationTokenSource();
+        notificationsTimer = new PeriodicTimer(TimeSpan.FromSeconds(60));
+        notificationsRefreshTask = Task.Run(() => NotificationsRefreshLoopAsync(notificationsCts.Token));
+    }
+
+    private async Task NotificationsRefreshLoopAsync(CancellationToken cancellationToken)
+    {
+        if (notificationsTimer is null)
+        {
+            return;
+        }
+
+        try
+        {
+            while (await notificationsTimer.WaitForNextTickAsync(cancellationToken))
+            {
+                await InvokeAsync(RefreshNotificationsAsync);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Component is being disposed.
+        }
+    }
+
+    private async Task RefreshNotificationsAsync()
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(currentUserId))
+            {
+                currentUserId = await ResolveCurrentUserIdAsync();
+            }
+
+            if (string.IsNullOrWhiteSpace(currentUserId))
+            {
+                NotificationInbox = new NotificationInboxDto();
+                FilteredNotifications = Array.Empty<NotificationInboxItemDto>();
+                NotificationErrorMessage = null;
+                await InvokeAsync(StateHasChanged);
+                return;
+            }
+
+            var hasLock = await notificationsGate.WaitAsync(TimeSpan.Zero);
+            if (!hasLock)
+            {
+                return;
+            }
+
+            try
+            {
+                IsNotificationLoading = true;
+                NotificationErrorMessage = null;
+                try
+                {
+                    NotificationInbox = await NotificationService.GetInboxAsync(
+                        currentUserId,
+                        take: 20,
+                        includeRead: !NotificationsOnlyUnread);
+                    ApplyNotificationFilter();
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogError(ex, "Failed to load notification inbox for user {UserId}.", currentUserId);
+                    NotificationInbox = new NotificationInboxDto();
+                    FilteredNotifications = Array.Empty<NotificationInboxItemDto>();
+                    NotificationErrorMessage = "Notifications konnten nicht geladen werden.";
+                }
+            }
+            finally
+            {
+                IsNotificationLoading = false;
+                notificationsGate.Release();
+            }
+
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Unexpected notification refresh failure.");
+            NotificationInbox = new NotificationInboxDto();
+            FilteredNotifications = Array.Empty<NotificationInboxItemDto>();
+            NotificationErrorMessage = "Notifications konnten nicht geladen werden.";
+            IsNotificationLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void ApplyNotificationFilter()
+    {
+        if (NotificationInbox.Items.Count == 0)
+        {
+            FilteredNotifications = Array.Empty<NotificationInboxItemDto>();
+            return;
+        }
+
+        FilteredNotifications = NotificationInbox.Items
+            .Where(item => IsNotificationVisibleForFilter(item.Kind, SelectedNotificationFilter))
+            .OrderBy(item => item.IsRead ? 1 : 0)
+            .ThenBy(item => item.DueDate.Date)
+            .ThenByDescending(item => item.CreatedAtUtc)
+            .ToList();
+    }
+
+    private void OnAuthenticationStateChanged(Task<AuthenticationState> authenticationStateTask)
+    {
+        _ = InvokeAsync(async () =>
+        {
+            try
+            {
+                var authState = await authenticationStateTask;
+                currentUserId = ResolveUserIdFromClaims(authState.User);
+                await RefreshNotificationsAsync();
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "Failed to refresh notifications after authentication state change.");
+            }
+        });
+    }
+
+    private void OnNotificationRefreshRequested()
+    {
+        _ = InvokeAsync(RefreshNotificationsAsync);
+    }
+
+    private static bool GetBoolValue(object? value)
+    {
+        if (value is bool boolValue)
+        {
+            return boolValue;
+        }
+
+        if (value is string textValue && bool.TryParse(textValue, out var parsedValue))
+        {
+            return parsedValue;
+        }
+
+        return false;
+    }
+
+    private static bool IsNotificationVisibleForFilter(NotificationKind kind, NotificationFilter filter)
+    {
+        return filter switch
+        {
+            NotificationFilter.Onboarding => kind is NotificationKind.OnboardingStartDate
+                or NotificationKind.OnboardingTargetDate
+                or NotificationKind.OnboardingTodoUpcoming,
+            NotificationFilter.Wiki => kind == NotificationKind.WikiReviewDate,
+            NotificationFilter.CommentOwner => kind == NotificationKind.HomeCommentOwner,
+            NotificationFilter.CommentMention => kind == NotificationKind.HomeCommentMention,
+            _ => true
+        };
+    }
+
+    private static string NormalizeNavigationTarget(string? targetUrl)
+    {
+        if (string.IsNullOrWhiteSpace(targetUrl))
+        {
+            return "/";
+        }
+
+        return targetUrl.StartsWith("/", StringComparison.Ordinal) ? targetUrl : "/";
+    }
+
+    private async Task<string?> ResolveCurrentUserIdAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var userPrincipal = authState.User;
+        if (userPrincipal.Identity?.IsAuthenticated != true)
+        {
+            return null;
+        }
+
+        var claimUserId = ResolveUserIdFromClaims(userPrincipal);
+        if (!string.IsNullOrWhiteSpace(claimUserId))
+        {
+            return claimUserId;
+        }
+
+        try
+        {
+            var user = await UserManager.GetUserAsync(userPrincipal);
+            return user?.Id;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Failed to resolve current user id from UserManager.");
+            return null;
+        }
+    }
+
+    private static string? ResolveUserIdFromClaims(ClaimsPrincipal userPrincipal)
+    {
+        return userPrincipal.FindFirst(ClaimTypes.NameIdentifier)?.Value
+            ?? userPrincipal.FindFirst("sub")?.Value;
+    }
+
+    private string AddDrawerStateToUrl(string baseUrl)
+    {
+        return DrawerStateUrlBuilder.AddStateToUrl(baseUrl, ToggledDrawer, NavigationManager);
+    }
+
+    private enum NotificationFilter
+    {
+        All,
+        Onboarding,
+        Wiki,
+        CommentOwner,
+        CommentMention
+    }
+
+    public void Dispose()
+    {
+        AuthenticationStateProvider.AuthenticationStateChanged -= OnAuthenticationStateChanged;
+        NotificationRefreshSignal.Requested -= OnNotificationRefreshRequested;
+        notificationsCts?.Cancel();
+        notificationsCts?.Dispose();
+        notificationsTimer?.Dispose();
+        notificationsGate.Dispose();
+    }
+}

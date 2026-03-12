@@ -49,5 +49,6 @@ public enum NotificationKind
     OnboardingStartDate = 2,
     OnboardingTargetDate = 3,
     HomeCommentOwner = 4,
-    HomeCommentMention = 5
+    HomeCommentMention = 5,
+    OnboardingTodoUpcoming = 6
 }

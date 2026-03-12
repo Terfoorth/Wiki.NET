@@ -13,7 +13,8 @@ public class NotificationService(
     [
         NotificationKind.WikiReviewDate,
         NotificationKind.OnboardingStartDate,
-        NotificationKind.OnboardingTargetDate
+        NotificationKind.OnboardingTargetDate,
+        NotificationKind.OnboardingTodoUpcoming
     ];
 
     private static readonly TimeSpan ReminderTriggerLocalTime = new(8, 0, 0);
@@ -242,9 +243,10 @@ public class NotificationService(
         if (validSourceCandidates.Count == 0)
         {
             logger.LogInformation(
-                "Notification scheduler run summary: candidates total={CandidatesTotal}, skipped invalid user={SkippedInvalidUser}, skipped weekend={SkippedWeekend}, skipped before 08:00={SkippedBeforeEight}, skipped pre-window={SkippedPreWindow}, created={CreatedCount}.",
+                "Notification scheduler run summary: candidates total={CandidatesTotal}, skipped invalid user={SkippedInvalidUser}, skipped weekend={SkippedWeekend}, skipped before 08:00={SkippedBeforeEight}, skipped pre-window={SkippedPreWindow}, created={CreatedCount}, created onboarding todo={CreatedTodoCount}.",
                 totalCandidates,
                 skippedInvalidUser,
+                0,
                 0,
                 0,
                 0,
@@ -294,6 +296,7 @@ public class NotificationService(
         }
 
         var createdCount = 0;
+        var createdTodoCount = 0;
         var saveConflictCount = 0;
         var groupedCandidates = dueCandidates
             .GroupBy(candidate => new { candidate.Source.UserId, candidate.TriggerDate })
@@ -341,6 +344,10 @@ public class NotificationService(
                 {
                     await context.SaveChangesAsync(cancellationToken);
                     createdCount++;
+                    if (candidate.Source.Kind == NotificationKind.OnboardingTodoUpcoming)
+                    {
+                        createdTodoCount++;
+                    }
                 }
                 catch (DbUpdateException ex)
                 {
@@ -370,13 +377,14 @@ public class NotificationService(
         }
 
         logger.LogInformation(
-            "Notification scheduler run summary: candidates total={CandidatesTotal}, skipped invalid user={SkippedInvalidUser}, skipped weekend={SkippedWeekend}, skipped before 08:00={SkippedBeforeEight}, skipped pre-window={SkippedPreWindow}, created={CreatedCount}, save conflicts={SaveConflictCount}.",
+            "Notification scheduler run summary: candidates total={CandidatesTotal}, skipped invalid user={SkippedInvalidUser}, skipped weekend={SkippedWeekend}, skipped before 08:00={SkippedBeforeEight}, skipped pre-window={SkippedPreWindow}, created={CreatedCount}, created onboarding todo={CreatedTodoCount}, save conflicts={SaveConflictCount}.",
             totalCandidates,
             skippedInvalidUser,
             skippedWeekend,
             skippedBeforeEight,
             skippedPreWindow,
             createdCount,
+            createdTodoCount,
             saveConflictCount);
     }
 
@@ -448,6 +456,29 @@ public class NotificationService(
             })
             .ToListAsync(cancellationToken);
 
+        var onboardingProfileIds = onboardingSources
+            .Select(profile => profile.ProfileId)
+            .Distinct()
+            .ToList();
+
+        var openChecklistCountByProfileId = onboardingProfileIds.Count == 0
+            ? new Dictionary<int, int>()
+            : await context.OnboardingChecklistEntries
+                .AsNoTracking()
+                .Where(entry => onboardingProfileIds.Contains(entry.ProfileId) && !entry.IsCompleted)
+                .GroupBy(entry => entry.ProfileId)
+                .Select(group => new { ProfileId = group.Key, OpenCount = group.Count() })
+                .ToDictionaryAsync(entry => entry.ProfileId, entry => entry.OpenCount, cancellationToken);
+
+        var openMeasureCountByProfileId = onboardingProfileIds.Count == 0
+            ? new Dictionary<int, int>()
+            : await context.OnboardingMeasureEntries
+                .AsNoTracking()
+                .Where(entry => onboardingProfileIds.Contains(entry.ProfileId) && !entry.IsCompleted)
+                .GroupBy(entry => entry.ProfileId)
+                .Select(group => new { ProfileId = group.Key, OpenCount = group.Count() })
+                .ToDictionaryAsync(entry => entry.ProfileId, entry => entry.OpenCount, cancellationToken);
+
         foreach (var profile in onboardingSources)
         {
             var displayName = ResolveOnboardingProfileDisplayName(profile.FirstName, profile.LastName, profile.FullName);
@@ -474,6 +505,24 @@ public class NotificationService(
                     dueDate,
                     $"Onboarding Zieldatum: {displayName}",
                     $"Das Zieldatum ist am {dueDate:dd.MM.yyyy}.",
+                    $"/reportdesigner/details/{profile.ProfileId}"));
+            }
+
+            var openChecklistCount = openChecklistCountByProfileId.GetValueOrDefault(profile.ProfileId);
+            var openMeasureCount = openMeasureCountByProfileId.GetValueOrDefault(profile.ProfileId);
+            var openTodoCount = openChecklistCount + openMeasureCount;
+            var todoDueDate = profile.TargetDate?.Date ?? profile.StartDate?.Date;
+
+            if (openTodoCount > 0 && todoDueDate.HasValue)
+            {
+                var dueDate = todoDueDate.Value;
+                candidates.Add(new NotificationSourceCandidate(
+                    profile.UserId,
+                    NotificationKind.OnboardingTodoUpcoming,
+                    profile.ProfileId,
+                    dueDate,
+                    $"Onboarding Todos faellig: {displayName}",
+                    $"Offene Todos bis {dueDate:dd.MM.yyyy}: {openChecklistCount} Checklist, {openMeasureCount} Measures.",
                     $"/reportdesigner/details/{profile.ProfileId}"));
             }
         }
